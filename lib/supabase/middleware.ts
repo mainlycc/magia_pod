@@ -65,6 +65,31 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // RBAC: admin and coordinator areas
+  const path = request.nextUrl.pathname;
+  const requiresAdmin = path.startsWith("/admin");
+  const requiresCoordinator = path.startsWith("/coord");
+
+  if (user && (requiresAdmin || requiresCoordinator)) {
+    // Fetch profile to check role
+    const { data: profileRes } = await fetch(`${request.nextUrl.origin}/api/profile`, {
+      headers: { cookie: request.headers.get("cookie") ?? "" },
+    }).then(async (r) => ({ data: r.ok ? await r.json() : null }));
+
+    const role = profileRes?.role as string | undefined;
+
+    if (requiresAdmin && role !== "admin") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      return NextResponse.redirect(url);
+    }
+    if (requiresCoordinator && !(role === "coordinator" || role === "admin")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      return NextResponse.redirect(url);
+    }
+  }
+
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
   // If you're creating a new response object with NextResponse.next() make sure to:
   // 1. Pass the request in it, like so:

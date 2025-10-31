@@ -83,10 +83,10 @@ export default function ReservePage({
         }),
       });
       if (!res.ok) throw new Error("Nie udało się utworzyć rezerwacji");
-      const data = await res.json();
+      await res.json();
       router.push(`/trip/${params.slug}`);
-    } catch (e: any) {
-      setError(e.message ?? "Błąd rezerwacji");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Błąd rezerwacji");
     } finally {
       setLoading(false);
     }

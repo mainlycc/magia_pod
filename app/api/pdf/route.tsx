@@ -95,7 +95,7 @@ export async function POST(req: Request) {
 
     const base64 = buf.toString("base64");
     return NextResponse.json({ base64, filename: `${body.booking_ref}.pdf` });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: "PDF generation failed" }, { status: 500 });
   }
 }

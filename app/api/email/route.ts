@@ -34,12 +34,14 @@ export async function POST(req: Request) {
         ]
       : undefined;
 
+    const html = body.html ?? (body.text ? `<pre>${body.text}</pre>` : "<div></div>");
+
     const { error } = await resend.emails.send({
       from,
       to: body.to,
       subject: body.subject,
-      html: body.html,
-      text: body.text,
+      html,
+      text: body.text ?? undefined,
       attachments,
     });
 
@@ -48,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: "Email send failed" }, { status: 500 });
   }
 }

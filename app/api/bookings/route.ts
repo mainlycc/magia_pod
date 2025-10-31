@@ -8,7 +8,7 @@ function generateRef() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { slug, contact_email, contact_phone, address, participants } = body ?? {};
+    const { slug, contact_email, contact_phone, address, participants, consents } = body ?? {};
 
     if (!slug || !contact_email || !Array.isArray(participants) || participants.length === 0) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
         contact_email,
         contact_phone,
         address,
+        consents: consents ?? {},
         status: "confirmed",
       })
       .select("id, booking_ref")
@@ -53,7 +54,17 @@ export async function POST(req: Request) {
     }
 
     // Insert participants
-    const participantsPayload = participants.map((p: any) => ({
+    type ParticipantInput = {
+      first_name: string;
+      last_name: string;
+      pesel: string;
+      email?: string | null;
+      phone?: string | null;
+      document_type?: string | null;
+      document_number?: string | null;
+    };
+
+    const participantsPayload = (participants as ParticipantInput[]).map((p) => ({
       booking_id: booking.id,
       first_name: p.first_name,
       last_name: p.last_name,
@@ -116,7 +127,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ booking_ref: booking.booking_ref }, { status: 201 });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
 }

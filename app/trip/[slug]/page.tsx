@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,12 +65,15 @@ export default async function TripPage({
       {Array.isArray(trip.gallery_urls) && trip.gallery_urls.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {trip.gallery_urls.slice(0, 6).map((url, i) => (
-            <img
-              key={i}
-              src={url}
-              alt={`Zdjęcie ${i + 1}`}
-              className="h-40 w-full object-cover rounded-md"
-            />
+            <div key={i} className="relative h-40 w-full overflow-hidden rounded-md">
+              <Image
+                src={url}
+                alt={`Zdjęcie ${i + 1}`}
+                fill
+                sizes="(max-width: 768px) 50vw, 33vw"
+                className="object-cover"
+              />
+            </div>
           ))}
         </div>
       )}

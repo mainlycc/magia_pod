@@ -52,11 +52,14 @@ create table if not exists public.bookings (
   contact_email text not null,
   contact_phone text,
   address jsonb,
+  consents jsonb default '{}'::jsonb,
   status text not null check (status in ('pending','confirmed')),
+  payment_status text not null default 'unpaid' check (payment_status in ('unpaid','partial','paid','overpaid')),
   agreement_pdf_url text,
   created_at timestamptz not null default now()
 );
 create index if not exists bookings_trip_id_idx on public.bookings(trip_id);
+create index if not exists bookings_booking_ref_idx on public.bookings(booking_ref);
 alter table public.bookings enable row level security;
 
 -- Participants

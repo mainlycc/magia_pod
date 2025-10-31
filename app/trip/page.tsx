@@ -3,14 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-type Trip = {
-  id: string;
-  title: string;
-  slug: string;
-  start_date: string | null;
-  end_date: string | null;
-  price_cents: number | null;
-};
+// Trip type can be inferred from the query; explicit type removed to avoid unused symbol
 
 export default async function TripsIndexPage() {
   const supabase = await createClient();
