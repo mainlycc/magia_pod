@@ -1,16 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const { subject, body } = await req.json();
+    const { subject, body } = await request.json();
+    const { id } = await context.params;
     if (!subject || !body) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
     const supabase = await createClient();
     const { data: bookings } = await supabase
       .from("bookings")
       .select("id, contact_email")
-      .eq("trip_id", params.id);
+      .eq("trip_id", id);
 
     const emails = Array.from(
       new Set(

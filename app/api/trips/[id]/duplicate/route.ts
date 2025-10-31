@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
   const supabase = await createClient();
   const { data: trip } = await supabase
     .from("trips")
     .select("title,slug,description,start_date,end_date,price_cents,seats_total,is_active")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
   if (!trip) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
