@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-  const url = new URL(req.url);
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const url = new URL(request.url);
   const format = url.searchParams.get("format");
   const supabase = await createClient();
 
   const { data: bookings } = await supabase
     .from("bookings")
     .select("id, booking_ref, contact_email, payment_status")
-    .eq("trip_id", params.id);
+    .eq("trip_id", id);
   const bookingIds = (bookings ?? []).map((b) => b.id);
 
   type Participant = {
@@ -56,7 +57,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename=trip_${params.id}_participants.csv`,
+        "Content-Disposition": `attachment; filename=trip_${id}_participants.csv`,
       },
     });
   }
