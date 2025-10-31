@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type BookingRow = {
@@ -20,7 +22,12 @@ export default async function AdminTripBookingsPage({ params }: { params: { id: 
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Rezerwacje</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Rezerwacje</h1>
+        <Button asChild variant="secondary">
+          <Link href={`/api/trips/${params.id}/bookings?format=csv`}>Eksport CSV</Link>
+        </Button>
+      </div>
       <Card className="p-0 overflow-hidden">
         <Table>
           <TableHeader>

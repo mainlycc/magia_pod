@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default async function CoordParticipantsPage({ params }: { params: { id: string } }) {
@@ -30,7 +32,12 @@ export default async function CoordParticipantsPage({ params }: { params: { id: 
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Uczestnicy</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Uczestnicy</h1>
+        <Button asChild>
+          <Link href={`/coord/trips/${tripId}/message`}>Wyślij wiadomość grupową</Link>
+        </Button>
+      </div>
       <Card className="p-0 overflow-hidden">
         <Table>
           <TableHeader>

@@ -48,6 +48,8 @@ export default async function AdminTripsPage() {
                     <div className="flex gap-2 justify-end">
                       <Button asChild variant="outline" size="sm"><Link href={`/admin/trips/${t.id}/edit`}>Edytuj</Link></Button>
                       <Button asChild variant="secondary" size="sm"><Link href={`/admin/trips/${t.id}/bookings`}>Rezerwacje</Link></Button>
+                      <Button asChild variant="ghost" size="sm"><Link href={`/api/trips/${t.id}/toggle-active`}>{t.is_active ? "Archiwizuj" : "Aktywuj"}</Link></Button>
+                      <Button asChild variant="ghost" size="sm"><Link href={`/api/trips/${t.id}/duplicate`}>Duplikuj</Link></Button>
                     </div>
                   </TableCell>
                 </TableRow>

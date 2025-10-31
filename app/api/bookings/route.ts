@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidPesel(pesel: string): boolean {
+  return /^\d{11}$/.test(pesel);
+}
+
 function generateRef() {
   return `BK-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 }
@@ -12,6 +20,17 @@ export async function POST(req: Request) {
 
     if (!slug || !contact_email || !Array.isArray(participants) || participants.length === 0) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+    if (!isValidEmail(String(contact_email))) {
+      return NextResponse.json({ error: "Invalid email" }, { status: 400 });
+    }
+    for (const p of participants) {
+      if (!p?.first_name || !p?.last_name || !p?.pesel) {
+        return NextResponse.json({ error: "Invalid participant" }, { status: 400 });
+      }
+      if (!isValidPesel(String(p.pesel))) {
+        return NextResponse.json({ error: "Invalid PESEL" }, { status: 400 });
+      }
     }
 
     const supabase = await createClient();
@@ -27,12 +46,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Trip not found or inactive" }, { status: 404 });
     }
 
-    const seatsLeft = Math.max(0, (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0));
-    if (participants.length > seatsLeft) {
-      return NextResponse.json({ error: "Not enough seats" }, { status: 409 });
-    }
+    const seatsRequested = participants.length as number;
 
     const booking_ref = generateRef();
+
+    // Atomically reserve seats to avoid race condition
+    const { data: updatedTrip, error: updErr } = await supabase
+      .from("trips")
+      .update({ seats_reserved: (trip.seats_reserved ?? 0) + seatsRequested })
+      .eq("id", trip.id)
+      .lte("seats_reserved", (trip.seats_total ?? 0) - seatsRequested)
+      .select("id, seats_reserved, seats_total")
+      .single();
+
+    if (updErr || !updatedTrip) {
+      return NextResponse.json({ error: "Not enough seats" }, { status: 409 });
+    }
 
     // Create booking
     const { data: booking, error: bookErr } = await supabase
@@ -45,6 +74,7 @@ export async function POST(req: Request) {
         address,
         consents: consents ?? {},
         status: "confirmed",
+        payment_status: "unpaid",
       })
       .select("id, booking_ref")
       .single();
@@ -81,11 +111,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to add participants" }, { status: 500 });
     }
 
-    // Update seats_reserved
-    await supabase
-      .from("trips")
-      .update({ seats_reserved: (trip.seats_reserved ?? 0) + participantsPayload.length })
-      .eq("id", trip.id);
+    // seats_reserved was updated atomowo wyżej
 
     // Generate PDF via internal API
     const tripInfo = {
