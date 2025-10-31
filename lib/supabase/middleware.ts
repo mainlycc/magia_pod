@@ -13,11 +13,16 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Demo paths should not require Supabase at all (avoid creating client)
+  if (request.nextUrl.pathname.startsWith("/demo")) {
+    return supabaseResponse;
+  }
+
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
@@ -52,6 +57,7 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname === "/trip" ||
     request.nextUrl.pathname.startsWith("/trip/") ||
+    request.nextUrl.pathname.startsWith("/demo") ||
     request.nextUrl.pathname.startsWith("/api/bookings") ||
     request.nextUrl.pathname.startsWith("/api/pdf") ||
     request.nextUrl.pathname.startsWith("/api/email") ||
