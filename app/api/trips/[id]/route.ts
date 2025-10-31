@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const { id } = params;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("trips")
@@ -13,9 +13,9 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
   return NextResponse.json(data);
 }
 
-export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { id } = await context.params;
+    const { id } = params;
     const body = await req.json();
     const payload: Partial<{ title: string; price_cents: number; seats_total: number }> = {};
     if ("title" in body) payload.title = body.title;
