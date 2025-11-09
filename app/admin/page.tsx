@@ -106,7 +106,16 @@ export default async function AdminDashboardPage() {
       0,
     ) ?? 0;
 
-  const latestBookings = (latestBookingsRes.data ?? []) as LatestBooking[];
+  const latestBookings = ((latestBookingsRes.data ?? []) as any[]).map(
+    (booking): LatestBooking => ({
+      id: booking.id,
+      booking_ref: booking.booking_ref,
+      created_at: booking.created_at,
+      status: booking.status,
+      payment_status: booking.payment_status,
+      trip: Array.isArray(booking.trip) ? booking.trip[0] ?? null : booking.trip ?? null,
+    }),
+  );
   const upcomingTrips = (upcomingTripsRes.data ?? []) as UpcomingTrip[];
 
   return (

@@ -19,9 +19,9 @@ const participantSchema = z.object({
 });
 
 const consentsSchema = z.object({
-  rodo: z.literal(true, { errorMap: () => ({ message: "Wymagana zgoda RODO" }) }),
-  terms: z.literal(true, { errorMap: () => ({ message: "Zaakceptuj regulamin" }) }),
-  conditions: z.literal(true, { errorMap: () => ({ message: "Zaakceptuj warunki udziału" }) }),
+  rodo: z.literal(true),
+  terms: z.literal(true),
+  conditions: z.literal(true),
 });
 
 const bookingPayloadSchema = z.object({
