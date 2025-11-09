@@ -37,6 +37,12 @@ type UpcomingTrip = {
   seats_reserved: number | null;
 };
 
+type SalesBooking = {
+  trip: {
+    price_cents: number | null;
+  } | null;
+};
+
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
 
@@ -68,9 +74,7 @@ export default async function AdminDashboardPage() {
     supabase.from("trips").select("seats_total, seats_reserved").eq("is_active", true),
     supabase
       .from("bookings")
-      .select(
-        "id, status, trip:trips(price_cents, seats_total, seats_reserved)",
-      )
+      .select("trip:trips(price_cents)")
       .eq("status", "confirmed"),
     supabase
       .from("bookings")
@@ -97,7 +101,10 @@ export default async function AdminDashboardPage() {
   const occupancy = totalSeats > 0 ? Math.round((reservedSeats / totalSeats) * 100) : 0;
 
   const totalSalesCents =
-    salesRes.data?.reduce((acc, booking) => acc + (booking.trip?.price_cents ?? 0), 0) ?? 0;
+    (salesRes.data as SalesBooking[] | null)?.reduce(
+      (acc, booking) => acc + (booking.trip?.price_cents ?? 0),
+      0,
+    ) ?? 0;
 
   const latestBookings = (latestBookingsRes.data ?? []) as LatestBooking[];
   const upcomingTrips = (upcomingTripsRes.data ?? []) as UpcomingTrip[];
