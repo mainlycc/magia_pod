@@ -11,6 +11,14 @@ create table if not exists public.profiles (
 );
 alter table public.profiles enable row level security;
 
+-- Polityki RLS dla profiles
+drop policy if exists profiles_self_select on public.profiles;
+create policy profiles_self_select
+on public.profiles
+for select
+to authenticated
+using (id = auth.uid());
+
 -- Helpery ról
 create or replace function public.is_admin() returns boolean language sql stable as $$
   select exists (
@@ -43,6 +51,56 @@ create table if not exists public.trips (
 );
 create index if not exists trips_slug_idx on public.trips(slug);
 alter table public.trips enable row level security;
+
+-- Funkcje pomocnicze do rezerwacji miejsc
+create or replace function public.reserve_trip_seats(p_trip_id uuid, p_requested integer)
+returns public.trips
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  updated_record public.trips;
+begin
+  if p_requested is null or p_requested <= 0 then
+    return null;
+  end if;
+
+  update public.trips
+     set seats_reserved = seats_reserved + p_requested
+   where id = p_trip_id
+     and is_active = true
+     and seats_total - seats_reserved >= p_requested
+  returning * into updated_record;
+
+  return updated_record;
+end;
+$$;
+
+create or replace function public.release_trip_seats(p_trip_id uuid, p_requested integer)
+returns public.trips
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  updated_record public.trips;
+begin
+  if p_requested is null or p_requested <= 0 then
+    return null;
+  end if;
+
+  update public.trips
+     set seats_reserved = greatest(seats_reserved - p_requested, 0)
+   where id = p_trip_id
+  returning * into updated_record;
+
+  return updated_record;
+end;
+$$;
+
+grant execute on function public.reserve_trip_seats(uuid, integer) to anon, authenticated;
+grant execute on function public.release_trip_seats(uuid, integer) to anon, authenticated;
 
 -- Bookings
 create table if not exists public.bookings (
@@ -81,6 +139,7 @@ alter table public.participants enable row level security;
 
 -- RLS: trips
 -- Publiczny odczyt TYLKO aktywnych
+drop policy if exists trips_public_read_active on public.trips;
 create policy trips_public_read_active
 on public.trips
 for select
@@ -88,6 +147,7 @@ to anon, authenticated
 using (is_active = true);
 
 -- Modyfikacje tylko dla admina
+drop policy if exists trips_admin_all on public.trips;
 create policy trips_admin_all
 on public.trips
 for all
@@ -98,6 +158,7 @@ with check (public.is_admin());
 -- RLS: bookings
 -- Brak publicznego SELECT
 -- Publiczny INSERT (anon) na potrzeby rezerwacji
+drop policy if exists bookings_public_insert on public.bookings;
 create policy bookings_public_insert
 on public.bookings
 for insert
@@ -105,6 +166,7 @@ to anon, authenticated
 with check (true);
 
 -- Odczyt/zmiana tylko dla admina lub koordynatora przypisanego do wyjazdu
+drop policy if exists bookings_admin_read on public.bookings;
 create policy bookings_admin_read
 on public.bookings
 for select
@@ -125,6 +187,7 @@ using (
   )
 );
 
+drop policy if exists bookings_admin_update on public.bookings;
 create policy bookings_admin_update
 on public.bookings
 for update
@@ -134,6 +197,7 @@ with check (public.is_admin());
 
 -- RLS: participants
 -- Publiczny INSERT (anon) na potrzeby rezerwacji
+drop policy if exists participants_public_insert on public.participants;
 create policy participants_public_insert
 on public.participants
 for insert
@@ -141,6 +205,7 @@ to anon, authenticated
 with check (true);
 
 -- Odczyt/zmiana jak w bookings
+drop policy if exists participants_admin_read on public.participants;
 create policy participants_admin_read
 on public.participants
 for select
@@ -162,6 +227,7 @@ using (
   )
 );
 
+drop policy if exists participants_admin_update on public.participants;
 create policy participants_admin_update
 on public.participants
 for update
