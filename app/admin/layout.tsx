@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Button asChild variant="ghost" className="justify-start">
             <Link href="/admin/trips">Wycieczki</Link>
           </Button>
+          <Button asChild variant="ghost" className="justify-start">
+            <Link href="/admin/payments">Płatności</Link>
+          </Button>
+          <Button asChild variant="ghost" className="justify-start">
+            <Link href="/admin/coordinators/invite">Zaproszenia koordynatorów</Link>
+          </Button>
         </nav>
       </aside>
       <main className="p-6 space-y-6">
@@ -21,6 +28,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="text-sm text-muted-foreground">Panel administracyjny</div>
         </Card>
         {children}
+        <Toaster position="top-right" richColors />
       </main>
     </div>
   );

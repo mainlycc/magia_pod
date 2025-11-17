@@ -100,17 +100,17 @@ npx shadcn@latest add breadcrumb dialog dropdown-menu table pagination tabs aler
 
 ### To-dos
 
-- [ ] Przebudować rezerwację na 3‑krokowy wizard w shadcn (forms, tabs)
-- [ ] Dopieścić UI strony wycieczki i galerii w shadcn
-- [ ] Utwardzić /api/bookings (walidacja, zgody, race conditions)
-- [ ] Uspójnić szablon PDF i e-mail; zapisywać agreement_pdf_url
+- [x] Przebudować rezerwację na 3‑krokowy wizard w shadcn (forms, tabs)
+- [x] Dopieścić UI strony wycieczki i galerii w shadcn
+- [x] Utwardzić /api/bookings (walidacja, zgody, race conditions)
+- [x] Uspójnić szablon PDF i e-mail; zapisywać agreement_pdf_url
 - [x] Stworzyć layout admina (sidebar/topbar) w shadcn
-- [ ] Lista/CRUD wycieczek z tabelą shadcn i akcjami
-- [ ] Widok rezerwacji/uczestników; eksport CSV; ręczne statusy płatności
-- [ ] Panel koordynatora: lista uczestników; mass email
+- [x] Lista/CRUD wycieczek z tabelą shadcn i akcjami
+- [x] Widok rezerwacji/uczestników; eksport CSV; ręczne statusy płatności
+- [x] Panel koordynatora: lista uczestników; mass email
 - [x] RBAC w middleware (ochrona /admin i /coord), check roli z profiles
-- [ ] Doinstalować brakujące komponenty shadcn wymienione w planie
-- [ ] Integracja Paynow: init i webhook; aktualizacja payment_status
+- [x] Doinstalować brakujące komponenty shadcn wymienione w planie
+- [ ] Integracja Paynow: init i webhook; aktualizacja paymen5t_status
 - [ ] Import CSV/API mBank i dopasowanie wpłat
 - [ ] Integracja Saldeo Smart: tworzenie i wysyłka faktur
 - [ ] Integracja HDI: wysyłka list uczestników i polisy

@@ -19,6 +19,31 @@ for select
 to authenticated
 using (id = auth.uid());
 
+-- Admin może czytać wszystkie profile
+drop policy if exists profiles_admin_select on public.profiles;
+create policy profiles_admin_select
+on public.profiles
+for select
+to authenticated
+using (public.is_admin());
+
+-- Admin może aktualizować allowed_trip_ids dla koordynatorów
+drop policy if exists profiles_admin_update on public.profiles;
+create policy profiles_admin_update
+on public.profiles
+for update
+to authenticated
+using (public.is_admin())
+with check (
+  public.is_admin()
+  and (
+    -- Można aktualizować tylko koordynatorów
+    (select role from public.profiles where id = profiles.id) = 'coordinator'
+    -- Lub aktualizować swój własny profil (na wszelki wypadek)
+    or profiles.id = auth.uid()
+  )
+);
+
 -- Helpery ról
 create or replace function public.is_admin() returns boolean language sql stable as $$
   select exists (
@@ -47,6 +72,8 @@ create table if not exists public.trips (
   seats_reserved integer not null default 0,
   is_active boolean not null default true,
   gallery_urls jsonb not null default '[]'::jsonb,
+  category text,
+  location text,
   created_at timestamptz not null default now()
 );
 create index if not exists trips_slug_idx on public.trips(slug);
@@ -234,5 +261,69 @@ for update
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+
+-- Coordinator Invitations
+create table if not exists public.coordinator_invitations (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  invited_by uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'expired')),
+  token uuid not null unique default gen_random_uuid(),
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  accepted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists coordinator_invitations_email_idx on public.coordinator_invitations(email);
+create index if not exists coordinator_invitations_status_idx on public.coordinator_invitations(status);
+create index if not exists coordinator_invitations_token_idx on public.coordinator_invitations(token);
+alter table public.coordinator_invitations enable row level security;
+
+-- RLS: coordinator_invitations
+drop policy if exists coordinator_invitations_admin_all on public.coordinator_invitations;
+create policy coordinator_invitations_admin_all
+on public.coordinator_invitations
+for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+-- Funkcja do automatycznego wygaszania starych zaproszeń
+create or replace function public.expire_old_invitations()
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.coordinator_invitations
+  set status = 'expired',
+      updated_at = now()
+  where status = 'pending'
+    and expires_at < now();
+end;
+$$;
+
+-- Funkcja do akceptacji zaproszenia przez token (omija RLS)
+create or replace function public.accept_invitation_by_token(invitation_token uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.coordinator_invitations
+  set status = 'accepted',
+      accepted_at = now(),
+      updated_at = now()
+  where token = invitation_token
+    and status = 'pending'
+    and expires_at >= now();
+end;
+$$;
+
+grant execute on function public.expire_old_invitations() to authenticated;
+grant execute on function public.accept_invitation_by_token(uuid) to anon, authenticated;
 
 

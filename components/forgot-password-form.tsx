@@ -26,11 +26,12 @@ export function ForgotPasswordForm({
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     try {
+      const supabase = createClient();
+      
       // The url which will be included in the email. This URL needs to be configured in your redirect URLs in the Supabase dashboard at https://supabase.com/dashboard/project/_/auth/url-configuration
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/update-password`,
@@ -38,7 +39,20 @@ export function ForgotPasswordForm({
       if (error) throw error;
       setSuccess(true);
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      if (error instanceof Error) {
+        // Sprawdź czy to błąd sieciowy
+        if (error.message.includes("fetch") || error.message.includes("Failed to fetch")) {
+          setError(
+            "Nie można połączyć się z serwerem. Sprawdź połączenie internetowe oraz czy zmienne środowiskowe Supabase są poprawnie skonfigurowane."
+          );
+        } else if (error.message.includes("Missing Supabase")) {
+          setError(error.message);
+        } else {
+          setError(error.message);
+        }
+      } else {
+        setError("Wystąpił nieoczekiwany błąd podczas resetowania hasła.");
+      }
     } finally {
       setIsLoading(false);
     }

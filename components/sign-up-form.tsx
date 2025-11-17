@@ -29,17 +29,18 @@ export function SignUpForm({
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     if (password !== repeatPassword) {
-      setError("Passwords do not match");
+      setError("Hasła nie są identyczne");
       setIsLoading(false);
       return;
     }
 
     try {
+      const supabase = createClient();
+      
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -50,7 +51,20 @@ export function SignUpForm({
       if (error) throw error;
       router.push("/auth/sign-up-success");
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      if (error instanceof Error) {
+        // Sprawdź czy to błąd sieciowy
+        if (error.message.includes("fetch") || error.message.includes("Failed to fetch")) {
+          setError(
+            "Nie można połączyć się z serwerem. Sprawdź połączenie internetowe oraz czy zmienne środowiskowe Supabase są poprawnie skonfigurowane."
+          );
+        } else if (error.message.includes("Missing Supabase")) {
+          setError(error.message);
+        } else {
+          setError(error.message);
+        }
+      } else {
+        setError("Wystąpił nieoczekiwany błąd podczas rejestracji.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -60,8 +74,8 @@ export function SignUpForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Sign up</CardTitle>
-          <CardDescription>Create a new account</CardDescription>
+          <CardTitle className="text-2xl">Rejestracja</CardTitle>
+          <CardDescription>Utwórz nowe konto</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignUp}>
@@ -79,7 +93,7 @@ export function SignUpForm({
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">Hasło</Label>
                 </div>
                 <Input
                   id="password"
@@ -91,7 +105,7 @@ export function SignUpForm({
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">
-                  <Label htmlFor="repeat-password">Repeat Password</Label>
+                  <Label htmlFor="repeat-password">Powtórz hasło</Label>
                 </div>
                 <Input
                   id="repeat-password"
@@ -103,13 +117,13 @@ export function SignUpForm({
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Creating an account..." : "Sign up"}
+                {isLoading ? "Tworzenie konta..." : "Zarejestruj się"}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
-              Already have an account?{" "}
+              Masz już konto?{" "}
               <Link href="/auth/login" className="underline underline-offset-4">
-                Login
+                Zaloguj się
               </Link>
             </div>
           </form>
