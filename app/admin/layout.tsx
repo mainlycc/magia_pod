@@ -16,10 +16,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Link href="/admin/trips">Wycieczki</Link>
           </Button>
           <Button asChild variant="ghost" className="justify-start">
+            <Link href="/admin/bookings">Rezerwacje i Umowy</Link>
+          </Button>
+          <Button asChild variant="ghost" className="justify-start">
             <Link href="/admin/payments">Płatności</Link>
           </Button>
           <Button asChild variant="ghost" className="justify-start">
+            <Link href="/admin/uczestnicy">Uczestnicy</Link>
+          </Button>
+          <Button asChild variant="ghost" className="justify-start">
             <Link href="/admin/coordinators/invite">Zaproszenia koordynatorów</Link>
+          </Button>
+          <Button asChild variant="ghost" className="justify-start">
+            <Link href="/admin/przyklad">Przykład</Link>
           </Button>
         </nav>
       </aside>

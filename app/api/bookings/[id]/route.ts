@@ -4,10 +4,48 @@ import { createClient } from "@/lib/supabase/server";
 import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-status";
 
 const updateSchema = z.object({
-  payment_status: z.enum(PAYMENT_STATUS_VALUES),
+  payment_status: z.enum(PAYMENT_STATUS_VALUES).optional(),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  internal_notes: z.array(z.any()).optional(),
 });
 
 type UpdatePayload = z.infer<typeof updateSchema>;
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(
+      `
+      *,
+      trips:trips(*),
+      participants:participants(*),
+      agreements:agreements(*),
+      payment_history:payment_history(*)
+    `
+    )
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Failed to fetch booking", error);
+    if (error.code === "PGRST301") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  return NextResponse.json(data);
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -26,13 +64,22 @@ export async function PATCH(
 
   const supabase = await createClient();
 
+  const updateData: Record<string, any> = {};
+  if (payload.payment_status !== undefined) {
+    updateData.payment_status = payload.payment_status;
+  }
+  if (payload.status !== undefined) {
+    updateData.status = payload.status;
+  }
+  if (payload.internal_notes !== undefined) {
+    updateData.internal_notes = payload.internal_notes;
+  }
+
   const { data, error } = await supabase
     .from("bookings")
-    .update({
-      payment_status: payload.payment_status,
-    })
+    .update(updateData)
     .eq("id", id)
-    .select("id, payment_status")
+    .select("*")
     .single();
 
   if (error) {

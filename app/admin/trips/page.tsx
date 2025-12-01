@@ -1,9 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -13,12 +13,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ReusableTable } from "@/components/reusable-table";
 import { toast } from "sonner";
 
 type Trip = {
@@ -42,7 +41,6 @@ export default function AdminTripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTrips, setSelectedTrips] = useState<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
@@ -107,25 +105,110 @@ export default function AdminTripsPage() {
     );
   };
 
-  const toggleSelectTrip = (tripId: string) => {
-    setSelectedTrips((prev) => {
-      const next = new Set(prev);
-      if (next.has(tripId)) {
-        next.delete(tripId);
-      } else {
-        next.add(tripId);
-      }
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedTrips.size === trips.length) {
-      setSelectedTrips(new Set());
-    } else {
-      setSelectedTrips(new Set(trips.map((t) => t.id)));
-    }
-  };
+  // Definicja kolumn dla tabeli
+  const columns = useMemo<ColumnDef<Trip>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: "Nazwa",
+        cell: ({ row }) => (
+          <div className="font-medium">{row.original.title}</div>
+        ),
+      },
+      {
+        id: "dates",
+        header: "Termin",
+        cell: ({ row }) => {
+          const start = row.original.start_date
+            ? new Date(row.original.start_date).toLocaleDateString()
+            : "-";
+          const end = row.original.end_date
+            ? new Date(row.original.end_date).toLocaleDateString()
+            : "-";
+          return <div>{start} — {end}</div>;
+        },
+      },
+      {
+        id: "price",
+        header: "Cena",
+        cell: ({ row }) => {
+          const price = row.original.price_cents
+            ? (row.original.price_cents / 100).toFixed(2)
+            : "-";
+          return <div>{price} PLN</div>;
+        },
+      },
+      {
+        id: "seats",
+        header: "Miejsca",
+        cell: ({ row }) => {
+          const seatsLeft = Math.max(
+            0,
+            (row.original.seats_total ?? 0) - (row.original.seats_reserved ?? 0)
+          );
+          return <div>{seatsLeft}/{row.original.seats_total}</div>;
+        },
+      },
+      {
+        id: "coordinators",
+        header: "Koordynatorzy",
+        cell: ({ row }) => {
+          const tripCoordinators = getCoordinatorsForTrip(row.original.id);
+          return tripCoordinators.length > 0 ? (
+            <div className="flex flex-wrap gap-1 max-w-xs">
+              {tripCoordinators.map((coord) => (
+                <Badge key={coord.id} variant="secondary" className="text-xs">
+                  {coord.email || "Brak email"}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-sm text-muted-foreground">-</span>
+          );
+        },
+      },
+      {
+        accessorKey: "is_active",
+        header: "Status",
+        cell: ({ row }) => (
+          <div className="capitalize">
+            {row.original.is_active ? "aktywny" : "archiwum"}
+          </div>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => (
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openEditDialog(row.original.id)}
+            >
+              Edytuj
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/admin/trips/${row.original.id}/bookings`}>
+                Rezerwacje
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/api/trips/${row.original.id}/toggle-active`}>
+                {row.original.is_active ? "Archiwizuj" : "Aktywuj"}
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/api/trips/${row.original.id}/duplicate`}>
+                Duplikuj
+              </Link>
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [coordinators]
+  );
 
   const toggleCoordinator = (coordinatorId: string) => {
     setSelectedCoordinators((prev) => {
@@ -342,13 +425,9 @@ export default function AdminTripsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Wycieczki</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Dodaj</Button>
-          </DialogTrigger>
-          <DialogContent>
+      <h1 className="text-2xl font-semibold">Wycieczki</h1>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
             <DialogHeader>
               <DialogTitle>Dodaj nową wycieczkę</DialogTitle>
               <DialogDescription>
@@ -489,7 +568,6 @@ export default function AdminTripsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
 
       {/* Dialog edycji wycieczki */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
@@ -627,104 +705,19 @@ export default function AdminTripsPage() {
         </DialogContent>
       </Dialog>
 
-      <Card className="p-0 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                <Checkbox
-                  checked={trips.length > 0 && selectedTrips.size === trips.length}
-                  onCheckedChange={toggleSelectAll}
-                  aria-label="Wybierz wszystkie"
-                />
-              </TableHead>
-              <TableHead>Nazwa</TableHead>
-              <TableHead>Termin</TableHead>
-              <TableHead>Cena</TableHead>
-              <TableHead>Miejsca</TableHead>
-              <TableHead>Koordynatorzy</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {trips.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                  Brak wycieczek
-                </TableCell>
-              </TableRow>
-            ) : (
-              trips.map((t) => {
-                const price = t.price_cents ? (t.price_cents / 100).toFixed(2) : "-";
-                const seatsLeft = Math.max(0, (t.seats_total ?? 0) - (t.seats_reserved ?? 0));
-                const tripCoordinators = getCoordinatorsForTrip(t.id);
-                const isSelected = selectedTrips.has(t.id);
-
-                return (
-                  <TableRow key={t.id} data-state={isSelected ? "selected" : undefined}>
-                    <TableCell>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelectTrip(t.id)}
-                        aria-label={`Wybierz ${t.title}`}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{t.title}</TableCell>
-                    <TableCell>
-                      {(t.start_date && new Date(t.start_date).toLocaleDateString()) || "-"} —{" "}
-                      {(t.end_date && new Date(t.end_date).toLocaleDateString()) || "-"}
-                    </TableCell>
-                    <TableCell>{price} PLN</TableCell>
-                    <TableCell>
-                      {seatsLeft}/{t.seats_total}
-                    </TableCell>
-                    <TableCell>
-                      {tripCoordinators.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {tripCoordinators.map((coord) => (
-                            <Badge key={coord.id} variant="secondary" className="text-xs">
-                              {coord.email || "Brak email"}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="capitalize">
-                      {t.is_active ? "aktywny" : "archiwum"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-2 justify-end">
-                        <Button variant="outline" size="sm" onClick={() => openEditDialog(t.id)}>
-                          Edytuj
-                        </Button>
-                        <Button asChild variant="secondary" size="sm">
-                          <Link href={`/admin/trips/${t.id}/bookings`}>Rezerwacje</Link>
-                        </Button>
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={`/api/trips/${t.id}/toggle-active`}>
-                            {t.is_active ? "Archiwizuj" : "Aktywuj"}
-                          </Link>
-                        </Button>
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={`/api/trips/${t.id}/duplicate`}>Duplikuj</Link>
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </Card>
-      {selectedTrips.size > 0 && (
-        <div className="text-sm text-muted-foreground">
-          Wybrano {selectedTrips.size} z {trips.length} wycieczek
-        </div>
-      )}
+      <ReusableTable
+        columns={columns}
+        data={trips}
+        searchable={true}
+        searchPlaceholder="Szukaj wycieczek..."
+        searchColumn="title"
+        onAdd={() => setDialogOpen(true)}
+        addButtonLabel="Dodaj wycieczkę"
+        enableRowSelection={true}
+        enablePagination={true}
+        pageSize={10}
+        emptyMessage="Brak wycieczek"
+      />
     </div>
   );
 }

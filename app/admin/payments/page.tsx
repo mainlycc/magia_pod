@@ -1,18 +1,12 @@
 "use client";
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ReusableTable } from "@/components/reusable-table";
 import {
   Select,
   SelectContent,
@@ -44,12 +38,6 @@ type BookingWithTrip = {
     title: string;
     slug: string;
   } | null;
-};
-
-type Trip = {
-  id: string;
-  title: string;
-  slug: string;
 };
 
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
@@ -128,9 +116,8 @@ function PaymentStatusSelectWithRefresh({
 }
 
 export default function AdminPaymentsPage() {
+  const router = useRouter();
   const [bookings, setBookings] = useState<BookingWithTrip[]>([]);
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -140,18 +127,6 @@ export default function AdminPaymentsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const supabase = createClient();
-
-      // Pobierz wszystkie wycieczki dla filtrowania
-      const { data: tripsData } = await supabase
-        .from("trips")
-        .select("id, title, slug")
-        .order("title", { ascending: true });
-
-      if (tripsData) {
-        setTrips(tripsData);
-      }
-
       // Pobierz wszystkie rezerwacje z wycieczkami
       await loadBookings(null);
     } catch (err) {
@@ -207,12 +182,6 @@ export default function AdminPaymentsPage() {
     }
   };
 
-  const handleTripFilterChange = (value: string) => {
-    const tripId = value === "all" ? null : value;
-    setSelectedTripId(tripId);
-    loadBookings(tripId);
-  };
-
   const handlePaymentStatusChange = (bookingId: string, newStatus: PaymentStatusValue) => {
     // Zaktualizuj status w state bezpośrednio
     setBookings((prev) =>
@@ -226,6 +195,96 @@ export default function AdminPaymentsPage() {
 
   const filteredBookings = bookings;
 
+  const columns = useMemo<ColumnDef<BookingWithTrip>[]>(
+    () => [
+      {
+        accessorKey: "booking_ref",
+        header: "Numer rezerwacji",
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.booking_ref}</span>
+        ),
+      },
+      {
+        id: "trip",
+        header: "Wycieczka",
+        cell: ({ row }) =>
+          row.original.trips ? (
+            <Link
+              href={`/admin/trips/${row.original.trip_id}/bookings`}
+              className="text-primary hover:underline"
+            >
+              {row.original.trips.title}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        id: "contact",
+        header: "Kontakt",
+        cell: ({ row }) => (
+          <div className="space-y-1">
+            <div className="text-sm">
+              {row.original.contact_email ?? "—"}
+            </div>
+            {row.original.contact_phone && (
+              <div className="text-xs text-muted-foreground">
+                {row.original.contact_phone}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "payment_status",
+        header: "Status płatności",
+        cell: ({ row }) => {
+          const booking = row.original;
+          const createdAtLabel = booking.created_at
+            ? dateFormatter.format(new Date(booking.created_at))
+            : "—";
+
+          return (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "border text-xs font-medium uppercase",
+                    getPaymentStatusBadgeClass(booking.payment_status),
+                  )}
+                >
+                  {getPaymentStatusLabel(booking.payment_status)}
+                </Badge>
+                <PaymentStatusSelectWithRefresh
+                  key={`${booking.id}-${booking.payment_status}`}
+                  bookingId={booking.id}
+                  initialStatus={booking.payment_status}
+                  onStatusChange={handlePaymentStatusChange}
+                />
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Utworzono: {createdAtLabel}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        id: "actions",
+        header: "Akcje",
+        cell: ({ row }) => (
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/admin/trips/${row.original.trip_id}/bookings`}>
+              Szczegóły
+            </Link>
+          </Button>
+        ),
+      },
+    ],
+    []
+  );
+
   if (loading) {
     return <div className="space-y-4">Ładowanie...</div>;
   }
@@ -236,123 +295,18 @@ export default function AdminPaymentsPage() {
         <h1 className="text-2xl font-semibold">Płatności</h1>
       </div>
 
-      <Card className="p-4">
-        <div className="flex items-center gap-4">
-          <label htmlFor="trip-filter" className="text-sm font-medium">
-            Filtruj według wycieczki:
-          </label>
-          <Select
-            value={selectedTripId ?? "all"}
-            onValueChange={handleTripFilterChange}
-          >
-            <SelectTrigger id="trip-filter" className="w-[300px]">
-              <SelectValue placeholder="Wybierz wycieczkę" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Wszystkie wycieczki</SelectItem>
-              {trips.map((trip) => (
-                <SelectItem key={trip.id} value={trip.id}>
-                  {trip.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="text-sm text-muted-foreground">
-            Znaleziono: {filteredBookings.length} rezerwacji
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-0 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Numer rezerwacji</TableHead>
-              <TableHead>Wycieczka</TableHead>
-              <TableHead>Kontakt</TableHead>
-              <TableHead>Status płatności</TableHead>
-              <TableHead>Data utworzenia</TableHead>
-              <TableHead>Akcje</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredBookings.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                  Brak płatności
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredBookings.map((booking) => {
-                const createdAtLabel = booking.created_at
-                  ? dateFormatter.format(new Date(booking.created_at))
-                  : "—";
-
-                return (
-                  <TableRow key={booking.id}>
-                    <TableCell className="font-medium">
-                      {booking.booking_ref}
-                    </TableCell>
-                    <TableCell>
-                      {booking.trips ? (
-                        <Link
-                          href={`/admin/trips/${booking.trip_id}/bookings`}
-                          className="text-primary hover:underline"
-                        >
-                          {booking.trips.title}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="text-sm">
-                          {booking.contact_email ?? "—"}
-                        </div>
-                        {booking.contact_phone && (
-                          <div className="text-xs text-muted-foreground">
-                            {booking.contact_phone}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "border text-xs font-medium uppercase",
-                            getPaymentStatusBadgeClass(booking.payment_status),
-                          )}
-                        >
-                          {getPaymentStatusLabel(booking.payment_status)}
-                        </Badge>
-                        <PaymentStatusSelectWithRefresh
-                          key={`${booking.id}-${booking.payment_status}`}
-                          bookingId={booking.id}
-                          initialStatus={booking.payment_status}
-                          onStatusChange={(id, status) => handlePaymentStatusChange(id, status)}
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {createdAtLabel}
-                    </TableCell>
-                    <TableCell>
-                      <Button asChild variant="secondary" size="sm">
-                        <Link href={`/admin/trips/${booking.trip_id}/bookings`}>
-                          Szczegóły
-                        </Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+      <ReusableTable
+        columns={columns}
+        data={filteredBookings}
+        searchable={true}
+        searchPlaceholder="Szukaj po numerze rezerwacji lub emailu..."
+        searchColumn="booking_ref"
+        onAdd={() => router.push("/admin/bookings")}
+        addButtonLabel="Dodaj płatność"
+        enablePagination={true}
+        pageSize={20}
+        emptyMessage="Brak płatności"
+      />
     </div>
   );
 }
