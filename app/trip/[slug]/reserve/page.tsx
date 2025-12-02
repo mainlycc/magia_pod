@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,11 +45,11 @@ const addressSchema = z.object({
 const participantSchema = z.object({
   first_name: z.string().min(2, "Podaj imię"),
   last_name: z.string().min(2, "Podaj nazwisko"),
-  pesel: z.string().min(11, "Podaj numer PESEL"),
-  email: z.string().email("Podaj poprawny e-mail"),
-  phone: z.string().min(7, "Podaj telefon"),
-  document_type: z.enum(["ID", "PASSPORT"]),
-  document_number: z.string().min(3, "Podaj numer dokumentu"),
+  pesel: z.string().regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr"),
+  email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
+  phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
+  document_type: z.enum(["ID", "PASSPORT"]).optional(),
+  document_number: z.string().min(3, "Podaj numer dokumentu").optional(),
 });
 
 const bookingFormSchema = z.object({
@@ -100,7 +100,8 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
   summary: ["consents.rodo", "consents.terms", "consents.conditions"],
 };
 
-export default function ReservePage({ params }: { params: { slug: string } }) {
+export default function ReservePage({ params }: { params: Promise<{ slug: string }> | { slug: string } }) {
+  const { slug } = use(params instanceof Promise ? params : Promise.resolve(params));
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -124,10 +125,10 @@ export default function ReservePage({ params }: { params: { slug: string } }) {
           first_name: "",
           last_name: "",
           pesel: "",
-          email: "",
-          phone: "",
-          document_type: "ID",
-          document_number: "",
+          email: undefined,
+          phone: undefined,
+          document_type: undefined,
+          document_number: undefined,
         },
       ],
       consents: {
@@ -198,7 +199,7 @@ export default function ReservePage({ params }: { params: { slug: string } }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          slug: params.slug,
+          slug: slug,
           contact_email: values.contact.email,
           contact_phone: values.contact.phone,
           address: {
@@ -206,18 +207,51 @@ export default function ReservePage({ params }: { params: { slug: string } }) {
             city: values.contact.address.city,
             zip: values.contact.address.zip,
           },
-          participants: values.participants,
+          participants: values.participants.map((p) => ({
+            first_name: p.first_name,
+            last_name: p.last_name,
+            pesel: p.pesel,
+            email: p.email && p.email.trim() !== "" ? p.email : undefined,
+            phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
+            document_type: p.document_type || undefined,
+            document_number: p.document_number && p.document_number.trim() !== "" ? p.document_number : undefined,
+          })),
           consents: values.consents,
         }),
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        const message = data?.error ?? "Nie udało się utworzyć rezerwacji";
+        let message = data?.error ?? "Nie udało się utworzyć rezerwacji";
+        
+        // Jeśli są szczegóły błędu walidacji, dodaj je do komunikatu
+        if (data?.details) {
+          const fieldErrors: string[] = [];
+          if (data.details.fieldErrors) {
+            Object.entries(data.details.fieldErrors).forEach(([field, errors]) => {
+              if (Array.isArray(errors) && errors.length > 0) {
+                fieldErrors.push(`${field}: ${errors.join(", ")}`);
+              }
+            });
+          }
+          if (data.details.formErrors && data.details.formErrors.length > 0) {
+            fieldErrors.push(...data.details.formErrors);
+          }
+          if (fieldErrors.length > 0) {
+            message = `${message}\n${fieldErrors.join("\n")}`;
+          }
+        }
+        
         throw new Error(message);
       }
 
-      router.push(`/trip/${params.slug}`);
+      const data = await response.json().catch(() => null);
+      if (data?.redirect_url) {
+        window.location.href = data.redirect_url as string;
+        return;
+      }
+
+      router.push(`/trip/${slug}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Błąd rezerwacji");
     } finally {
@@ -255,7 +289,7 @@ export default function ReservePage({ params }: { params: { slug: string } }) {
           </p>
         </div>
         <Button asChild variant="ghost">
-          <Link href={`/trip/${params.slug}`}>Wróć do szczegółów</Link>
+          <Link href={`/trip/${slug}`}>Wróć do szczegółów</Link>
         </Button>
       </div>
 
@@ -357,7 +391,7 @@ export default function ReservePage({ params }: { params: { slug: string } }) {
                 </CardContent>
                 <CardFooter className="flex justify-end gap-3">
                   <Button variant="secondary" asChild>
-                    <Link href={`/trip/${params.slug}`}>Anuluj</Link>
+                    <Link href={`/trip/${slug}`}>Anuluj</Link>
                   </Button>
                   <Button type="button" onClick={goToNextStep}>
                     Dalej

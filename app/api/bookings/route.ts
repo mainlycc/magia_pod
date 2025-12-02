@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createPaynowPayment } from "@/lib/paynow";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -70,9 +71,9 @@ export async function POST(req: Request) {
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active",
+        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug",
       )
-      .eq("slug", payload.slug)
+      .or(`slug.eq.${payload.slug},public_slug.eq.${payload.slug}`)
       .eq("is_active", true)
       .single();
 
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
         consents,
         status: "confirmed",
         payment_status: "unpaid",
+        source: "public_page",
       })
       .select("id, booking_ref")
       .single();
@@ -201,10 +203,33 @@ export async function POST(req: Request) {
       }
     }
 
+    // Utworzenie płatności Paynow
+    let redirectUrl: string | null = null;
+    const unitPrice = trip.price_cents ?? 0;
+    const totalAmountCents = unitPrice * seatsRequested;
+
+    if (totalAmountCents > 0) {
+      try {
+        const payment = await createPaynowPayment({
+          amountCents: totalAmountCents,
+          externalId: booking.booking_ref,
+          description: `Rezerwacja ${booking.booking_ref} - ${trip.title}`,
+          continueUrl: `${baseUrl}/trip/${trip.public_slug || payload.slug}`,
+          notificationUrl: `${baseUrl}/api/payments/paynow/webhook`,
+        });
+        redirectUrl = payment.redirectUrl ?? null;
+      } catch (err) {
+        // jeśli nie uda się stworzyć płatności, rezerwacja dalej istnieje,
+        // ale użytkownik nie zostanie przekierowany do płatności online
+        console.error("Paynow create payment error", err);
+      }
+    }
+
     return NextResponse.json(
       {
         booking_ref: booking.booking_ref,
         agreement_pdf_url: agreementPdfUrl,
+        redirect_url: redirectUrl,
       },
       { status: 201 },
     );

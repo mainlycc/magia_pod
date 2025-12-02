@@ -1,6 +1,7 @@
 "use client"
 
-import { ChevronRight, type LucideIcon } from "lucide-react"
+import { ChevronRight } from "lucide-react"
+import { type Icon } from "@tabler/icons-react"
 
 import {
   Collapsible,
@@ -24,7 +25,7 @@ export function NavMain({
   items: {
     title: string
     url: string
-    icon?: LucideIcon
+    icon?: Icon
     isActive?: boolean
     items?: {
       title: string

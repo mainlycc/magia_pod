@@ -73,6 +73,18 @@ const CardFooter = React.forwardRef<
 ));
 CardFooter.displayName = "CardFooter";
 
+const CardAction = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("ml-auto flex items-center gap-2", className)}
+    {...props}
+  />
+));
+CardAction.displayName = "CardAction";
+
 export {
   Card,
   CardHeader,
@@ -80,4 +92,5 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
+  CardAction,
 };

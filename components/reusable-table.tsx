@@ -65,7 +65,10 @@ export interface ReusableTableProps<TData, TValue> {
   addDialogDescription?: string;
   deleteDialogTitle?: string;
   deleteDialogDescription?: string;
-  addFormFields?: React.ReactNode;
+  addFormFields?: (
+    formData: Record<string, string>,
+    setFormData: (formData: Record<string, string>) => void,
+  ) => React.ReactNode;
 }
 
 export function ReusableTable<TData, TValue>({
@@ -113,21 +116,33 @@ export function ReusableTable<TData, TValue>({
     const selectionColumn: ColumnDef<TData, TValue> = {
       id: "select",
       header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Wybierz wszystkie"
-        />
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="flex items-center justify-center"
+        >
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Wybierz wszystkie"
+          />
+        </div>
       ),
       cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Wybierz wiersz"
-        />
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="flex items-center justify-center"
+        >
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Wybierz wiersz"
+          />
+        </div>
       ),
       enableSorting: false,
       enableHiding: false,
@@ -213,40 +228,40 @@ export function ReusableTable<TData, TValue>({
   };
 
   // Domyślne pola formularza (jeśli nie podano addFormFields)
-  const defaultAddFormFields = !addFormFields ? (
-    <>
-      <div className="grid gap-2">
-        <Label htmlFor="name">Nazwa *</Label>
-        <Input
-          id="name"
-          value={formData.name || ""}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="Nazwa elementu"
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="email">Email *</Label>
-        <Input
-          id="email"
-          type="email"
-          value={formData.email || ""}
-          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-          placeholder="email@example.com"
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="status">Status</Label>
-        <Input
-          id="status"
-          value={formData.status || ""}
-          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-          placeholder="Status"
-        />
-      </div>
-    </>
-  ) : (
-    addFormFields
-  );
+  const defaultAddFormFields = !addFormFields
+    ? (
+      <>
+        <div className="grid gap-2">
+          <Label htmlFor="name">Nazwa *</Label>
+          <Input
+            id="name"
+            value={formData.name || ""}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="Nazwa elementu"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="email">Email *</Label>
+          <Input
+            id="email"
+            type="email"
+            value={formData.email || ""}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            placeholder="email@example.com"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="status">Status</Label>
+          <Input
+            id="status"
+            value={formData.status || ""}
+            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+            placeholder="Status"
+          />
+        </div>
+      </>
+    )
+    : addFormFields(formData, setFormData);
 
   const defaultDeleteDescription = deleteDialogDescription || 
     `Czy na pewno chcesz usunąć ${selectedRows.length} zaznaczonych${

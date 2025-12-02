@@ -26,6 +26,7 @@ type Booking = {
   address: any;
   status: "pending" | "confirmed" | "cancelled";
   payment_status: PaymentStatusValue;
+  source?: string | null;
   internal_notes: any[];
   created_at: string;
   trips: {
@@ -248,6 +249,16 @@ export default function BookingDetailsPage() {
           <div>
             <Label className="text-muted-foreground">Telefon</Label>
             <div>{booking.contact_phone || "-"}</div>
+          </div>
+          <div>
+            <Label className="text-muted-foreground">Źródło rezerwacji</Label>
+            <div className="text-sm text-muted-foreground">
+              {booking.source === "public_page"
+                ? "Publiczna strona wycieczki"
+                : booking.source === "admin_panel"
+                ? "Panel administratora"
+                : booking.source || "-"}
+            </div>
           </div>
           {booking.address && (
             <div className="col-span-2">

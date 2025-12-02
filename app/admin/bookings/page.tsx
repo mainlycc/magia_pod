@@ -22,6 +22,7 @@ type BookingWithTrip = {
   contact_phone: string | null;
   status: "pending" | "confirmed" | "cancelled";
   payment_status: PaymentStatusValue;
+  source?: string | null;
   created_at: string | null;
   trip_id: string;
   trips: {
@@ -84,6 +85,7 @@ export default function AdminBookingsPage() {
           contact_phone,
           status,
           payment_status,
+          source,
           created_at,
           trip_id,
           trips:trips!inner(id, title, slug, start_date, end_date),
@@ -156,6 +158,24 @@ export default function AdminBookingsPage() {
             ? new Date(trip.end_date).toLocaleDateString("pl-PL")
             : "";
           return <div>{start} {end && `— ${end}`}</div>;
+        },
+      },
+      {
+        accessorKey: "source",
+        header: "Źródło",
+        cell: ({ row }) => {
+          const source = row.original.source || "admin_panel";
+          const label =
+            source === "public_page"
+              ? "Strona publiczna"
+              : source === "admin_panel"
+              ? "Panel admina"
+              : source;
+          return (
+            <span className="text-xs text-muted-foreground">
+              {label}
+            </span>
+          );
         },
       },
       {

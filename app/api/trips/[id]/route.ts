@@ -6,7 +6,9 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("trips")
-    .select("id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location")
+    .select(
+      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug",
+    )
     .eq("id", id)
     .single();
   if (error || !data) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -26,6 +28,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       seats_total: number;
       category: string;
       location: string;
+      is_public: boolean;
+      public_slug: string | null;
     }> = {};
     if ("title" in body) payload.title = body.title;
     if ("description" in body) payload.description = body.description ?? null;
@@ -35,6 +39,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("seats_total" in body) payload.seats_total = body.seats_total;
     if ("category" in body) payload.category = body.category ?? null;
     if ("location" in body) payload.location = body.location ?? null;
+    if ("is_public" in body) payload.is_public = Boolean(body.is_public);
+    if ("public_slug" in body) payload.public_slug = body.public_slug ?? null;
 
     const supabase = await createClient();
     const { error } = await supabase.from("trips").update(payload).eq("id", id);

@@ -49,15 +49,24 @@ const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
 export default async function AdminTripBookingsPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }> | { id: string };
 }) {
+  const { id } = await (params instanceof Promise ? params : Promise.resolve(params));
   const supabase = await createClient();
+  
+  // Pobierz informacje o wycieczce
+  const { data: trip } = await supabase
+    .from("trips")
+    .select("id, title, start_date, end_date, slug")
+    .eq("id", id)
+    .single();
+
   const { data: bookingsData } = await supabase
     .from("bookings")
     .select(
       "id, booking_ref, contact_email, contact_phone, payment_status, created_at",
     )
-    .eq("trip_id", params.id)
+    .eq("trip_id", id)
     .order("created_at", { ascending: false });
 
   const bookings: BookingRow[] = (bookingsData ?? []).map((booking) => ({
@@ -97,15 +106,30 @@ export default async function AdminTripBookingsPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">Rezerwacje</h1>
+          {trip && (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{trip.title}</p>
+              {trip.start_date && trip.end_date && (
+                <p className="text-xs text-muted-foreground">
+                  {new Date(trip.start_date).toLocaleDateString("pl-PL")} — {new Date(trip.end_date).toLocaleDateString("pl-PL")}
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">
             Przegląd i zarządzanie rezerwacjami oraz uczestnikami wycieczki.
           </p>
         </div>
-        <Button asChild variant="secondary">
-          <Link href={`/api/trips/${params.id}/bookings?format=csv`}>
-            Eksport CSV
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/trips">← Powrót do listy</Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <Link href={`/api/trips/${id}/bookings?format=csv`}>
+              Eksport CSV
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {bookings.length === 0 ? (

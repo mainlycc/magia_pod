@@ -19,6 +19,7 @@ type Trip = {
   id: string;
   title: string;
   slug: string;
+  public_slug?: string | null;
   description: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -32,19 +33,21 @@ type Trip = {
 export default async function TripPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }> | { slug: string };
 }) {
-  const { slug } = params;
+  const { slug } = await (params instanceof Promise ? params : Promise.resolve(params));
   const supabase = await createClient();
 
+  // RLS automatycznie filtruje tylko aktywne i publiczne wycieczki (is_active = true AND is_public = true)
+  // Więc nie musimy jawnie sprawdzać tych pól w zapytaniu
+  // Szukamy po public_slug lub slug używając .or()
   const { data: trip, error } = await supabase
     .from("trips")
     .select(
-      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,gallery_urls",
+      "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,gallery_urls",
     )
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .single<Trip>();
+    .or(`public_slug.eq.${slug},slug.eq.${slug}`)
+    .maybeSingle<Trip>();
 
   if (error || !trip) {
     return (

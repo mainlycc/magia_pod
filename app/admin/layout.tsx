@@ -1,46 +1,44 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Toaster } from "@/components/ui/sonner";
+import { AdminSidebar } from "@/components/admin-sidebar"
+import { PageTitle } from "@/components/page-title"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import { Toaster } from "@/components/ui/sonner"
+import { cn } from "@/lib/utils"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh grid md:grid-cols-[240px_1fr]">
-      <aside className="border-r p-4 space-y-4">
-        <div className="text-lg font-semibold">CRM Admin</div>
-        <nav className="grid gap-2">
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin">Dashboard</Link>
-          </Button>
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin/trips">Wycieczki</Link>
-          </Button>
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin/bookings">Rezerwacje i Umowy</Link>
-          </Button>
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin/payments">Płatności</Link>
-          </Button>
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin/uczestnicy">Uczestnicy</Link>
-          </Button>
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin/coordinators/invite">Zaproszenia koordynatorów</Link>
-          </Button>
-          <Button asChild variant="ghost" className="justify-start">
-            <Link href="/admin/przyklad">Przykład</Link>
-          </Button>
-        </nav>
-      </aside>
-      <main className="p-6 space-y-6">
-        <Card className="p-4">
-          <div className="text-sm text-muted-foreground">Panel administracyjny</div>
-        </Card>
-        {children}
+    <SidebarProvider>
+      <AdminSidebar />
+      <SidebarInset className={cn(
+        "transition-[margin] duration-200 ease-linear",
+        "md:ml-[var(--sidebar-width)]",
+        "md:group-data-[collapsible=icon]/sidebar-wrapper:ml-[var(--sidebar-width-icon)]",
+        "md:group-data-[collapsible=offcanvas]/sidebar-wrapper:ml-0"
+      )}>
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          <Card className="flex-1 flex flex-col">
+            <CardHeader className="flex flex-row items-center gap-2 pb-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator
+                orientation="vertical"
+                className="mr-2 data-[orientation=vertical]:h-4"
+              />
+              <PageTitle />
+            </CardHeader>
+            <CardContent className="flex-1">
+              {children}
+            </CardContent>
+          </Card>
+        </div>
         <Toaster position="top-right" richColors />
-      </main>
-    </div>
-  );
+      </SidebarInset>
+    </SidebarProvider>
+  )
 }
 
 

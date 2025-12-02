@@ -6,6 +6,9 @@ import { ColumnDef } from "@tanstack/react-table";
 import { createClient } from "@/lib/supabase/client";
 import { ReusableTable } from "@/components/reusable-table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 type ParticipantListRow = {
   id: string;
@@ -20,6 +23,9 @@ type ParticipantListRow = {
   last_trip_start: string | null;
   last_trip_end: string | null;
   last_trip_year: number | null;
+  upcoming_trip_title: string | null;
+  upcoming_trip_start: string | null;
+  upcoming_trip_end: string | null;
   group_name: string | null;
 };
 
@@ -81,6 +87,7 @@ export default function AdminParticipantsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<ParticipantListRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -89,6 +96,7 @@ export default function AdminParticipantsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setAddError(null);
       const supabase = createClient();
 
       const { data, error } = await supabase.rpc("get_participants_overview");
@@ -120,6 +128,9 @@ export default function AdminParticipantsPage() {
           last_trip_start: lastTripStart,
           last_trip_end: row.last_trip_end ?? null,
           last_trip_year: year,
+          upcoming_trip_title: row.upcoming_trip_title ?? null,
+          upcoming_trip_start: row.upcoming_trip_start ?? null,
+          upcoming_trip_end: row.upcoming_trip_end ?? null,
           group_name: row.group_name ?? null,
         };
       });
@@ -142,22 +153,21 @@ export default function AdminParticipantsPage() {
         ),
       },
       {
-        id: "id_data",
-        header: "PESEL / data urodzenia",
+        id: "birth_date",
+        header: "Data urodzenia",
         cell: ({ row }) => {
-          const pesel = row.original.pesel;
           const birthDate = row.original.birth_date
             ? new Date(row.original.birth_date).toLocaleDateString("pl-PL")
             : null;
           return (
             <div className="text-sm">
-              {pesel && <div>{pesel}</div>}
-              {birthDate && (
-                <div className="text-muted-foreground">
+              {birthDate ? (
+                <div>
                   {birthDate} {row.original.age != null && `(${row.original.age} lat)`}
                 </div>
+              ) : (
+                <span className="text-muted-foreground">brak danych</span>
               )}
-              {!pesel && !birthDate && <span className="text-muted-foreground">brak danych</span>}
             </div>
           );
         },
@@ -197,6 +207,35 @@ export default function AdminParticipantsPage() {
         },
       },
       {
+        id: "upcoming_trip",
+        header: "Zaplanowany wyjazd",
+        cell: ({ row }) => {
+          const title = row.original.upcoming_trip_title;
+          const start = row.original.upcoming_trip_start
+            ? new Date(row.original.upcoming_trip_start).toLocaleDateString("pl-PL")
+            : null;
+          const end = row.original.upcoming_trip_end
+            ? new Date(row.original.upcoming_trip_end).toLocaleDateString("pl-PL")
+            : null;
+
+          if (!title && !start) {
+            return <span className="text-sm text-muted-foreground">brak</span>;
+          }
+
+          return (
+            <div className="text-sm">
+              {title && <div className="font-medium">{title}</div>}
+              {start && (
+                <div className="text-muted-foreground">
+                  {start}
+                  {end && ` — ${end}`}
+                </div>
+              )}
+            </div>
+          );
+        },
+      },
+      {
         accessorKey: "notes",
         header: "Uwagi",
         cell: ({ row }) => (
@@ -216,19 +255,157 @@ export default function AdminParticipantsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Uczestnicy</h1>
+      {addError && (
+        <p className="text-sm text-red-500">
+          {addError}
+        </p>
+      )}
 
       <ReusableTable
         columns={columns}
         data={rows}
         searchable
-        searchPlaceholder="Szukaj po imieniu, nazwisku, PESEL..."
+        searchPlaceholder="Szukaj po imieniu, nazwisku..."
         searchColumn="last_name"
         enableRowSelection={true}
         enablePagination
         pageSize={20}
         emptyMessage="Brak uczestników"
         addButtonLabel="Dodaj uczestnika"
-        onAdd={() => router.push("/admin/bookings")}
+        enableAddDialog={true}
+        addDialogTitle="Dodaj uczestnika"
+        addDialogDescription="Wprowadź podstawowe dane uczestnika. Pozostałe informacje możesz uzupełnić później."
+        addFormFields={(formData, setFormData) => (
+          <>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="first_name">Imię *</Label>
+                <Input
+                  id="first_name"
+                  value={formData.first_name || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, first_name: e.target.value })
+                  }
+                  placeholder="Imię"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="last_name">Nazwisko *</Label>
+                <Input
+                  id="last_name"
+                  value={formData.last_name || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, last_name: e.target.value })
+                  }
+                  placeholder="Nazwisko"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="pesel">PESEL</Label>
+                <Input
+                  id="pesel"
+                  value={formData.pesel || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, pesel: e.target.value })
+                  }
+                  placeholder="PESEL (opcjonalnie)"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="birth_date">Data urodzenia</Label>
+                <Input
+                  id="birth_date"
+                  type="date"
+                  value={formData.birth_date || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, birth_date: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Telefon</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
+                  placeholder="Telefon kontaktowy"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="group_name">Grupa</Label>
+                <Input
+                  id="group_name"
+                  value={formData.group_name || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, group_name: e.target.value })
+                  }
+                  placeholder="Nazwa grupy (opcjonalnie)"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="notes">Uwagi</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, notes: e.target.value })
+                  }
+                  placeholder="Dodatkowe informacje (opcjonalnie)"
+                />
+              </div>
+            </div>
+          </>
+        )}
+        onConfirmAdd={async (formData) => {
+          if (!formData.first_name || !formData.last_name) {
+            setAddError("Imię i nazwisko są wymagane.");
+            return;
+          }
+
+          const supabase = createClient();
+
+          const { error } = await supabase.from("participants").insert({
+            first_name: formData.first_name.trim(),
+            last_name: formData.last_name.trim(),
+            pesel: formData.pesel?.trim() || null,
+            birth_date: formData.birth_date || null,
+            email: formData.email?.trim() || null,
+            phone: formData.phone?.trim() || null,
+            group_name: formData.group_name?.trim() || null,
+            notes: formData.notes?.trim() || null,
+          });
+
+          if (error) {
+            console.error("Failed to insert participant", JSON.stringify(error, null, 2));
+            setAddError(
+              "Nie udało się dodać uczestnika. Sprawdź konfigurację tabeli participants w Supabase."
+            );
+            return;
+          }
+
+          setAddError(null);
+          await loadData();
+        }}
         onRowClick={(row) => {
           const r = row as ParticipantListRow;
           router.push(`/admin/uczestnicy/${r.id}`);
