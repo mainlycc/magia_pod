@@ -1,7 +1,18 @@
 import { Resend } from "resend";
 import { generateInvitationEmail } from "./templates/invitation-email";
 
-const FROM_EMAIL = process.env.RESEND_FROM || "noreply@mail.mainly.pl";
+// Zawsze używamy domeny mail.mainly.pl (zweryfikowanej w Resend)
+// Jeśli RESEND_FROM jest ustawione, używamy lokalnej części (przed @), w przeciwnym razie "noreply"
+function getFromEmail(): string {
+  const envFrom = process.env.RESEND_FROM;
+  if (envFrom && envFrom.includes("@")) {
+    const localPart = envFrom.split("@")[0];
+    return `${localPart}@mail.mainly.pl`;
+  }
+  return "noreply@mail.mainly.pl";
+}
+
+const FROM_EMAIL = getFromEmail();
 
 type SendInvitationEmailParams = {
   to: string;

@@ -17,7 +17,12 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.RESEND_FROM || "noreply@mail.mainly.pl";
+    // Zawsze używamy domeny mail.mainly.pl (zweryfikowanej w Resend)
+    // Jeśli RESEND_FROM jest ustawione, używamy lokalnej części (przed @), w przeciwnym razie "noreply"
+    const envFrom = process.env.RESEND_FROM;
+    const from = envFrom && envFrom.includes("@") 
+      ? `${envFrom.split("@")[0]}@mail.mainly.pl`
+      : "noreply@mail.mainly.pl";
     if (!apiKey || !from) {
       return NextResponse.json({ error: "Email provider not configured" }, { status: 500 });
     }
