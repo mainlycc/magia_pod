@@ -168,21 +168,23 @@ export async function validateInvitationToken(token: string): Promise<ValidateTo
 
   console.log("Validating invitation token:", token);
 
-  const { data: invitation, error } = await supabase
-    .from("coordinator_invitations")
-    .select("*")
-    .eq("token", token)
-    .single();
+  // Użyj funkcji bazy danych, która omija RLS i pozwala na dostęp dla niezalogowanych użytkowników
+  const { data: invitations, error } = await supabase.rpc("get_invitation_by_token", {
+    invitation_token: token,
+  });
 
   if (error) {
     console.error("Error fetching invitation:", error);
     return { valid: false, error: "Nieprawidłowy token zaproszenia" };
   }
 
-  if (!invitation) {
+  if (!invitations || invitations.length === 0) {
     console.error("Invitation not found for token:", token);
     return { valid: false, error: "Nieprawidłowy token zaproszenia" };
   }
+
+  // Funkcja zwraca tablicę, więc bierzemy pierwszy element
+  const invitation = invitations[0];
 
   console.log("Found invitation:", invitation);
 
@@ -194,8 +196,10 @@ export async function validateInvitationToken(token: string): Promise<ValidateTo
   const expiresAt = new Date(invitation.expires_at);
 
   if (now > expiresAt) {
-    // Aktualizuj status na expired
-    await supabase
+    // Aktualizuj status na expired używając admin clienta (omija RLS)
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const adminClient = createAdminClient();
+    await adminClient
       .from("coordinator_invitations")
       .update({ status: "expired" })
       .eq("id", invitation.id);
@@ -222,16 +226,19 @@ export async function registerWithInvitation(
     return { success: false, error: "Brak adresu email w zaproszeniu" };
   }
 
-  // Pobierz zaproszenie
-  const { data: invitation } = await supabase
-    .from("coordinator_invitations")
-    .select("*")
-    .eq("token", token)
-    .single();
+  // Pobierz zaproszenie używając funkcji RPC (omija RLS)
+  const { data: invitations, error: invitationError } = await supabase.rpc(
+    "get_invitation_by_token",
+    {
+      invitation_token: token,
+    }
+  );
 
-  if (!invitation) {
+  if (invitationError || !invitations || invitations.length === 0) {
     return { success: false, error: "Nie znaleziono zaproszenia" };
   }
+
+  const invitation = invitations[0];
 
   // Utwórz użytkownika w Supabase Auth bez wysyłania maila potwierdzającego
   // Używamy admin clienta i ustawiamy email_confirm=true

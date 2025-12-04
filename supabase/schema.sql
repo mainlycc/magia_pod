@@ -323,7 +323,34 @@ begin
 end;
 $$;
 
+-- Funkcja do pobierania zaproszenia przez token (omija RLS)
+create or replace function public.get_invitation_by_token(invitation_token uuid)
+returns table (
+  id uuid,
+  email text,
+  status text,
+  expires_at timestamptz,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  return query
+  select 
+    ci.id,
+    ci.email,
+    ci.status,
+    ci.expires_at,
+    ci.created_at
+  from public.coordinator_invitations ci
+  where ci.token = invitation_token;
+end;
+$$;
+
 grant execute on function public.expire_old_invitations() to authenticated;
 grant execute on function public.accept_invitation_by_token(uuid) to anon, authenticated;
+grant execute on function public.get_invitation_by_token(uuid) to anon, authenticated;
 
 
