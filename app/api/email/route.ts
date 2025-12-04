@@ -19,10 +19,27 @@ export async function POST(req: Request) {
     const apiKey = process.env.RESEND_API_KEY;
     // Zawsze używamy domeny mail.mainly.pl (zweryfikowanej w Resend)
     // Jeśli RESEND_FROM jest ustawione, używamy lokalnej części (przed @), w przeciwnym razie "noreply"
+    // Format wymagany przez Resend: "Name <email@mail.mainly.pl>"
     const envFrom = process.env.RESEND_FROM;
-    const from = envFrom && envFrom.includes("@") 
-      ? `${envFrom.split("@")[0]}@mail.mainly.pl`
-      : "noreply@mail.mainly.pl";
+    const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży";
+    
+    let emailAddress: string;
+    if (envFrom && envFrom.includes("@")) {
+      // Jeśli RESEND_FROM jest już w formacie "Name <email@domain.com>", wyciągnij tylko email
+      const emailMatch = envFrom.match(/<([^>]+)>/) || envFrom.match(/([^\s<]+@[^\s>]+)/);
+      if (emailMatch) {
+        const existingEmail = emailMatch[1] || emailMatch[0];
+        const localPart = existingEmail.split("@")[0];
+        emailAddress = `${localPart}@mail.mainly.pl`;
+      } else {
+        const localPart = envFrom.split("@")[0];
+        emailAddress = `${localPart}@mail.mainly.pl`;
+      }
+    } else {
+      emailAddress = "noreply@mail.mainly.pl";
+    }
+    
+    const from = `${senderName} <${emailAddress}>`;
     if (!apiKey || !from) {
       return NextResponse.json({ error: "Email provider not configured" }, { status: 500 });
     }

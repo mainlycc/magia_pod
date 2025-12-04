@@ -3,16 +3,33 @@ import { generateInvitationEmail } from "./templates/invitation-email";
 
 // Zawsze używamy domeny mail.mainly.pl (zweryfikowanej w Resend)
 // Jeśli RESEND_FROM jest ustawione, używamy lokalnej części (przed @), w przeciwnym razie "noreply"
+// Format zwracany: "Name <email@mail.mainly.pl>" zgodnie z wymaganiami Resend
 function getFromEmail(): string {
   const envFrom = process.env.RESEND_FROM;
+  const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży";
+  
+  let emailAddress: string;
+  
   if (envFrom && envFrom.includes("@")) {
-    const localPart = envFrom.split("@")[0];
-    return `${localPart}@mail.mainly.pl`;
+    // Jeśli RESEND_FROM jest już w formacie "Name <email@domain.com>", wyciągnij tylko email
+    const emailMatch = envFrom.match(/<([^>]+)>/) || envFrom.match(/([^\s<]+@[^\s>]+)/);
+    if (emailMatch) {
+      // Wyciągnij lokalną część (przed @) z istniejącego emaila
+      const existingEmail = emailMatch[1] || emailMatch[0];
+      const localPart = existingEmail.split("@")[0];
+      emailAddress = `${localPart}@mail.mainly.pl`;
+    } else {
+      // Jeśli to zwykły email, wyciągnij lokalną część
+      const localPart = envFrom.split("@")[0];
+      emailAddress = `${localPart}@mail.mainly.pl`;
+    }
+  } else {
+    emailAddress = "noreply@mail.mainly.pl";
   }
-  return "noreply@mail.mainly.pl";
+  
+  // Zwróć w formacie wymaganym przez Resend: "Name <email@example.com>"
+  return `${senderName} <${emailAddress}>`;
 }
-
-const FROM_EMAIL = getFromEmail();
 
 type SendInvitationEmailParams = {
   to: string;
@@ -42,7 +59,7 @@ export async function sendInvitationEmail({
     const html = generateInvitationEmail("Koordynatorze", invitationLink, expiryDays);
 
     const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: getFromEmail(),
       to: [to],
       subject: "Zaproszenie do systemu zarządzania wycieczkami - Aktywuj swoje konto",
       html,
