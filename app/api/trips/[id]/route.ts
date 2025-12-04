@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// Helper do sprawdzenia czy użytkownik to admin
+async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
+  const { data: claims } = await supabase.auth.getClaims();
+  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
+  if (!userId) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  return profile?.role === "admin";
+}
+
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const supabase = await createClient();
@@ -43,10 +58,21 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("public_slug" in body) payload.public_slug = body.public_slug ?? null;
 
     const supabase = await createClient();
+    
+    // Sprawdź czy użytkownik jest adminem
+    const isAdmin = await checkAdmin(supabase);
+    if (!isAdmin) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+    }
+
     const { error } = await supabase.from("trips").update(payload).eq("id", id);
-    if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    if (error) {
+      console.error("Error updating trip:", error);
+      return NextResponse.json({ error: "update_failed", details: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error("Error in PATCH /api/trips/[id]:", err);
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 }

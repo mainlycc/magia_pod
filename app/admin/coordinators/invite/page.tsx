@@ -169,24 +169,27 @@ export default function CoordinatorsInvitePage() {
 
   const handleBulkDelete = async (selectedRows: Invitation[]) => {
     try {
-      const promises = selectedRows.map((inv) =>
-        fetch(`/api/coordinators/invitations/${inv.id}`, { method: "DELETE" })
-      );
+      const ids = selectedRows.map((inv) => inv.id);
+      const res = await fetch("/api/coordinators/invitations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
 
-      const results = await Promise.allSettled(promises);
-      const successful = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
-      const failed = results.length - successful;
-
-      if (successful > 0) {
-        toast.success(`Anulowano ${successful} zaproszeń`);
+      if (res.ok) {
+        toast.success(`Usunięto ${selectedRows.length} ${selectedRows.length === 1 ? "zaproszenie" : "zaproszeń"}`);
+        setSelectedRows([]);
+        await loadInvitations();
+      } else {
+        const error = await res.json();
+        if (error.error === "unauthorized") {
+          toast.error("Brak uprawnień do usuwania zaproszeń");
+        } else {
+          toast.error("Nie udało się usunąć zaproszeń");
+        }
       }
-      if (failed > 0) {
-        toast.error(`Nie udało się anulować ${failed} zaproszeń`);
-      }
-
-      await loadInvitations();
     } catch (err) {
-      toast.error("Błąd podczas anulowania zaproszeń");
+      toast.error("Błąd podczas usuwania zaproszeń");
     }
   };
 
@@ -258,7 +261,6 @@ export default function CoordinatorsInvitePage() {
         cell: ({ row }) => {
           const invitation = row.original;
           const canResend = invitation.status === "pending" || invitation.status === "expired";
-          const canCancel = invitation.status === "pending";
 
           return (
             <div className="flex gap-2 justify-end">
@@ -286,19 +288,18 @@ export default function CoordinatorsInvitePage() {
                   Wyślij ponownie
                 </Button>
               )}
-              {canCancel && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedRows([invitation]);
-                    setDeleteDialogOpen(true);
-                  }}
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Anuluj
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedRows([invitation]);
+                  setDeleteDialogOpen(true);
+                }}
+                className="text-destructive hover:text-destructive"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Usuń
+              </Button>
             </div>
           );
         },
@@ -344,7 +345,7 @@ export default function CoordinatorsInvitePage() {
             setDeleteDialogOpen(true);
           }
         }}
-        deleteButtonLabel="Anuluj wybrane"
+        deleteButtonLabel="Usuń wybrane"
         filters={
           selectedRows.length > 0 ? (
             <Button variant="outline" size="sm" onClick={handleBulkResend}>
@@ -402,11 +403,11 @@ export default function CoordinatorsInvitePage() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Anuluj zaproszenia?</DialogTitle>
+            <DialogTitle>Usuń zaproszenia?</DialogTitle>
             <DialogDescription>
-              Czy na pewno chcesz anulować {selectedRows.length}{" "}
+              Czy na pewno chcesz usunąć {selectedRows.length}{" "}
               {selectedRows.length === 1 ? "zaproszenie" : "zaproszeń"}? Ta operacja nie może być
-              cofnięta.
+              cofnięta - rekordy zostaną trwale usunięte z bazy danych.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -420,7 +421,7 @@ export default function CoordinatorsInvitePage() {
                 setDeleteDialogOpen(false);
               }}
             >
-              Tak, anuluj
+              Tak, usuń
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -63,7 +63,12 @@ export async function updateSession(request: NextRequest) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    // Copy cookies from supabaseResponse to maintain session
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    return redirectResponse;
   }
 
   // RBAC: admin and coordinator areas
@@ -82,12 +87,22 @@ export async function updateSession(request: NextRequest) {
     if (requiresAdmin && role !== "admin") {
       const url = request.nextUrl.clone();
       url.pathname = "/auth/login";
-      return NextResponse.redirect(url);
+      const redirectResponse = NextResponse.redirect(url);
+      // Copy cookies from supabaseResponse to maintain session
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
     }
     if (requiresCoordinator && !(role === "coordinator" || role === "admin")) {
       const url = request.nextUrl.clone();
       url.pathname = "/auth/login";
-      return NextResponse.redirect(url);
+      const redirectResponse = NextResponse.redirect(url);
+      // Copy cookies from supabaseResponse to maintain session
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
     }
   }
 

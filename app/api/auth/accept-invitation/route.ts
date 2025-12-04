@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,14 +63,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "profile_exists_with_different_role" }, { status: 400 });
     }
 
-    // Utwórz profil z role='coordinator'
-    const { error: profileError } = await supabase.from("profiles").insert({
+    // Utwórz profil z role='coordinator' używając admin clienta (omija RLS)
+    const adminClient = createAdminClient();
+    const { error: profileError } = await adminClient.from("profiles").insert({
       id: userId,
       role: "coordinator",
       allowed_trip_ids: null,
     });
 
     if (profileError) {
+      console.error("Error creating profile:", profileError);
       return NextResponse.json({ error: "profile_creation_failed" }, { status: 500 });
     }
 

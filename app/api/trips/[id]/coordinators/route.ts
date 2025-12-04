@@ -66,12 +66,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const { coordinator_id, action } = body as { coordinator_id: string; action: "assign" | "unassign" };
 
     if (!coordinator_id || !action || !["assign", "unassign"].includes(action)) {
+      console.error("Bad request:", { coordinator_id, action });
       return NextResponse.json({ error: "bad_request" }, { status: 400 });
     }
 
     const supabase = await createClient();
     const isAdmin = await checkAdmin(supabase);
     if (!isAdmin) {
+      console.error("Unauthorized: user is not admin");
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
@@ -84,7 +86,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       .single();
 
     if (coordinatorError || !coordinator) {
-      return NextResponse.json({ error: "coordinator_not_found" }, { status: 404 });
+      console.error("Coordinator not found:", coordinatorError);
+      return NextResponse.json({ error: "coordinator_not_found", details: coordinatorError?.message }, { status: 404 });
     }
 
     let updatedTripIds: string[] = Array.isArray(coordinator.allowed_trip_ids) 
@@ -101,18 +104,23 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       updatedTripIds = updatedTripIds.filter((id) => id !== tripId);
     }
 
-    // Aktualizuj profil koordynatora
-    const { error: updateError } = await supabase
+    console.log("Updating coordinator:", { coordinator_id, tripId, action, updatedTripIds });
+
+    // Aktualizuj profil koordynatora używając admin clienta (omija RLS)
+    const adminClient = createAdminClient();
+    const { error: updateError } = await adminClient
       .from("profiles")
       .update({ allowed_trip_ids: updatedTripIds.length > 0 ? updatedTripIds : null })
       .eq("id", coordinator_id);
 
     if (updateError) {
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      console.error("Error updating coordinator:", updateError);
+      return NextResponse.json({ error: "update_failed", details: updateError.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error("Unexpected error in PATCH /api/trips/[id]/coordinators:", err);
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
   }
 }

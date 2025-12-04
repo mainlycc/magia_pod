@@ -1,6 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// Helper do sprawdzenia czy użytkownik to admin
+async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
+  const { data: claims } = await supabase.auth.getClaims();
+  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
+  if (!userId) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  return profile?.role === "admin";
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -21,6 +36,13 @@ export async function POST(req: Request) {
     if (!title || !slug) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
     const supabase = await createClient();
+    
+    // Sprawdź czy użytkownik jest adminem
+    const isAdmin = await checkAdmin(supabase);
+    if (!isAdmin) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+    }
+
     const { data, error } = await supabase
       .from("trips")
       .insert({
@@ -39,9 +61,15 @@ export async function POST(req: Request) {
       })
       .select("id")
       .single();
-    if (error) return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+    
+    if (error) {
+      console.error("Error inserting trip:", error);
+      return NextResponse.json({ error: "insert_failed", details: error.message }, { status: 500 });
+    }
+    
     return NextResponse.json({ ok: true, id: data?.id });
-  } catch {
+  } catch (err) {
+    console.error("Error in POST /api/trips:", err);
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 }

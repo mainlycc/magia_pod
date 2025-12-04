@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getInvitations } from "@/lib/actions/invitations";
+import { getInvitations, deleteInvitations } from "@/lib/actions/invitations";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
@@ -40,6 +40,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(invitationsWithAdminEmail);
   } catch (error) {
     console.error("Unexpected error in GET /api/coordinators/invitations:", error);
+    return NextResponse.json({ error: "unexpected" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { ids } = body as { ids: string[] };
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: "invalid_ids" }, { status: 400 });
+    }
+
+    const result = await deleteInvitations(ids);
+
+    if (!result.success) {
+      if (result.error === "Nie jesteś zalogowany" || result.error === "Brak uprawnień") {
+        return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+      }
+      return NextResponse.json({ error: "delete_failed", details: result.error }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Unexpected error in DELETE /api/coordinators/invitations:", error);
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
   }
 }

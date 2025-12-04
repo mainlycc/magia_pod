@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,10 @@ type Coordinator = {
   email: string | null;
 };
 
-export default function EditTripPage({ params }: { params: { id: string } }) {
+export default function EditTripPage() {
   const router = useRouter();
+  const params = useParams();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
@@ -38,10 +40,11 @@ export default function EditTripPage({ params }: { params: { id: string } }) {
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState<string>("");
   const [loadingCoordinators, setLoadingCoordinators] = useState(true);
 
-  const loadCoordinators = async () => {
+  const loadCoordinators = async (tripId: string) => {
+    if (!tripId) return;
     try {
       const [assignedRes, allRes] = await Promise.all([
-        fetch(`/api/trips/${params.id}/coordinators`),
+        fetch(`/api/trips/${tripId}/coordinators`),
         fetch(`/api/coordinators`),
       ]);
 
@@ -62,29 +65,47 @@ export default function EditTripPage({ params }: { params: { id: string } }) {
   };
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const res = await fetch(`/api/trips/${params.id}`);
-      if (res.ok) {
-        const t = await res.json();
-        setTitle(t.title ?? "");
-        setPrice(t.price_cents ? String(t.price_cents / 100) : "");
-        setSeats(String(t.seats_total ?? ""));
-        setIsPublic(Boolean(t.is_public));
-        setPublicSlug(t.public_slug ?? "");
-      } else {
-        setError("Nie udało się wczytać wycieczki");
-      }
+    if (!id) {
       setLoading(false);
-    })();
+      setError("Brak ID wycieczki");
+      return;
+    }
+    
+    const loadTrip = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/trips/${id}`);
+        if (res.ok) {
+          const t = await res.json();
+          console.log("Trip data loaded:", t);
+          // Ustaw wszystkie pola, nawet jeśli są null/undefined
+          setTitle(t.title || "");
+          setPrice(t.price_cents != null ? String(t.price_cents / 100) : "");
+          setSeats(t.seats_total != null ? String(t.seats_total) : "");
+          setIsPublic(Boolean(t.is_public));
+          setPublicSlug(t.public_slug || "");
+        } else {
+          const errorText = await res.text();
+          console.error("Failed to load trip:", res.status, errorText);
+          setError("Nie udało się wczytać wycieczki");
+        }
+      } catch (err) {
+        console.error("Error loading trip:", err);
+        setError("Nie udało się wczytać wycieczki");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    loadCoordinators();
-  }, [params.id]);
+    loadTrip();
+    loadCoordinators(id);
+  }, [id]);
 
   const save = async () => {
     setSaving(true);
     setError(null);
-    const res = await fetch(`/api/trips/${params.id}`, {
+    const res = await fetch(`/api/trips/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -104,7 +125,7 @@ export default function EditTripPage({ params }: { params: { id: string } }) {
     if (!selectedCoordinatorId) return;
 
     try {
-      const res = await fetch(`/api/trips/${params.id}/coordinators`, {
+      const res = await fetch(`/api/trips/${id}/coordinators`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -116,7 +137,9 @@ export default function EditTripPage({ params }: { params: { id: string } }) {
       if (res.ok) {
         toast.success("Koordynator został przypisany");
         setSelectedCoordinatorId("");
-        await loadCoordinators();
+        if (id) {
+          await loadCoordinators(id);
+        }
       } else {
         toast.error("Nie udało się przypisać koordynatora");
       }
@@ -127,7 +150,7 @@ export default function EditTripPage({ params }: { params: { id: string } }) {
 
   const unassignCoordinator = async (coordinatorId: string) => {
     try {
-      const res = await fetch(`/api/trips/${params.id}/coordinators`, {
+      const res = await fetch(`/api/trips/${id}/coordinators`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,7 +161,9 @@ export default function EditTripPage({ params }: { params: { id: string } }) {
 
       if (res.ok) {
         toast.success("Koordynator został odpięty");
-        await loadCoordinators();
+        if (id) {
+          await loadCoordinators(id);
+        }
       } else {
         toast.error("Nie udało się odpiąć koordynatora");
       }

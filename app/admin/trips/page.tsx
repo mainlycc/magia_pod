@@ -29,6 +29,9 @@ type Trip = {
   seats_total: number | null;
   seats_reserved: number | null;
   is_active: boolean | null;
+  slug: string;
+  public_slug: string | null;
+  is_public: boolean | null;
 };
 
 type Coordinator = {
@@ -67,10 +70,33 @@ export default function AdminTripsPage() {
       setLoading(true);
       const supabase = createClient();
       
+      // Najpierw sprawdź, czy użytkownik jest zalogowany i jest adminem
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.error("User not authenticated:", userError);
+        toast.error("Musisz być zalogowany jako administrator");
+        setTrips([]);
+        return;
+      }
+
+      // Sprawdź, czy użytkownik jest adminem
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      
+      if (!profile || profile.role !== "admin") {
+        console.error("User is not admin:", profile);
+        toast.error("Brak uprawnień administratora");
+        setTrips([]);
+        return;
+      }
+
       const [tripsRes, profilesRes] = await Promise.all([
         supabase
           .from("trips")
-          .select("id,title,start_date,end_date,price_cents,seats_total,seats_reserved,is_active")
+          .select("id,title,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,slug,public_slug,is_public")
           .order("created_at", { ascending: false }),
         supabase
           .from("profiles")
@@ -78,8 +104,30 @@ export default function AdminTripsPage() {
           .eq("role", "coordinator"),
       ]);
 
+      if (tripsRes.error) {
+        console.error("Error loading trips:", tripsRes.error);
+        console.error("Error details:", JSON.stringify(tripsRes.error, null, 2));
+        const error = tripsRes.error as any;
+        console.error("Error code:", error.code);
+        console.error("Error message:", error.message);
+        console.error("Error hint:", error.hint);
+        const errorMessage = error.message || error.code || error.hint || "Nieznany błąd";
+        toast.error(`Błąd wczytywania wycieczek: ${errorMessage}`);
+        setTrips([]);
+        return;
+      }
+
       if (tripsRes.data) {
-        setTrips(tripsRes.data);
+        // Mapuj dane, aby upewnić się, że wszystkie pola są poprawnie ustawione
+        const mappedTrips = tripsRes.data.map(trip => ({
+          ...trip,
+          public_slug: trip.public_slug ?? null,
+          is_public: trip.is_public ?? false,
+        }));
+        setTrips(mappedTrips);
+      } else {
+        console.warn("No trips data returned");
+        setTrips([]);
       }
 
       if (profilesRes.data) {
@@ -164,6 +212,26 @@ export default function AdminTripsPage() {
             </div>
           ) : (
             <span className="text-sm text-muted-foreground">-</span>
+          );
+        },
+      },
+      {
+        id: "link",
+        header: "Link",
+        cell: ({ row }) => {
+          if (!row.original.is_public) {
+            return <span className="text-sm text-muted-foreground">-</span>;
+          }
+          const slug = row.original.public_slug || row.original.slug;
+          if (!slug) {
+            return <span className="text-sm text-muted-foreground">-</span>;
+          }
+          return (
+            <Button asChild variant="link" size="sm" className="h-auto p-0">
+              <Link href={`/trip/${slug}`} target="_blank" rel="noopener noreferrer">
+                Otwórz
+              </Link>
+            </Button>
           );
         },
       },

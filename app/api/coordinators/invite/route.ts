@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
       if (result.error === "Aktywne zaproszenie dla tego emaila już istnieje") {
         return NextResponse.json({ error: "invitation_already_exists" }, { status: 400 });
       }
+      if (result.error === "Zaproszenie dla tego emaila już istnieje") {
+        return NextResponse.json({ error: "invitation_already_exists" }, { status: 400 });
+      }
       return NextResponse.json({ error: "create_failed", details: result.error }, { status: 500 });
     }
 
