@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.RESEND_FROM;
+    const from = process.env.RESEND_FROM || "noreply@mail.mainly.pl";
     if (!apiKey || !from) {
       return NextResponse.json({ error: "Email provider not configured" }, { status: 500 });
     }
