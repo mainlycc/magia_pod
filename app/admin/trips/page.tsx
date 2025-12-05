@@ -19,6 +19,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReusableTable } from "@/components/reusable-table";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
 
 type Trip = {
   id: string;
@@ -36,7 +43,7 @@ type Trip = {
 
 type Coordinator = {
   id: string;
-  email: string | null;
+  full_name: string | null;
   allowed_trip_ids: string[] | null;
 };
 
@@ -206,7 +213,7 @@ export default function AdminTripsPage() {
             <div className="flex flex-wrap gap-1 max-w-xs">
               {tripCoordinators.map((coord) => (
                 <Badge key={coord.id} variant="secondary" className="text-xs">
-                  {coord.email || "Brak email"}
+                  {coord.full_name || "Brak imienia i nazwiska"}
                 </Badge>
               ))}
             </div>
@@ -219,9 +226,6 @@ export default function AdminTripsPage() {
         id: "link",
         header: "Link",
         cell: ({ row }) => {
-          if (!row.original.is_public) {
-            return <span className="text-sm text-muted-foreground">-</span>;
-          }
           const slug = row.original.public_slug || row.original.slug;
           if (!slug) {
             return <span className="text-sm text-muted-foreground">-</span>;
@@ -261,16 +265,30 @@ export default function AdminTripsPage() {
                 Rezerwacje
               </Link>
             </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/api/trips/${row.original.id}/toggle-active`}>
-                {row.original.is_active ? "Archiwizuj" : "Aktywuj"}
-              </Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/api/trips/${row.original.id}/duplicate`}>
-                Duplikuj
-              </Link>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href={`/admin/trips/${row.original.id}/content`}>
+                    Edytuj treść
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={`/api/trips/${row.original.id}/toggle-active`}>
+                    {row.original.is_active ? "Archiwizuj" : "Aktywuj"}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={`/api/trips/${row.original.id}/duplicate`}>
+                    Duplikuj
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ),
       },
@@ -606,7 +624,7 @@ export default function AdminTripsPage() {
                           htmlFor={`coord-${coord.id}`}
                           className="text-sm font-normal cursor-pointer flex-1"
                         >
-                          {coord.email || "Brak email"}
+                          {coord.full_name || "Brak imienia i nazwiska"}
                         </Label>
                       </div>
                     ))}
@@ -741,7 +759,7 @@ export default function AdminTripsPage() {
                         htmlFor={`edit-coord-${coord.id}`}
                         className="text-sm font-normal cursor-pointer flex-1"
                       >
-                        {coord.email || "Brak email"}
+                        {coord.full_name || "Brak imienia i nazwiska"}
                       </Label>
                     </div>
                   ))}

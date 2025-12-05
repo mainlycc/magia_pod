@@ -9,7 +9,7 @@ export default async function TripsIndexPage() {
   const supabase = await createClient();
   const { data: trips, error } = await supabase
     .from("trips")
-    .select("id,title,slug,start_date,end_date,price_cents")
+    .select("id,title,slug,public_slug,start_date,end_date,price_cents")
     .eq("is_active", true)
     .order("created_at", { ascending: false });
 

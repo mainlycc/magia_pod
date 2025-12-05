@@ -41,15 +41,16 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       (p) => p.allowed_trip_ids && Array.isArray(p.allowed_trip_ids) && p.allowed_trip_ids.includes(tripId)
     );
 
-    // Pobierz emaile z auth.users używając admin client
+    // Pobierz dane użytkowników z auth.users używając admin client
     const adminClient = createAdminClient();
     const { data: usersData } = await adminClient.auth.admin.listUsers();
 
     const coordinators = assignedCoordinators.map((profile) => {
       const user = usersData.users.find((u) => u.id === profile.id);
+      const fullName = user?.user_metadata?.full_name as string | undefined;
       return {
         id: profile.id,
-        email: user?.email || null,
+        full_name: fullName || null,
       };
     });
 

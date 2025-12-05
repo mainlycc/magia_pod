@@ -27,7 +27,14 @@ type Trip = {
   seats_total: number | null;
   seats_reserved: number | null;
   is_active: boolean | null;
+  is_public: boolean | null;
   gallery_urls: string[] | null;
+  program_atrakcje: string | null;
+  dodatkowe_swiadczenia: string | null;
+  intro_text: string | null;
+  section_poznaj_title: string | null;
+  section_poznaj_description: string | null;
+  reservation_info_text: string | null;
 };
 
 export default async function TripPage({
@@ -38,16 +45,91 @@ export default async function TripPage({
   const { slug } = await (params instanceof Promise ? params : Promise.resolve(params));
   const supabase = await createClient();
 
-  // RLS automatycznie filtruje tylko aktywne i publiczne wycieczki (is_active = true AND is_public = true)
-  // Więc nie musimy jawnie sprawdzać tych pól w zapytaniu
+  // RLS automatycznie filtruje tylko aktywne wycieczki (is_active = true)
   // Szukamy po public_slug lub slug używając .or()
-  const { data: trip, error } = await supabase
+  // Najpierw próbujemy znaleźć po slug, potem po public_slug
+  let trip: Trip | null = null;
+  let error: any = null;
+
+  // Próba 1: szukaj po slug - najpierw tylko podstawowe kolumny
+  const { data: tripBySlug, error: errorBySlug } = await supabase
     .from("trips")
     .select(
-      "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,gallery_urls",
+      "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls",
     )
-    .or(`public_slug.eq.${slug},slug.eq.${slug}`)
+    .eq("slug", slug)
     .maybeSingle<Trip>();
+
+  if (tripBySlug && !errorBySlug) {
+    // Spróbuj pobrać dodatkowe kolumny treści (jeśli istnieją)
+    // Używamy try-catch, aby zignorować błędy, jeśli kolumny nie istnieją
+    let tripContent: any = null;
+    try {
+      const { data, error: contentError } = await supabase
+        .from("trips")
+        .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text")
+        .eq("id", tripBySlug.id)
+        .maybeSingle();
+      if (!contentError) {
+        tripContent = data;
+      }
+    } catch (e) {
+      // Ignoruj błędy - kolumny mogą nie istnieć
+    }
+    
+    trip = {
+      ...tripBySlug,
+      program_atrakcje: tripContent?.program_atrakcje ?? null,
+      dodatkowe_swiadczenia: tripContent?.dodatkowe_swiadczenia ?? null,
+      intro_text: tripContent?.intro_text ?? null,
+      section_poznaj_title: tripContent?.section_poznaj_title ?? null,
+      section_poznaj_description: tripContent?.section_poznaj_description ?? null,
+      reservation_info_text: tripContent?.reservation_info_text ?? null,
+    };
+  } else {
+    // Próba 2: szukaj po public_slug
+    const { data: tripByPublicSlug, error: errorByPublicSlug } = await supabase
+      .from("trips")
+      .select(
+        "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls",
+      )
+      .eq("public_slug", slug)
+      .maybeSingle<Trip>();
+
+    if (tripByPublicSlug && !errorByPublicSlug) {
+      // Spróbuj pobrać dodatkowe kolumny treści (jeśli istnieją)
+      let tripContent: any = null;
+      try {
+        const { data, error: contentError } = await supabase
+          .from("trips")
+          .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text")
+          .eq("id", tripByPublicSlug.id)
+          .maybeSingle();
+        if (!contentError) {
+          tripContent = data;
+        }
+      } catch (e) {
+        // Ignoruj błędy - kolumny mogą nie istnieć
+      }
+      
+      trip = {
+        ...tripByPublicSlug,
+        program_atrakcje: tripContent?.program_atrakcje ?? null,
+        dodatkowe_swiadczenia: tripContent?.dodatkowe_swiadczenia ?? null,
+        intro_text: tripContent?.intro_text ?? null,
+        section_poznaj_title: tripContent?.section_poznaj_title ?? null,
+        section_poznaj_description: tripContent?.section_poznaj_description ?? null,
+        reservation_info_text: tripContent?.reservation_info_text ?? null,
+      };
+    } else {
+      error = errorByPublicSlug || errorBySlug;
+    }
+  }
+
+  if (error) {
+    console.error("Error loading trip:", error);
+    console.error("Slug searched:", slug);
+  }
 
   if (error || !trip) {
     return (
@@ -138,8 +220,7 @@ export default async function TripPage({
           </div>
           <h1 className="text-4xl font-semibold leading-tight tracking-tight">{trip.title}</h1>
           <p className="text-muted-foreground max-w-2xl">
-            Odkryj wyjątkową podróż przygotowaną przez Magię Podróżowania. Poniżej znajdziesz szczegółowy
-            opis, informacje o dostępnych miejscach oraz możliwość rezerwacji.
+            {trip.intro_text || "Odkryj wyjątkową podróż przygotowaną przez Magię Podróżowania. Poniżej znajdziesz szczegółowy opis, informacje o dostępnych miejscach oraz możliwość rezerwacji."}
           </p>
         </div>
 
@@ -158,8 +239,14 @@ export default async function TripPage({
             </div>
             <Separator />
             <div className="grid gap-3 text-sm text-muted-foreground">
-              <p>Do rezerwacji potrzebne będą dane kontaktowe oraz lista uczestników.</p>
-              <p>Po złożeniu rezerwacji otrzymasz e-mail z potwierdzeniem i wzorem umowy.</p>
+              {trip.reservation_info_text ? (
+                <p className="whitespace-pre-line">{trip.reservation_info_text}</p>
+              ) : (
+                <>
+                  <p>Do rezerwacji potrzebne będą dane kontaktowe oraz lista uczestników.</p>
+                  <p>Po złożeniu rezerwacji otrzymasz e-mail z potwierdzeniem i wzorem umowy.</p>
+                </>
+              )}
             </div>
             <Button asChild disabled={seatsLeft <= 0} className="w-full">
               <Link href={`/trip/${trip.slug}/reserve`}>
@@ -196,9 +283,11 @@ export default async function TripPage({
         <Tabs defaultValue="overview" className="w-full">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Poznaj wycieczkę</h2>
+              <h2 className="text-xl font-semibold">
+                {trip.section_poznaj_title || "Poznaj wycieczkę"}
+              </h2>
               <p className="text-muted-foreground text-sm">
-                Szczegóły programu, świadczenia oraz ważne informacje organizacyjne.
+                {trip.section_poznaj_description || "Szczegóły programu, świadczenia oraz ważne informacje organizacyjne."}
               </p>
             </div>
             <TabsList className="grid w-full grid-cols-2 sm:w-auto">
@@ -209,10 +298,19 @@ export default async function TripPage({
           <TabsContent value="overview">
             <Card>
               <CardHeader>
-                <CardTitle>Program i atrakcji</CardTitle>
+                <CardTitle>Program i atrakcje</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="whitespace-pre-wrap leading-relaxed">{trip.description}</p>
+                {trip.program_atrakcje ? (
+                  <div
+                    className="prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: trip.program_atrakcje }}
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                    {trip.description || "Brak opisu"}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -261,11 +359,20 @@ export default async function TripPage({
           <CardHeader>
             <CardTitle>Dodatkowe świadczenia</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>• Bezpłatne konsultacje z koordynatorem przed wyjazdem.</p>
-            <p>• Pomoc w przygotowaniu dokumentów oraz formalności.</p>
-            <p>• Możliwość rozszerzenia ubezpieczenia podróżnego.</p>
-            <p>• Szczegółowy plan dnia w wersji elektronicznej.</p>
+          <CardContent>
+            {trip.dodatkowe_swiadczenia ? (
+              <div
+                className="prose prose-sm max-w-none text-sm"
+                dangerouslySetInnerHTML={{ __html: trip.dodatkowe_swiadczenia }}
+              />
+            ) : (
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>• Bezpłatne konsultacje z koordynatorem przed wyjazdem.</p>
+                <p>• Pomoc w przygotowaniu dokumentów oraz formalności.</p>
+                <p>• Możliwość rozszerzenia ubezpieczenia podróżnego.</p>
+                <p>• Szczegółowy plan dnia w wersji elektronicznej.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>

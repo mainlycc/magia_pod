@@ -48,15 +48,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Pobierz emaile z auth.users używając admin client
+    // Pobierz dane użytkowników z auth.users używając admin client
     const adminClient = createAdminClient();
     const { data: usersData } = await adminClient.auth.admin.listUsers();
 
     const coordinators = filteredProfiles.map((profile) => {
       const user = usersData.users.find((u) => u.id === profile.id);
+      const fullName = user?.user_metadata?.full_name as string | undefined;
       return {
         id: profile.id,
-        email: user?.email || null,
+        full_name: fullName || null,
         allowed_trip_ids: profile.allowed_trip_ids,
       };
     });

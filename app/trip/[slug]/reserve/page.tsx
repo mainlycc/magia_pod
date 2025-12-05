@@ -627,6 +627,23 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
                   <Separator />
 
                   <section className="space-y-4">
+                    <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
+                    <Card>
+                      <CardContent className="p-0">
+                        <div className="w-full overflow-hidden rounded-lg border">
+                          <iframe
+                            src="/example-agreement.pdf"
+                            className="h-[400px] w-full border-0 md:h-[600px]"
+                            title="Podgląd umowy"
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </section>
+
+                  <Separator />
+
+                  <section className="space-y-4">
                     <h3 className="font-medium text-sm uppercase text-muted-foreground">Zgody</h3>
                     <div className="space-y-3">
                       <FormField

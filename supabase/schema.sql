@@ -2,13 +2,43 @@
 create extension if not exists "pgcrypto";
 create extension if not exists "uuid-ossp";
 
+-- Helpery ról (muszą być zdefiniowane przed użyciem w politykach RLS)
+create or replace function public.is_admin() returns boolean language sql stable as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  );
+$$;
+
+create or replace function public.is_coordinator() returns boolean language sql stable as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'coordinator'
+  );
+$$;
+
 -- Profiles (role + whitelista wyjazdów dla koordynatorów)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   role text not null check (role in ('admin','coordinator')),
-  allowed_trip_ids uuid[] default null,
   created_at timestamptz not null default now()
 );
+
+-- Dodaj kolumnę allowed_trip_ids jeśli nie istnieje (migracja dla istniejących baz)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'profiles'
+      AND column_name = 'allowed_trip_ids'
+  ) THEN
+    ALTER TABLE public.profiles
+      ADD COLUMN allowed_trip_ids uuid[] default null;
+  END IF;
+END $$;
+
 alter table public.profiles enable row level security;
 
 -- Polityki RLS dla profiles
@@ -44,21 +74,6 @@ with check (
   )
 );
 
--- Helpery ról
-create or replace function public.is_admin() returns boolean language sql stable as $$
-  select exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  );
-$$;
-
-create or replace function public.is_coordinator() returns boolean language sql stable as $$
-  select exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'coordinator'
-  );
-$$;
-
 -- Trips (publicznie widoczne tylko aktywne)
 create table if not exists public.trips (
   id uuid primary key default gen_random_uuid(),
@@ -71,12 +86,137 @@ create table if not exists public.trips (
   seats_total integer not null default 0,
   seats_reserved integer not null default 0,
   is_active boolean not null default true,
+  is_public boolean not null default false,
+  public_slug text unique,
   gallery_urls jsonb not null default '[]'::jsonb,
   category text,
   location text,
+  program_atrakcje text,
+  dodatkowe_swiadczenia text,
+  intro_text text,
+  section_poznaj_title text,
+  section_poznaj_description text,
+  reservation_info_text text,
   created_at timestamptz not null default now()
 );
 create index if not exists trips_slug_idx on public.trips(slug);
+
+-- Dodaj kolumny is_public i public_slug jeśli nie istnieją (migracja dla istniejących baz)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'is_public'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN is_public boolean NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'public_slug'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN public_slug text UNIQUE;
+  END IF;
+END $$;
+
+create index if not exists trips_public_slug_idx on public.trips(public_slug);
+
+-- Dodaj kolumny treści wycieczek jeśli nie istnieją (migracja dla istniejących baz)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'program_atrakcje'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN program_atrakcje text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'dodatkowe_swiadczenia'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN dodatkowe_swiadczenia text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'intro_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN intro_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'section_poznaj_title'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN section_poznaj_title text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'section_poznaj_description'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN section_poznaj_description text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'reservation_info_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN reservation_info_text text;
+  END IF;
+END $$;
+
 alter table public.trips enable row level security;
 
 -- Funkcje pomocnicze do rezerwacji miejsc
@@ -165,7 +305,8 @@ create index if not exists participants_booking_id_idx on public.participants(bo
 alter table public.participants enable row level security;
 
 -- RLS: trips
--- Publiczny odczyt TYLKO aktywnych
+-- Publiczny odczyt aktywnych wycieczek (is_active = true)
+-- is_public kontroluje tylko widoczność na liście, ale wycieczka z slug jest dostępna
 drop policy if exists trips_public_read_active on public.trips;
 create policy trips_public_read_active
 on public.trips
@@ -204,12 +345,11 @@ using (
     public.is_coordinator()
     and exists (
       select 1
-      from public.profiles pr
-      join public.trips t on t.id = bookings.trip_id
-      where pr.id = auth.uid()
-        and pr.role = 'coordinator'
-        and pr.allowed_trip_ids is not null
-        and t.id = any(pr.allowed_trip_ids)
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.role = 'coordinator'
+        and p.allowed_trip_ids is not null
+        and bookings.trip_id = any(p.allowed_trip_ids)
     )
   )
 );
@@ -244,12 +384,11 @@ using (
     and exists (
       select 1
       from public.bookings b
-      join public.trips t on t.id = b.trip_id
-      join public.profiles pr on pr.id = auth.uid()
+      join public.profiles p on p.id = auth.uid()
       where participants.booking_id = b.id
-        and pr.role = 'coordinator'
-        and pr.allowed_trip_ids is not null
-        and t.id = any(pr.allowed_trip_ids)
+        and p.role = 'coordinator'
+        and p.allowed_trip_ids is not null
+        and b.trip_id = any(p.allowed_trip_ids)
     )
   )
 );

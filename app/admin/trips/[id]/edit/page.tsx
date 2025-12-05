@@ -20,7 +20,7 @@ import { X } from "lucide-react";
 
 type Coordinator = {
   id: string;
-  email: string | null;
+  full_name: string | null;
 };
 
 export default function EditTripPage() {
@@ -248,7 +248,7 @@ export default function EditTripPage() {
               <div className="flex flex-wrap gap-2">
                 {coordinators.map((coordinator) => (
                   <Badge key={coordinator.id} variant="secondary" className="text-sm px-3 py-1.5">
-                    {coordinator.email || "Brak email"}
+                    {coordinator.full_name || "Brak imienia i nazwiska"}
                     <button
                       onClick={() => unassignCoordinator(coordinator.id)}
                       className="ml-2 hover:bg-destructive/20 rounded-full p-0.5"
@@ -275,7 +275,7 @@ export default function EditTripPage() {
                     <SelectContent>
                       {unassignedCoordinators.map((coordinator) => (
                         <SelectItem key={coordinator.id} value={coordinator.id}>
-                          {coordinator.email || "Brak email"}
+                          {coordinator.full_name || "Brak imienia i nazwiska"}
                         </SelectItem>
                       ))}
                     </SelectContent>
