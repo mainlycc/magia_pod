@@ -240,8 +240,6 @@ export default function AdminBookingsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Rezerwacje i Umowy</h1>
-
       <ReusableTable
         columns={columns}
         data={bookings}

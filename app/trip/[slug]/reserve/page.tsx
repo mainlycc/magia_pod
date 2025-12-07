@@ -35,6 +35,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -246,6 +247,13 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
       }
 
       const data = await response.json().catch(() => null);
+      
+      // Wyświetl komunikat sukcesu
+      toast.success("Rezerwacja została potwierdzona!", {
+        description: `Kod rezerwacji: ${data?.booking_ref || ""}. Sprawdź swoją skrzynkę e-mail.`,
+        duration: 5000,
+      });
+
       if (data?.redirect_url) {
         window.location.href = data.redirect_url as string;
         return;

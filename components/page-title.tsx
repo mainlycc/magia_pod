@@ -3,24 +3,29 @@
 import { usePathname } from "next/navigation"
 
 const pageTitles: Record<string, string> = {
-  "/admin": "Dashboard",
+  "/admin": "Podsumowanie",
   "/admin/trips": "Wycieczki",
   "/admin/bookings": "Rezerwacje i Umowy",
   "/admin/payments": "Płatności",
+  "/admin/faktury": "Faktury",
   "/admin/uczestnicy": "Uczestnicy",
+  "/admin/insurance": "Ubezpieczenia",
   "/admin/coordinators/invite": "Zaproszenia koordynatorów",
   "/admin/przyklad": "Przykład",
-  "/coord": "Wyjazdy",
+  "/coord": "Moje wyjazdy",
 }
 
 // Wzorce ścieżek z dynamicznymi segmentami
 const pathPatterns: Array<{ pattern: RegExp; title: string }> = [
+  { pattern: /^\/admin\/trips\/[^/]+\/content$/, title: "Edycja treści wycieczki" },
   { pattern: /^\/admin\/trips\/[^/]+\/edit$/, title: "Edytuj wycieczkę" },
   { pattern: /^\/admin\/trips\/[^/]+\/bookings$/, title: "Rezerwacje wycieczki" },
   { pattern: /^\/admin\/trips\/[^/]+$/, title: "Szczegóły wycieczki" },
   { pattern: /^\/admin\/trips\/new$/, title: "Nowa wycieczka" },
   { pattern: /^\/admin\/bookings\/[^/]+$/, title: "Szczegóły rezerwacji" },
   { pattern: /^\/admin\/uczestnicy\/[^/]+$/, title: "Szczegóły uczestnika" },
+  { pattern: /^\/admin\/insurance\/config$/, title: "Konfiguracja integracji HDI" },
+  { pattern: /^\/admin\/insurance\/[^/]+$/, title: "Szczegóły zgłoszenia" },
   { pattern: /^\/coord\/trips\/[^/]+\/participants$/, title: "Uczestnicy" },
   { pattern: /^\/coord\/trips\/[^/]+\/message$/, title: "Wyślij wiadomość" },
 ]
@@ -30,24 +35,24 @@ export function PageTitle() {
   
   // Sprawdź dokładne dopasowanie
   if (pageTitles[pathname]) {
-    return <span className="text-sm text-muted-foreground">{pageTitles[pathname]}</span>
+    return <h1 className="text-2xl font-semibold">{pageTitles[pathname]}</h1>
   }
   
   // Sprawdź wzorce ścieżek
   for (const { pattern, title } of pathPatterns) {
     if (pattern.test(pathname)) {
-      return <span className="text-sm text-muted-foreground">{title}</span>
+      return <h1 className="text-2xl font-semibold">{title}</h1>
     }
   }
   
   // Domyślny tytuł na podstawie sekcji
   if (pathname.startsWith("/admin")) {
-    return <span className="text-sm text-muted-foreground">Panel administracyjny</span>
+    return <h1 className="text-2xl font-semibold">Panel administracyjny</h1>
   }
   if (pathname.startsWith("/coord")) {
-    return <span className="text-sm text-muted-foreground">Panel koordynatora</span>
+    return <h1 className="text-2xl font-semibold">Panel koordynatora</h1>
   }
   
-  return <span className="text-sm text-muted-foreground">Panel administracyjny</span>
+  return <h1 className="text-2xl font-semibold">Panel administracyjny</h1>
 }
 

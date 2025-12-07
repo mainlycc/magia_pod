@@ -511,7 +511,6 @@ export default function AdminTripsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Wycieczki</h1>
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
             <DialogHeader>

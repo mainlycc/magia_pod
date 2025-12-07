@@ -168,7 +168,6 @@ export default function TripContentPage() {
           Wróć
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold">Edycja treści wycieczki</h1>
           <p className="text-sm text-muted-foreground">{tripTitle}</p>
         </div>
       </div>

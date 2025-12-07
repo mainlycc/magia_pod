@@ -312,7 +312,6 @@ export default function CoordinatorsInvitePage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Zaproszenia koordynatorów</h1>
         <div className="text-center py-8 text-muted-foreground">Ładowanie zaproszeń...</div>
       </div>
     );
@@ -321,7 +320,6 @@ export default function CoordinatorsInvitePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Zaproszenia koordynatorów</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Wyślij zaproszenie do nowych koordynatorów, aby mogli utworzyć konto
         </p>

@@ -105,7 +105,6 @@ export default async function AdminTripBookingsPage({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">Rezerwacje</h1>
           {trip && (
             <div className="space-y-1">
               <p className="text-sm font-medium">{trip.title}</p>

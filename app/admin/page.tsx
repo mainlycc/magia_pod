@@ -121,7 +121,6 @@ export default async function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Podsumowanie</h1>
         <p className="text-muted-foreground text-sm">
           Bieżące wskaźniki sprzedaży, obłożenia oraz ostatnie rezerwacje.
         </p>

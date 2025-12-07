@@ -27,7 +27,6 @@ export default async function CoordHomePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Moje wyjazdy</h1>
       {trips.length === 0 ? (
         <Card className="p-5 text-sm text-muted-foreground">Brak przypisanych wyjazdów.</Card>
       ) : (

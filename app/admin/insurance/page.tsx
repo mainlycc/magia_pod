@@ -148,7 +148,6 @@ export default function AdminInsurancePage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Ubezpieczenia</h1>
         <div>Ładowanie...</div>
       </div>
     );
@@ -157,7 +156,6 @@ export default function AdminInsurancePage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Ubezpieczenia</h1>
         <div className="flex gap-2">
           <Button
             variant="outline"

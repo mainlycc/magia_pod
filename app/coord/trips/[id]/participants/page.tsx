@@ -32,8 +32,7 @@ export default async function CoordParticipantsPage({ params }: { params: { id: 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Uczestnicy</h1>
+      <div className="flex justify-end">
         <Button asChild>
           <Link href={`/coord/trips/${tripId}/message`}>Wyślij wiadomość grupową</Link>
         </Button>

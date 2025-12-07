@@ -56,7 +56,20 @@ export async function POST(req: Request) {
         ]
       : undefined;
 
-    const html = body.html ?? (body.text ? `<pre>${body.text}</pre>` : "<div></div>");
+    // Użyj HTML jeśli jest dostępny, w przeciwnym razie użyj prostego formatowania tekstu
+    let html: string;
+    if (body.html) {
+      html = body.html;
+      // Debug: sprawdź czy HTML jest poprawnie przekazany
+      if (html.length < 100) {
+        console.warn("HTML email seems too short:", html.substring(0, 100));
+      }
+    } else if (body.text) {
+      // Proste formatowanie tekstu jako HTML
+      html = `<div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; color: #333;">${body.text.replace(/\n/g, '<br>')}</div>`;
+    } else {
+      html = "<div></div>";
+    }
 
     const { error } = await resend.emails.send({
       from,

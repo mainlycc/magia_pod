@@ -63,8 +63,6 @@ export default function PrzykladPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Przykładowa tabela</h1>
-
       <ReusableTable
         columns={columns}
         data={data}

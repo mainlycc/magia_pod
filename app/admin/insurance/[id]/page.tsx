@@ -153,7 +153,6 @@ export default function InsuranceSubmissionDetailsPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Szczegóły zgłoszenia</h1>
         <div>Ładowanie...</div>
       </div>
     );
@@ -162,7 +161,6 @@ export default function InsuranceSubmissionDetailsPage() {
   if (!submission) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Szczegóły zgłoszenia</h1>
         <div>Nie znaleziono zgłoszenia</div>
       </div>
     );
@@ -172,7 +170,6 @@ export default function InsuranceSubmissionDetailsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Szczegóły zgłoszenia ubezpieczeniowego</h1>
           <p className="text-sm text-muted-foreground">
             Utworzone: {formatDate(submission.created_at)}
           </p>

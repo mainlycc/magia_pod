@@ -291,10 +291,6 @@ export default function AdminPaymentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Płatności</h1>
-      </div>
-
       <ReusableTable
         columns={columns}
         data={filteredBookings}

@@ -6,6 +6,7 @@ import {
   IconFileDescription,
   IconInnerShadowTop,
   IconMap,
+  IconReceipt,
   IconSettings,
   IconShieldCheck,
   IconUserPlus,
@@ -13,6 +14,7 @@ import {
   IconWallet,
 } from "@tabler/icons-react"
 import Link from "next/link"
+import { createClient } from "@/lib/supabase/client"
 
 import { NavSimple } from "@/components/nav-simple"
 import { NavUser } from "@/components/nav-user"
@@ -29,11 +31,6 @@ import {
 } from "@/components/ui/sidebar"
 
 const adminData = {
-  user: {
-    name: "Admin",
-    email: "admin@example.com",
-    avatar: "/avatars/admin.jpg",
-  },
   navMain: [
     {
       title: "Dashboard",
@@ -54,6 +51,11 @@ const adminData = {
       title: "Płatności",
       url: "/admin/payments",
       icon: IconWallet,
+    },
+    {
+      title: "Faktury",
+      url: "/admin/faktury",
+      icon: IconReceipt,
     },
     {
       title: "Ubezpieczenia",
@@ -79,6 +81,40 @@ const adminData = {
 }
 
 export function AdminSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [userData, setUserData] = React.useState<{
+    name: string
+    email: string
+    avatar: string
+  } | null>(null)
+
+  React.useEffect(() => {
+    const loadUserData = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const name = (user.user_metadata?.full_name as string) || user.email?.split('@')[0] || 'Użytkownik'
+        const email = user.email || ''
+        const avatar = user.user_metadata?.avatar_url || ''
+        
+        setUserData({
+          name,
+          email,
+          avatar,
+        })
+      }
+    }
+    
+    loadUserData()
+  }, [])
+
+  // Fallback do przykładowych danych jeśli jeszcze nie załadowano
+  const displayUser = userData || {
+    name: "Admin",
+    email: "admin@example.com",
+    avatar: "",
+  }
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -105,7 +141,7 @@ export function AdminSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
           <ThemeSwitcher />
         </div>
         <SidebarSeparator />
-        <NavUser user={adminData.user} />
+        <NavUser user={displayUser} />
       </SidebarFooter>
     </Sidebar>
   )

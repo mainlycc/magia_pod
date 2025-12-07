@@ -6,6 +6,7 @@ import {
   IconMap,
 } from "@tabler/icons-react"
 import Link from "next/link"
+import { createClient } from "@/lib/supabase/client"
 
 import { NavSimple } from "@/components/nav-simple"
 import { NavUser } from "@/components/nav-user"
@@ -22,11 +23,6 @@ import {
 } from "@/components/ui/sidebar"
 
 const coordData = {
-  user: {
-    name: "Koordynator",
-    email: "coord@example.com",
-    avatar: "/avatars/coord.jpg",
-  },
   navMain: [
     {
       title: "Wyjazdy",
@@ -37,6 +33,40 @@ const coordData = {
 }
 
 export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [userData, setUserData] = React.useState<{
+    name: string
+    email: string
+    avatar: string
+  } | null>(null)
+
+  React.useEffect(() => {
+    const loadUserData = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const name = (user.user_metadata?.full_name as string) || user.email?.split('@')[0] || 'Użytkownik'
+        const email = user.email || ''
+        const avatar = user.user_metadata?.avatar_url || ''
+        
+        setUserData({
+          name,
+          email,
+          avatar,
+        })
+      }
+    }
+    
+    loadUserData()
+  }, [])
+
+  // Fallback do przykładowych danych jeśli jeszcze nie załadowano
+  const displayUser = userData || {
+    name: "Koordynator",
+    email: "coord@example.com",
+    avatar: "",
+  }
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -62,7 +92,7 @@ export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
           <ThemeSwitcher />
         </div>
         <SidebarSeparator />
-        <NavUser user={coordData.user} />
+        <NavUser user={displayUser} />
       </SidebarFooter>
     </Sidebar>
   )

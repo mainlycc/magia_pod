@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createPaynowPayment } from "@/lib/paynow";
+import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -106,6 +107,7 @@ export async function POST(req: Request) {
 
     const consents = buildConsents(payload.consents);
 
+    // Wstaw rezerwację (bez access_token w SELECT, żeby uniknąć problemów jeśli kolumna nie istnieje)
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
       .insert({
@@ -123,8 +125,36 @@ export async function POST(req: Request) {
       .single();
 
     if (bookingErr || !booking) {
+      console.error("Error creating booking:", {
+        error: bookingErr,
+        message: bookingErr?.message,
+        code: bookingErr?.code,
+        details: bookingErr?.details,
+        hint: bookingErr?.hint,
+      });
       await rollbackSeats();
-      return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
+      return NextResponse.json(
+        { 
+          error: "Failed to create booking",
+          details: bookingErr?.message || bookingErr?.hint || "Unknown error",
+          code: bookingErr?.code,
+        },
+        { status: 500 }
+      );
+    }
+
+    // Spróbuj pobrać access_token osobno (jeśli kolumna istnieje)
+    let accessToken: string | null = null;
+    try {
+      const { data: bookingWithToken } = await supabase
+        .from("bookings")
+        .select("access_token")
+        .eq("id", booking.id)
+        .single();
+      accessToken = bookingWithToken?.access_token || null;
+    } catch (err) {
+      // Ignoruj błąd - kolumna access_token może nie istnieć
+      console.warn("Could not fetch access_token (column may not exist):", err);
     }
 
     const participantsPayload = payload.participants.map((participant) => ({
@@ -188,17 +218,47 @@ export async function POST(req: Request) {
 
     if (payload.contact_email) {
       try {
+        let emailHtml: string;
+        let textContent: string;
+        
+        if (accessToken) {
+          // Pełny email z linkiem do podstrony
+          const bookingLink = `${baseUrl}/booking/${accessToken}`;
+          emailHtml = generateBookingConfirmationEmail(
+            booking.booking_ref,
+            bookingLink,
+            trip.title as string,
+            trip.start_date,
+            trip.end_date,
+            seatsRequested,
+          );
+          textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}\n\nLink do przesłania umowy i płatności: ${bookingLink}`;
+        } else {
+          // Email bez linku (jeśli migracja nie została uruchomiona)
+          emailHtml = generateBookingConfirmationEmail(
+            booking.booking_ref,
+            `${baseUrl}/trip/${trip.public_slug || payload.slug}`,
+            trip.title as string,
+            trip.start_date,
+            trip.end_date,
+            seatsRequested,
+          );
+          textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}`;
+        }
+
         await fetch(`${baseUrl}/api/email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             to: payload.contact_email,
             subject: `Potwierdzenie rezerwacji ${booking.booking_ref}`,
-            text: `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}`,
+            html: emailHtml,
+            text: textContent,
             attachment,
           }),
         });
-      } catch {
+      } catch (err) {
+        console.error("Error sending email:", err);
         // ignorujemy błąd wysyłki maila, rezerwacja już zapisana
       }
     }
