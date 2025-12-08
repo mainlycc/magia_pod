@@ -45,7 +45,8 @@ export async function GET() {
     const pdfBuffer = generatePdf(exampleData);
 
     // Zwróć PDF jako response
-    return new NextResponse(pdfBuffer, {
+    // Konwertuj Buffer na Uint8Array, który jest akceptowany przez NextResponse
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": "inline; filename=\"przykladowa-umowa.pdf\"",
