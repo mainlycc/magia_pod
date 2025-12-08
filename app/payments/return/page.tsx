@@ -25,38 +25,76 @@ function PaymentReturnContent() {
       // Zawsze spróbuj sprawdzić status płatności przez API Paynow, jeśli mamy booking_ref
       if (bookingRef) {
         try {
-          console.log(`[Payment Return] Checking payment status for booking_ref: ${bookingRef}`);
-          const response = await fetch("/api/payments/paynow/check-status", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ 
-              booking_ref: bookingRef, 
-              payment_id: paymentId || undefined // payment_id jest opcjonalne
-            }),
-          });
-
-          const data = await response.json();
-          console.log(`[Payment Return] Check status response:`, data);
+          console.log(`[Payment Return] Checking payment status for booking_ref: ${bookingRef}, payment_id: ${paymentId || "not provided"}`);
           
-          if (data.success) {
-            if (data.paynow_status === "CONFIRMED" || data.payment_status === "paid") {
-              setStatus("success");
-              setMessage(data.message || "Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
-              return;
-            } else if (data.paynow_status === "PENDING") {
-              setStatus("pending");
-              setMessage("Płatność jest w trakcie przetwarzania. Status zostanie zaktualizowany automatycznie.");
-              return;
-            } else if (data.paynow_status === "REJECTED" || data.paynow_status === "EXPIRED") {
-              setStatus("error");
-              setMessage("Płatność nie została zrealizowana. Spróbuj ponownie.");
-              return;
+          // Spróbuj sprawdzić status z retry logic
+          let retries = 3;
+          let checkSuccess = false;
+          
+          while (retries > 0 && !checkSuccess) {
+            try {
+              const response = await fetch("/api/payments/paynow/check-status", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ 
+                  booking_ref: bookingRef, 
+                  payment_id: paymentId || undefined // payment_id jest opcjonalne
+                }),
+              });
+
+              const data = await response.json();
+              console.log(`[Payment Return] Check status response (attempt ${4 - retries}/3):`, data);
+              
+              if (data.success) {
+                checkSuccess = true;
+                
+                if (data.paynow_status === "CONFIRMED" || data.payment_status === "paid") {
+                  setStatus("success");
+                  setMessage(data.message || "Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
+                  return;
+                } else if (data.paynow_status === "PENDING") {
+                  setStatus("pending");
+                  setMessage("Płatność jest w trakcie przetwarzania. Status zostanie zaktualizowany automatycznie.");
+                  return;
+                } else if (data.paynow_status === "REJECTED" || data.paynow_status === "EXPIRED") {
+                  setStatus("error");
+                  setMessage("Płatność nie została zrealizowana. Spróbuj ponownie.");
+                  return;
+                } else {
+                  // Nieznany status - pokaż jako pending
+                  setStatus("pending");
+                  setMessage(data.message || "Status płatności jest sprawdzany. Odśwież stronę za chwilę.");
+                  return;
+                }
+              } else if (data.error) {
+                console.error(`[Payment Return] Error from check-status API:`, data.error);
+                // Jeśli błąd, spróbuj ponownie
+                retries--;
+                if (retries > 0) {
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+              }
+            } catch (fetchError) {
+              console.error(`[Payment Return] Error checking payment status (attempt ${4 - retries}/3):`, fetchError);
+              retries--;
+              if (retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
             }
           }
+          
+          // Jeśli wszystkie próby się nie powiodły, pokaż jako pending
+          if (!checkSuccess) {
+            console.error("[Payment Return] Failed to check payment status after 3 attempts");
+            setStatus("pending");
+            setMessage("Nie udało się sprawdzić statusu płatności. Status zostanie zaktualizowany automatycznie. Odśwież stronę za chwilę.");
+          }
         } catch (error) {
-          console.error("[Payment Return] Error checking payment status:", error);
+          console.error("[Payment Return] Unexpected error checking payment status:", error);
+          setStatus("pending");
+          setMessage("Wystąpił błąd podczas sprawdzania statusu płatności. Status zostanie zaktualizowany automatycznie.");
         }
       }
 
@@ -86,6 +124,7 @@ function PaymentReturnContent() {
         // Czasami Paynow potrzebuje chwili na przetworzenie płatności
         setTimeout(async () => {
           try {
+            console.log(`[Payment Return] Delayed check for booking_ref: ${bookingRef}`);
             const response = await fetch("/api/payments/paynow/check-status", {
               method: "POST",
               headers: {
@@ -95,9 +134,21 @@ function PaymentReturnContent() {
             });
 
             const data = await response.json();
-            if (data.success && (data.paynow_status === "CONFIRMED" || data.payment_status === "paid")) {
-              setStatus("success");
-              setMessage("Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
+            console.log(`[Payment Return] Delayed check response:`, data);
+            
+            if (data.success) {
+              if (data.paynow_status === "CONFIRMED" || data.payment_status === "paid") {
+                setStatus("success");
+                setMessage(data.message || "Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
+              } else if (data.paynow_status === "PENDING") {
+                setStatus("pending");
+                setMessage("Płatność jest w trakcie przetwarzania. Status zostanie zaktualizowany automatycznie.");
+              } else {
+                setStatus("pending");
+                setMessage(
+                  "Płatność została przekierowana. Status płatności zostanie zaktualizowany automatycznie. Odśwież stronę za chwilę."
+                );
+              }
             } else {
               setStatus("pending");
               setMessage(

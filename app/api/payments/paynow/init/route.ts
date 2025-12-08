@@ -128,6 +128,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Utwórz URL powrotu
+    // Paynow może przekierować z payment_id w parametrach URL, ale na wszelki wypadek
+    // będziemy polegać na payment_history do znalezienia payment_id
     const returnUrl = accessToken
       ? `${baseUrl}/booking/${accessToken}`
       : `${baseUrl}/payments/return?booking_ref=${booking.booking_ref}`;
@@ -149,23 +151,75 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Zapisz paymentId w payment_history jako pending payment (na wypadek gdyby webhook nie zadziałał)
+    // Zapisz paymentId w payment_history jako pending payment - to pozwoli na sprawdzenie statusu bez webhooków
     // Sprawdź czy już istnieje wpis dla tej rezerwacji z tym paymentId
-    const { data: existingPayment } = await supabase
+    // Używamy admin clienta, aby ominąć RLS i mieć pewność, że operacja się powiedzie
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const adminClient = createAdminClient();
+    
+    // NIE używamy .single() bo zwróci błąd gdy nie ma wpisu
+    const { data: existingPayment, error: checkError } = await adminClient
       .from("payment_history")
-      .select("id")
+      .select("id, notes, amount_cents")
       .eq("booking_id", booking.id)
       .like("notes", `%${payment.paymentId}%`)
-      .single();
+      .limit(1);
 
-    if (!existingPayment) {
+    if (checkError) {
+      console.error(`[Paynow Init] Error checking existing payment history:`, checkError);
+    }
+
+    if (!existingPayment || existingPayment.length === 0) {
       // Dodaj wpis w historii płatności z paymentId (status pending)
-      await supabase.from("payment_history").insert({
-        booking_id: booking.id,
-        amount_cents: totalAmountCents,
-        payment_method: "paynow",
-        notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized)`,
-      });
+      // WAŻNE: To jest krytyczne dla działania bez webhooków - payment_id musi być zapisane
+      console.log(`[Paynow Init] Inserting payment history entry for payment ${payment.paymentId} (PENDING)`);
+      console.log(`[Paynow Init] Insert data: booking_id=${booking.id}, amount_cents=${totalAmountCents}, payment_method=paynow`);
+      
+      // Użyj retry logic, aby upewnić się, że payment_id jest zawsze zapisane
+      let retries = 3;
+      let insertSuccess = false;
+      
+      while (retries > 0 && !insertSuccess) {
+        const { error: insertError, data: insertedPayment } = await adminClient
+          .from("payment_history")
+          .insert({
+            booking_id: booking.id,
+            amount_cents: totalAmountCents,
+            payment_method: "paynow",
+            notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized)`,
+          })
+          .select();
+
+        if (insertError) {
+          console.error(`[Paynow Init] ❌ Failed to insert payment history (attempt ${4 - retries}/3):`, {
+            error: insertError,
+            errorCode: insertError.code,
+            errorMessage: insertError.message,
+            errorDetails: insertError.details,
+            errorHint: insertError.hint,
+            bookingId: booking.id,
+            paymentId: payment.paymentId,
+            amountCents: totalAmountCents,
+          });
+          
+          retries--;
+          if (retries > 0) {
+            // Poczekaj chwilę przed ponowną próbą
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } else {
+          insertSuccess = true;
+          console.log(`[Paynow Init] ✓ Successfully inserted payment history entry:`, insertedPayment);
+        }
+      }
+      
+      if (!insertSuccess) {
+        console.error(`[Paynow Init] ⚠️ CRITICAL: Failed to insert payment history after 3 attempts. Payment ${payment.paymentId} may not be checkable without webhook!`);
+        // Nie zwracamy błędu - płatność została utworzona, ale payment_id nie jest zapisane
+        // Użytkownik może ręcznie sprawdzić status przez panel admina
+      }
+    } else {
+      console.log(`[Paynow Init] Payment history entry already exists for payment ${payment.paymentId} (id: ${existingPayment[0].id}, amount: ${existingPayment[0].amount_cents})`);
     }
 
     return NextResponse.json({

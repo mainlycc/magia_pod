@@ -478,6 +478,78 @@ export async function POST(req: Request) {
           notificationUrl: `${baseUrl}/api/payments/paynow/webhook`,
         });
         redirectUrl = payment.redirectUrl ?? null;
+
+        // WAŻNE: Zapisz payment_id w payment_history - to pozwoli na sprawdzenie statusu bez webhooków
+        // Używamy admin clienta, aby ominąć RLS i mieć pewność, że operacja się powiedzie
+        try {
+          const { createAdminClient } = await import("@/lib/supabase/admin");
+          const adminClient = createAdminClient();
+          
+          // Sprawdź czy już istnieje wpis dla tej rezerwacji z tym paymentId
+          const { data: existingPayment, error: checkError } = await adminClient
+            .from("payment_history")
+            .select("id, notes, amount_cents")
+            .eq("booking_id", booking.id)
+            .like("notes", `%${payment.paymentId}%`)
+            .limit(1);
+
+          if (checkError) {
+            console.error(`[Bookings POST] Error checking existing payment history:`, checkError);
+          }
+
+          if (!existingPayment || existingPayment.length === 0) {
+            // Dodaj wpis w historii płatności z paymentId (status pending)
+            console.log(`[Bookings POST] Inserting payment history entry for payment ${payment.paymentId} (PENDING)`);
+            console.log(`[Bookings POST] Insert data: booking_id=${booking.id}, amount_cents=${totalAmountCents}, payment_method=paynow`);
+            
+            // Użyj retry logic, aby upewnić się, że payment_id jest zawsze zapisane
+            let retries = 3;
+            let insertSuccess = false;
+            
+            while (retries > 0 && !insertSuccess) {
+              const { error: insertError, data: insertedPayment } = await adminClient
+                .from("payment_history")
+                .insert({
+                  booking_id: booking.id,
+                  amount_cents: totalAmountCents,
+                  payment_method: "paynow",
+                  notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized)`,
+                })
+                .select();
+
+              if (insertError) {
+                console.error(`[Bookings POST] ❌ Failed to insert payment history (attempt ${4 - retries}/3):`, {
+                  error: insertError,
+                  errorCode: insertError.code,
+                  errorMessage: insertError.message,
+                  errorDetails: insertError.details,
+                  errorHint: insertError.hint,
+                  bookingId: booking.id,
+                  paymentId: payment.paymentId,
+                  amountCents: totalAmountCents,
+                });
+                
+                retries--;
+                if (retries > 0) {
+                  // Poczekaj chwilę przed ponowną próbą
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              } else {
+                insertSuccess = true;
+                console.log(`[Bookings POST] ✓ Successfully inserted payment history entry:`, insertedPayment);
+              }
+            }
+            
+            if (!insertSuccess) {
+              console.error(`[Bookings POST] ⚠️ CRITICAL: Failed to insert payment history after 3 attempts. Payment ${payment.paymentId} may not be checkable without webhook!`);
+            }
+          } else {
+            console.log(`[Bookings POST] Payment history entry already exists for payment ${payment.paymentId} (id: ${existingPayment[0].id}, amount: ${existingPayment[0].amount_cents})`);
+          }
+        } catch (historyError) {
+          // Błąd zapisywania payment_history nie powinien blokować tworzenia rezerwacji
+          console.error("[Bookings POST] Error saving payment history:", historyError);
+        }
       } catch (err) {
         // jeśli nie uda się stworzyć płatności, rezerwacja dalej istnieje,
         // ale użytkownik nie zostanie przekierowany do płatności online
