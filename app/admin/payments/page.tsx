@@ -221,17 +221,27 @@ export default function AdminPaymentsPage() {
           acc[b.payment_status] = (acc[b.payment_status] || 0) + 1;
           return acc;
         }, {} as Record<string, number>);
-        console.log(`[Admin Payments] Payment status counts:`, paymentStatusCounts);
+        console.log(`[Admin Payments] Payment status counts from API:`, paymentStatusCounts);
+        console.log(`[Admin Payments] Total bookings from API: ${bookingsData.length}`);
         
         // Loguj przykładowe bookings z statusem "paid"
         const paidBookings = bookingsData.filter(b => b.payment_status === "paid");
         if (paidBookings.length > 0) {
-          console.log(`[Admin Payments] Found ${paidBookings.length} paid bookings:`, paidBookings.slice(0, 3).map(b => ({
+          console.log(`[Admin Payments] ✓ Found ${paidBookings.length} paid bookings:`, paidBookings.slice(0, 5).map(b => ({
             id: b.id,
             booking_ref: b.booking_ref,
             payment_status: b.payment_status,
+            created_at: b.created_at,
           })));
+        } else {
+          console.warn(`[Admin Payments] ⚠ No paid bookings found in API response!`);
         }
+        
+        // Loguj wszystkie statusy płatności dla debugowania
+        console.log(`[Admin Payments] All payment statuses:`, bookingsData.map(b => ({
+          booking_ref: b.booking_ref,
+          payment_status: b.payment_status,
+        })));
         
         console.log(`[Admin Payments] Setting ${bookingsData.length} bookings to state`);
         setBookings(bookingsData);
@@ -300,7 +310,24 @@ export default function AdminPaymentsPage() {
   useEffect(() => {
     console.log(`[Admin Payments] Current bookings state: ${bookings.length} bookings`);
     if (bookings.length > 0) {
+      const statusCounts = bookings.reduce((acc, b) => {
+        acc[b.payment_status] = (acc[b.payment_status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log(`[Admin Payments] Current state payment status counts:`, statusCounts);
+      console.log(`[Admin Payments] Paid bookings in state: ${bookings.filter(b => b.payment_status === "paid").length}`);
       console.log("[Admin Payments] Sample booking:", bookings[0]);
+      
+      // Sprawdź czy są jakieś płatności z statusem "paid"
+      const paidInState = bookings.filter(b => b.payment_status === "paid");
+      if (paidInState.length > 0) {
+        console.log(`[Admin Payments] ✓ Found ${paidInState.length} paid bookings in state:`, paidInState.slice(0, 3).map(b => ({
+          booking_ref: b.booking_ref,
+          payment_status: b.payment_status,
+        })));
+      } else {
+        console.warn(`[Admin Payments] ⚠ No paid bookings in state!`);
+      }
     }
   }, [bookings]);
 
@@ -411,17 +438,26 @@ export default function AdminPaymentsPage() {
       toast.info("Sprawdzanie statusów wszystkich płatności w Paynow...");
       setLoading(true);
       
+      // NAJPIERW odśwież dane, żeby mieć najnowsze bookings
+      await loadData();
+      
       // Pobierz wszystkie bookings z statusem unpaid lub partial
       const unpaidBookings = bookings.filter(
         b => b.payment_status === "unpaid" || b.payment_status === "partial"
       );
       
       console.log(`[Admin Payments] Checking ${unpaidBookings.length} unpaid/partial bookings in Paynow...`);
+      console.log(`[Admin Payments] All bookings count: ${bookings.length}`);
+      console.log(`[Admin Payments] Paid bookings count: ${bookings.filter(b => b.payment_status === "paid").length}`);
       
       // Sprawdź status każdej płatności
       let updatedCount = 0;
+      let checkedCount = 0;
       for (const booking of unpaidBookings) {
         try {
+          checkedCount++;
+          console.log(`[Admin Payments] Checking booking ${checkedCount}/${unpaidBookings.length}: ${booking.booking_ref}`);
+          
           const response = await fetch("/api/payments/paynow/check-status", {
             method: "POST",
             headers: {
@@ -431,22 +467,40 @@ export default function AdminPaymentsPage() {
           });
 
           const data = await response.json();
-          if (data.success && data.payment_status === "paid") {
+          console.log(`[Admin Payments] Check status response for ${booking.booking_ref}:`, {
+            success: data.success,
+            payment_status: data.payment_status,
+            paynow_status: data.paynow_status,
+            message: data.message,
+          });
+          
+          if (data.success && (data.payment_status === "paid" || data.paynow_status === "CONFIRMED")) {
             updatedCount++;
-            console.log(`[Admin Payments] Updated booking ${booking.booking_ref} to paid`);
+            console.log(`[Admin Payments] ✓ Updated booking ${booking.booking_ref} to paid`);
           }
         } catch (error) {
           console.error(`[Admin Payments] Error checking status for ${booking.booking_ref}:`, error);
         }
       }
       
-      // Odśwież dane po sprawdzeniu wszystkich płatności
-      await loadData();
+      console.log(`[Admin Payments] Checked ${checkedCount} bookings, updated ${updatedCount}`);
+      
+      // Odśwież dane po sprawdzeniu wszystkich płatności - z opóźnieniem, żeby dać czas na aktualizację
+      setTimeout(async () => {
+        console.log(`[Admin Payments] Refreshing data after checking all statuses...`);
+        await loadData();
+        
+        // Sprawdź jeszcze raz po odświeżeniu
+        setTimeout(async () => {
+          console.log(`[Admin Payments] Final refresh after checking all statuses...`);
+          await loadData();
+        }, 1000);
+      }, 500);
       
       if (updatedCount > 0) {
-        toast.success(`Zaktualizowano ${updatedCount} płatności`);
+        toast.success(`Zaktualizowano ${updatedCount} płatności. Odświeżanie danych...`);
       } else {
-        toast.info("Nie znaleziono nowych płatności do zaktualizowania");
+        toast.info(`Sprawdzono ${checkedCount} płatności. Nie znaleziono nowych płatności do zaktualizowania.`);
       }
     } catch (error) {
       console.error("[Admin Payments] Error checking all Paynow statuses:", error);

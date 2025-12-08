@@ -91,6 +91,26 @@ export async function GET(request: NextRequest) {
     
     // Loguj przykładowe dane dla debugowania (tylko pierwsze 3 bookings)
     if (bookingsData && bookingsData.length > 0) {
+      // Loguj statusy płatności
+      const statusCounts = bookingsData.reduce((acc: Record<string, number>, b: any) => {
+        acc[b.payment_status] = (acc[b.payment_status] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`[API Admin Bookings] Payment status counts:`, statusCounts);
+      
+      // Loguj wszystkie bookings z statusem "paid"
+      const paidBookings = bookingsData.filter((b: any) => b.payment_status === "paid");
+      if (paidBookings.length > 0) {
+        console.log(`[API Admin Bookings] Found ${paidBookings.length} paid bookings:`, paidBookings.slice(0, 5).map((b: any) => ({
+          id: b.id,
+          booking_ref: b.booking_ref,
+          payment_status: b.payment_status,
+          created_at: b.created_at,
+        })));
+      } else {
+        console.warn(`[API Admin Bookings] ⚠ No paid bookings found in database!`);
+      }
+      
       console.log(`[API Admin Bookings] Sample bookings:`, bookingsData.slice(0, 3).map((b: any) => ({
         id: b.id,
         booking_ref: b.booking_ref,
