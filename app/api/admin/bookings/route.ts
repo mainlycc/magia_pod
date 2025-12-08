@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
@@ -28,7 +32,17 @@ export async function GET(request: NextRequest) {
     
     if (!isAdmin) {
       console.warn("[API Admin Bookings] Unauthorized access attempt");
-      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+      return NextResponse.json(
+        { error: "unauthorized" },
+        {
+          status: 403,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      );
     }
 
     // Użyj admin clienta do pobrania wszystkich rezerwacji (omija RLS)
@@ -60,14 +74,40 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[API Admin Bookings] Error fetching bookings:", error);
-      return NextResponse.json({ error: "fetch_failed", details: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "fetch_failed", details: error.message },
+        {
+          status: 500,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      );
     }
 
     console.log(`[API Admin Bookings] Fetched ${bookingsData?.length || 0} bookings`);
+    
+    // Loguj przykładowe dane dla debugowania (tylko pierwsze 3 bookings)
+    if (bookingsData && bookingsData.length > 0) {
+      console.log(`[API Admin Bookings] Sample bookings:`, bookingsData.slice(0, 3).map((b: any) => ({
+        id: b.id,
+        booking_ref: b.booking_ref,
+        payment_status: b.payment_status,
+        created_at: b.created_at,
+      })));
+    }
 
     if (!bookingsData || bookingsData.length === 0) {
       console.log("[API Admin Bookings] No bookings found in database");
-      return NextResponse.json([]);
+      return NextResponse.json([], {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
     }
 
     // Mapuj dane, aby przekształcić tablicę trips w pojedynczy obiekt
@@ -79,7 +119,14 @@ export async function GET(request: NextRequest) {
     }));
 
     console.log(`[API Admin Bookings] Returning ${mappedBookings.length} mapped bookings`);
-    return NextResponse.json(mappedBookings);
+    // Wyłącz cache, aby zawsze zwracać najnowsze dane
+    return NextResponse.json(mappedBookings, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error) {
     console.error("Unexpected error in GET /api/admin/bookings:", error);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

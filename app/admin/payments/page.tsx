@@ -181,9 +181,11 @@ export default function AdminPaymentsPage() {
   const loadBookings = async (tripId: string | null) => {
     try {
       // Użyj API endpointu z admin clientem, który omija RLS
+      // Dodaj timestamp do URL, aby wymusić pobranie nowych danych (bypass cache)
+      const timestamp = Date.now();
       const url = tripId 
-        ? `/api/admin/bookings?trip_id=${encodeURIComponent(tripId)}`
-        : `/api/admin/bookings`;
+        ? `/api/admin/bookings?trip_id=${encodeURIComponent(tripId)}&_t=${timestamp}`
+        : `/api/admin/bookings?_t=${timestamp}`;
       
       const response = await fetch(url, {
         method: "GET",
