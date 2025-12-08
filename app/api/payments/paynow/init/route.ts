@@ -111,8 +111,21 @@ export async function POST(request: NextRequest) {
       // Ignoruj błąd - kolumna access_token może nie istnieć
     }
 
+    // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
+    // W przeciwnym razie Paynow przekieruje na localhost zamiast produkcyjnego URL
     const { origin } = new URL(request.url);
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
+    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    
+    // Jeśli nie ma NEXT_PUBLIC_BASE_URL, sprawdź VERCEL_URL (dla Vercel deployment)
+    if (!baseUrl && process.env.VERCEL_URL) {
+      baseUrl = `https://${process.env.VERCEL_URL}`;
+    }
+    
+    // Fallback na origin tylko w development (localhost)
+    if (!baseUrl) {
+      baseUrl = origin;
+      console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
+    }
 
     // Utwórz URL powrotu
     const returnUrl = accessToken

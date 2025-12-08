@@ -139,8 +139,20 @@ export async function POST(request: NextRequest) {
   // Wyślij mail potwierdzający opłacenie rezerwacji tylko dla potwierdzonych płatności
   if (status === "CONFIRMED" && booking.contact_email) {
     try {
+      // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
       const { origin } = new URL(request.url);
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
+      let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      
+      // Jeśli nie ma NEXT_PUBLIC_BASE_URL, sprawdź VERCEL_URL (dla Vercel deployment)
+      if (!baseUrl && process.env.VERCEL_URL) {
+        baseUrl = `https://${process.env.VERCEL_URL}`;
+      }
+      
+      // Fallback na origin tylko w development (localhost)
+      if (!baseUrl) {
+        baseUrl = origin;
+        console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
+      }
 
       await fetch(`${baseUrl}/api/email`, {
         method: "POST",

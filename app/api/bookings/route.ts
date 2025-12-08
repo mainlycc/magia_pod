@@ -317,10 +317,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to add participants" }, { status: 500 });
     }
 
-    // Pobierz baseUrl - priorytet: NEXT_PUBLIC_BASE_URL > origin z requestu
-    // Jeśli NEXT_PUBLIC_BASE_URL nie jest ustawione, użyjemy origin, ale to może być localhost
+    // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
+    // W przeciwnym razie Paynow przekieruje na localhost zamiast produkcyjnego URL
     const { origin } = new URL(req.url);
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? origin;
+    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+    
+    // Jeśli nie ma NEXT_PUBLIC_BASE_URL, sprawdź VERCEL_URL (dla Vercel deployment)
+    if (!baseUrl && process.env.VERCEL_URL) {
+      baseUrl = `https://${process.env.VERCEL_URL}`;
+    }
+    
+    // Fallback na origin tylko w development (localhost)
+    if (!baseUrl) {
+      baseUrl = origin;
+      console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
+    }
 
     const tripInfo = {
       title: trip.title as string,
