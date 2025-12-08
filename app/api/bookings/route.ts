@@ -421,7 +421,7 @@ export async function POST(req: Request) {
           trip.end_date,
           seatsRequested,
         );
-        textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}\n\nLink do przesłania umowy i płatności: ${bookingLink}`;
+        textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nKod rezerwacji: ${booking.booking_ref}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n4. Dokonanie płatności za rezerwację\n\nLink do przesłania podpisanej umowy i płatności:\n${bookingLink}`;
 
         await fetch(`${baseUrl}/api/email`, {
           method: "POST",

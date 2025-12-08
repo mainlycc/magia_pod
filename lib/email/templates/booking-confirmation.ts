@@ -87,9 +87,14 @@ export function generateBookingConfirmationEmail(
                 <p style="margin: 0 0 8px 0; font-size: 14px; color: #166534; font-weight: 600;">
                   📄 Umowa do podpisania
                 </p>
-                <p style="margin: 0; font-size: 14px; color: #166534; line-height: 1.5;">
-                  W załączniku znajdziesz wzór umowy w formacie PDF. Prosimy o podpisanie umowy i przesłanie jej przez poniższy link.
+                <p style="margin: 0 0 12px 0; font-size: 14px; color: #166534; line-height: 1.5;">
+                  <strong>W załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.</strong> Prosimy o:
                 </p>
+                <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: #166534; line-height: 1.8;">
+                  <li>Pobranie załączonej umowy PDF</li>
+                  <li>Podpisanie umowy</li>
+                  <li>Przesłanie podpisanej umowy przez poniższy link</li>
+                </ol>
               </div>
               
               <!-- CTA Button -->
@@ -103,18 +108,22 @@ export function generateBookingConfirmationEmail(
                   </td>
                 </tr>
               </table>
+              <p style="margin: 12px 0 0 0; font-size: 13px; color: #6b7280; text-align: center; line-height: 1.5;">
+                Kliknij powyższy przycisk, aby przejść do strony, gdzie możesz przesłać podpisaną umowę i dokonać płatności.
+              </p>
               
               <!-- Instructions -->
               <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 6px; margin: 20px 0;">
                 <p style="margin: 0 0 8px 0; font-size: 14px; color: #92400e; font-weight: 600;">
                   ⚠️ Co dalej?
                 </p>
-                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; color: #92400e; line-height: 1.8;">
-                  <li>Pobierz i podpisz załączoną umowę</li>
-                  <li>Kliknij powyższy przycisk, aby przejść do strony rezerwacji</li>
-                  <li>Prześlij podpisaną umowę (PDF)</li>
-                  <li>Dokonaj płatności za rezerwację</li>
-                </ul>
+                <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; color: #92400e; line-height: 1.8;">
+                  <li><strong>Pobierz załączoną umowę PDF</strong> z tego maila</li>
+                  <li><strong>Podpisz umowę</strong></li>
+                  <li><strong>Kliknij przycisk powyżej</strong>, aby przejść do strony rezerwacji</li>
+                  <li><strong>Prześlij podpisaną umowę</strong> (PDF) przez formularz na stronie</li>
+                  <li><strong>Dokonaj płatności</strong> za rezerwację</li>
+                </ol>
               </div>
               
               <!-- Alternative Link -->
