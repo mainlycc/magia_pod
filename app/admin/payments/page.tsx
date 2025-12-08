@@ -121,6 +121,7 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log("[Admin Payments] Component mounted, loading data...");
     loadData();
 
     // Subskrybuj zmiany w tabeli bookings, aby automatycznie odświeżać dane
@@ -164,14 +165,16 @@ export default function AdminPaymentsPage() {
 
   const loadData = async () => {
     try {
+      console.log("[Admin Payments] loadData called");
       setLoading(true);
       // Pobierz wszystkie rezerwacje z wycieczkami
       await loadBookings(null);
     } catch (err) {
       toast.error("Nie udało się wczytać danych");
-      console.error("Error in loadData:", err);
+      console.error("[Admin Payments] Error in loadData:", err);
     } finally {
       setLoading(false);
+      console.log("[Admin Payments] loadData finished");
     }
   };
 
@@ -192,16 +195,23 @@ export default function AdminPaymentsPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error || "fetch_failed");
+        console.error("[Admin Payments] API error:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+        });
+        throw new Error(errorData?.error || `fetch_failed: ${response.status}`);
       }
 
       const bookingsData: BookingWithTrip[] = await response.json();
 
-      if (bookingsData) {
-        console.log(`[Admin Payments] Loaded ${bookingsData.length} bookings`);
+      console.log(`[Admin Payments] Received ${bookingsData?.length || 0} bookings from API`);
+
+      if (bookingsData && Array.isArray(bookingsData)) {
+        console.log(`[Admin Payments] Setting ${bookingsData.length} bookings to state`);
         setBookings(bookingsData);
       } else {
-        console.log("[Admin Payments] No bookings data received");
+        console.warn("[Admin Payments] Invalid bookings data format:", bookingsData);
         setBookings([]);
       }
     } catch (err) {
@@ -256,6 +266,14 @@ export default function AdminPaymentsPage() {
   };
 
   const filteredBookings = bookings;
+  
+  // Debug: loguj stan bookings
+  useEffect(() => {
+    console.log(`[Admin Payments] Current bookings state: ${bookings.length} bookings`);
+    if (bookings.length > 0) {
+      console.log("[Admin Payments] Sample booking:", bookings[0]);
+    }
+  }, [bookings]);
 
   const columns = useMemo<ColumnDef<BookingWithTrip>[]>(
     () => [

@@ -19,11 +19,15 @@ async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): P
 
 export async function GET(request: NextRequest) {
   try {
+    console.log("[API Admin Bookings] Request received");
     const supabase = await createClient();
 
     // Sprawdź czy użytkownik jest adminem
     const isAdmin = await checkAdmin(supabase);
+    console.log(`[API Admin Bookings] Admin check result: ${isAdmin}`);
+    
     if (!isAdmin) {
+      console.warn("[API Admin Bookings] Unauthorized access attempt");
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest) {
         payment_status,
         created_at,
         trip_id,
-        trips:trips!inner(id, title, slug)
+        trips:trips(id, title, slug)
       `,
       )
       .order("created_at", { ascending: false });
@@ -55,11 +59,14 @@ export async function GET(request: NextRequest) {
     const { data: bookingsData, error } = await query;
 
     if (error) {
-      console.error("Error fetching bookings:", error);
-      return NextResponse.json({ error: "fetch_failed" }, { status: 500 });
+      console.error("[API Admin Bookings] Error fetching bookings:", error);
+      return NextResponse.json({ error: "fetch_failed", details: error.message }, { status: 500 });
     }
 
-    if (!bookingsData) {
+    console.log(`[API Admin Bookings] Fetched ${bookingsData?.length || 0} bookings`);
+
+    if (!bookingsData || bookingsData.length === 0) {
+      console.log("[API Admin Bookings] No bookings found in database");
       return NextResponse.json([]);
     }
 
@@ -71,6 +78,7 @@ export async function GET(request: NextRequest) {
         : null,
     }));
 
+    console.log(`[API Admin Bookings] Returning ${mappedBookings.length} mapped bookings`);
     return NextResponse.json(mappedBookings);
   } catch (error) {
     console.error("Unexpected error in GET /api/admin/bookings:", error);
