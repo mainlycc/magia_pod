@@ -3,6 +3,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Paynow v3 webhook payload format
 type PaynowWebhookPayload = {
   paymentId: string;
@@ -66,17 +70,44 @@ export async function POST(request: NextRequest) {
   // Webhook musi omijać RLS – używamy admin clienta
   const supabase = createAdminClient();
 
-  const { data: booking, error: bookingError } = await supabase
+  // Szukaj rezerwacji - sprawdź zarówno booking_ref jak i możliwe warianty
+  let booking = null;
+  let bookingError = null;
+  
+  // Najpierw spróbuj znaleźć po dokładnym booking_ref
+  const { data: bookingData, error: bookingErr } = await supabase
     .from("bookings")
-    .select("id, trip_id, contact_email, payment_status")
+    .select("id, trip_id, contact_email, payment_status, booking_ref")
     .eq("booking_ref", payload.externalId)
     .single();
+
+  if (bookingErr || !bookingData) {
+    // Jeśli nie znaleziono, spróbuj znaleźć po częściowym dopasowaniu (może być różnica w formacie)
+    console.warn(`[Paynow Webhook] Booking not found with exact match for externalId: ${payload.externalId}, trying partial match...`);
+    const { data: partialBooking, error: partialError } = await supabase
+      .from("bookings")
+      .select("id, trip_id, contact_email, payment_status, booking_ref")
+      .ilike("booking_ref", `%${payload.externalId}%`)
+      .limit(1)
+      .single();
+    
+    if (!partialError && partialBooking) {
+      booking = partialBooking;
+      console.log(`[Paynow Webhook] Found booking with partial match: ${partialBooking.booking_ref} for externalId: ${payload.externalId}`);
+    } else {
+      bookingError = bookingErr || partialError;
+    }
+  } else {
+    booking = bookingData;
+  }
 
   if (bookingError || !booking) {
     console.error(`[Paynow Webhook] Booking not found for externalId: ${payload.externalId}`, {
       error: bookingError,
       externalId: payload.externalId,
       paymentId: payload.paymentId,
+      searchedExact: true,
+      searchedPartial: true,
     });
     return NextResponse.json({ error: "booking_not_found" }, { status: 404 });
   }
@@ -145,30 +176,45 @@ export async function POST(request: NextRequest) {
     console.log(`[Paynow Webhook] Also updating booking status to "confirmed"`);
   }
   
-  const { error: updateError, data: updatedBooking } = await supabase
-    .from("bookings")
-    .update(updateData)
-    .eq("id", booking.id)
-    .select()
-    .single();
+  // Sprawdź czy aktualizacja jest potrzebna (czy status się zmieni)
+  if (booking.payment_status === newPaymentStatus) {
+    console.log(`[Paynow Webhook] Booking ${booking.id} already has payment_status=${newPaymentStatus}, skipping update`);
+  } else {
+    const { error: updateError, data: updatedBooking } = await supabase
+      .from("bookings")
+      .update(updateData)
+      .eq("id", booking.id)
+      .select()
+      .single();
 
-  if (updateError) {
-    console.error(`[Paynow Webhook] Failed to update booking payment status:`, {
+    if (updateError) {
+      console.error(`[Paynow Webhook] Failed to update booking payment status:`, {
+        bookingId: booking.id,
+        bookingRef: payload.externalId,
+        error: updateError,
+        attemptedStatus: newPaymentStatus,
+        updateData: updateData,
+      });
+      return NextResponse.json({ error: "update_failed", details: updateError.message }, { status: 500 });
+    }
+
+    console.log(`[Paynow Webhook] Successfully updated booking ${booking.id} payment status to ${newPaymentStatus}`, {
       bookingId: booking.id,
       bookingRef: payload.externalId,
-      error: updateError,
-      attemptedStatus: newPaymentStatus,
+      oldStatus: booking.payment_status,
+      newStatus: newPaymentStatus,
+      updatedBooking: updatedBooking,
     });
-    return NextResponse.json({ error: "update_failed" }, { status: 500 });
-  }
 
-  console.log(`[Paynow Webhook] Successfully updated booking ${booking.id} payment status to ${newPaymentStatus}`, {
-    bookingId: booking.id,
-    bookingRef: payload.externalId,
-    oldStatus: booking.payment_status,
-    newStatus: newPaymentStatus,
-    updatedBooking: updatedBooking,
-  });
+    // Zweryfikuj, że aktualizacja się powiodła - pobierz zaktualizowane dane
+    const { data: verifyBooking } = await supabase
+      .from("bookings")
+      .select("id, payment_status, status")
+      .eq("id", booking.id)
+      .single();
+    
+    console.log(`[Paynow Webhook] Verification - booking ${booking.id} now has payment_status=${verifyBooking?.payment_status}, status=${verifyBooking?.status}`);
+  }
 
   // Wyślij mail potwierdzający opłacenie rezerwacji tylko dla potwierdzonych płatności
   if (status === "CONFIRMED" && booking.contact_email) {

@@ -136,7 +136,13 @@ export default function AdminPaymentsPage() {
           table: "bookings",
         },
         (payload) => {
-          console.log("Booking updated:", payload);
+          console.log("[Admin Payments] Realtime: Booking updated:", {
+            event: payload.eventType,
+            table: payload.table,
+            new: payload.new,
+            old: payload.old,
+            timestamp: new Date().toISOString(),
+          });
           // Odśwież dane po zmianie w rezerwacji
           loadData();
         }
@@ -149,12 +155,12 @@ export default function AdminPaymentsPage() {
     };
     window.addEventListener("focus", handleFocus);
 
-    // Polling jako fallback dla Realtime - odświeżaj dane co 10 sekund
+    // Polling jako fallback dla Realtime - odświeżaj dane co 5 sekund
     // To zapewnia, że nawet jeśli Realtime nie działa, dane będą aktualne
     const pollingInterval = setInterval(() => {
-      console.log("Polling: odświeżanie danych płatności...");
+      console.log(`[Admin Payments] Polling: odświeżanie danych płatności... (${new Date().toISOString()})`);
       loadData();
-    }, 10000); // 10 sekund - częstsze odświeżanie dla lepszej aktualności danych
+    }, 5000); // 5 sekund - częstsze odświeżanie dla lepszej aktualności danych
 
     return () => {
       supabase.removeChannel(channel);
@@ -207,9 +213,26 @@ export default function AdminPaymentsPage() {
 
       const bookingsData: BookingWithTrip[] = await response.json();
 
-      console.log(`[Admin Payments] Received ${bookingsData?.length || 0} bookings from API`);
+      console.log(`[Admin Payments] Received ${bookingsData?.length || 0} bookings from API at ${new Date().toISOString()}`);
 
       if (bookingsData && Array.isArray(bookingsData)) {
+        // Loguj statusy płatności dla debugowania
+        const paymentStatusCounts = bookingsData.reduce((acc, b) => {
+          acc[b.payment_status] = (acc[b.payment_status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log(`[Admin Payments] Payment status counts:`, paymentStatusCounts);
+        
+        // Loguj przykładowe bookings z statusem "paid"
+        const paidBookings = bookingsData.filter(b => b.payment_status === "paid");
+        if (paidBookings.length > 0) {
+          console.log(`[Admin Payments] Found ${paidBookings.length} paid bookings:`, paidBookings.slice(0, 3).map(b => ({
+            id: b.id,
+            booking_ref: b.booking_ref,
+            payment_status: b.payment_status,
+          })));
+        }
+        
         console.log(`[Admin Payments] Setting ${bookingsData.length} bookings to state`);
         setBookings(bookingsData);
       } else {
@@ -383,18 +406,89 @@ export default function AdminPaymentsPage() {
     return <div className="space-y-4">Ładowanie...</div>;
   }
 
+  const handleCheckAllPaynowStatuses = async () => {
+    try {
+      toast.info("Sprawdzanie statusów wszystkich płatności w Paynow...");
+      setLoading(true);
+      
+      // Pobierz wszystkie bookings z statusem unpaid lub partial
+      const unpaidBookings = bookings.filter(
+        b => b.payment_status === "unpaid" || b.payment_status === "partial"
+      );
+      
+      console.log(`[Admin Payments] Checking ${unpaidBookings.length} unpaid/partial bookings in Paynow...`);
+      
+      // Sprawdź status każdej płatności
+      let updatedCount = 0;
+      for (const booking of unpaidBookings) {
+        try {
+          const response = await fetch("/api/payments/paynow/check-status", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ booking_ref: booking.booking_ref }),
+          });
+
+          const data = await response.json();
+          if (data.success && data.payment_status === "paid") {
+            updatedCount++;
+            console.log(`[Admin Payments] Updated booking ${booking.booking_ref} to paid`);
+          }
+        } catch (error) {
+          console.error(`[Admin Payments] Error checking status for ${booking.booking_ref}:`, error);
+        }
+      }
+      
+      // Odśwież dane po sprawdzeniu wszystkich płatności
+      await loadData();
+      
+      if (updatedCount > 0) {
+        toast.success(`Zaktualizowano ${updatedCount} płatności`);
+      } else {
+        toast.info("Nie znaleziono nowych płatności do zaktualizowania");
+      }
+    } catch (error) {
+      console.error("[Admin Payments] Error checking all Paynow statuses:", error);
+      toast.error("Nie udało się sprawdzić statusów płatności");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => loadData()}
-          disabled={loading}
-        >
-          <RefreshCwIcon className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Odśwież
-        </Button>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {bookings.length > 0 && (
+            <span>
+              Łącznie rezerwacji: {bookings.length} | 
+              Opłacone: {bookings.filter(b => b.payment_status === "paid").length} | 
+              Nieopłacone: {bookings.filter(b => b.payment_status === "unpaid").length} | 
+              Częściowe: {bookings.filter(b => b.payment_status === "partial").length}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCheckAllPaynowStatuses}
+            disabled={loading}
+          >
+            <CheckCircle2Icon className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Sprawdź wszystkie w Paynow
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadData()}
+            disabled={loading}
+          >
+            <RefreshCwIcon className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Odśwież
+          </Button>
+        </div>
       </div>
       <ReusableTable
         columns={columns}
