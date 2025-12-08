@@ -143,7 +143,15 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        console.log(`Successfully updated booking ${booking.id} payment status from ${booking.payment_status} to ${newPaymentStatus}`);
+        console.log(`[Paynow Check Status] Successfully updated booking ${booking.id} payment status from ${booking.payment_status} to ${newPaymentStatus}`);
+
+        // Odśwież dane w cache Supabase, aby zmiany były widoczne natychmiast
+        // To pomaga w przypadku gdy Realtime nie działa
+        await supabase
+          .from("bookings")
+          .select("id, payment_status")
+          .eq("id", booking.id)
+          .single();
 
         return NextResponse.json({
           success: true,

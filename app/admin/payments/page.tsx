@@ -148,9 +148,17 @@ export default function AdminPaymentsPage() {
     };
     window.addEventListener("focus", handleFocus);
 
+    // Polling jako fallback dla Realtime - odświeżaj dane co 30 sekund
+    // To zapewnia, że nawet jeśli Realtime nie działa, dane będą aktualne
+    const pollingInterval = setInterval(() => {
+      console.log("Polling: odświeżanie danych płatności...");
+      loadData();
+    }, 30000); // 30 sekund
+
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener("focus", handleFocus);
+      clearInterval(pollingInterval);
     };
   }, []);
 
@@ -225,6 +233,7 @@ export default function AdminPaymentsPage() {
 
   const handleCheckPaynowStatus = async (bookingRef: string) => {
     try {
+      toast.info("Sprawdzanie statusu płatności w Paynow...");
       const response = await fetch("/api/payments/paynow/check-status", {
         method: "POST",
         headers: {
@@ -241,10 +250,14 @@ export default function AdminPaymentsPage() {
 
       if (data.success) {
         toast.success(data.message || "Status płatności został zaktualizowany");
-        // Odśwież dane
-        loadData();
+        // Odśwież dane natychmiast po sprawdzeniu statusu
+        await loadData();
+        // Dodatkowo odśwież po krótkim opóźnieniu, aby upewnić się że zmiany są widoczne
+        setTimeout(() => {
+          loadData();
+        }, 1000);
       } else {
-        toast.error("Nie udało się sprawdzić statusu płatności");
+        toast.error(data.message || "Nie udało się sprawdzić statusu płatności");
       }
     } catch (error) {
       console.error("Error checking Paynow status:", error);

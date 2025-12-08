@@ -33,16 +33,18 @@ export async function POST(request: NextRequest) {
   // Paynow v3 używa nagłówka "Signature" zamiast "x-signature"
   const signature = request.headers.get("Signature");
 
-  // Logowanie dla debugowania (tylko w development)
-  if (process.env.NODE_ENV === "development") {
-    console.log("Paynow webhook received:", {
-      hasBody: !!rawBody,
-      bodyLength: rawBody.length,
-      hasSignature: !!signature,
-      signatureLength: signature?.length || 0,
-      headers: Object.fromEntries(request.headers.entries()),
-    });
-  }
+  // Logowanie dla debugowania (zawsze, aby móc debugować w produkcji)
+  console.log("Paynow webhook received:", {
+    hasBody: !!rawBody,
+    bodyLength: rawBody.length,
+    hasSignature: !!signature,
+    signatureLength: signature?.length || 0,
+    timestamp: new Date().toISOString(),
+    // Nie loguj pełnych headers w produkcji ze względów bezpieczeństwa
+    ...(process.env.NODE_ENV === "development" 
+      ? { headers: Object.fromEntries(request.headers.entries()) }
+      : {}),
+  });
 
   if (!verifySignature(rawBody, signature)) {
     console.error("Invalid signature in Paynow webhook", {
@@ -71,9 +73,20 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (bookingError || !booking) {
-    console.error("Booking not found for externalId:", payload.externalId);
+    console.error(`[Paynow Webhook] Booking not found for externalId: ${payload.externalId}`, {
+      error: bookingError,
+      externalId: payload.externalId,
+      paymentId: payload.paymentId,
+    });
     return NextResponse.json({ error: "booking_not_found" }, { status: 404 });
   }
+
+  console.log(`[Paynow Webhook] Found booking:`, {
+    bookingId: booking.id,
+    bookingRef: payload.externalId,
+    currentPaymentStatus: booking.payment_status,
+    paymentId: payload.paymentId,
+  });
 
   const status = payload.status.toUpperCase();
   const amountCents = payload.amount ?? 0;
@@ -121,7 +134,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Aktualizuj status płatności w rezerwacji
-  console.log(`Updating booking ${booking.id} (${payload.externalId}) payment status from ${booking.payment_status} to ${newPaymentStatus}`);
+  console.log(`[Paynow Webhook] Updating booking ${booking.id} (${payload.externalId}) payment status from ${booking.payment_status} to ${newPaymentStatus}`);
+  console.log(`[Paynow Webhook] Payment details: paymentId=${payload.paymentId}, status=${status}, amount=${amountCents} cents`);
   
   const { error: updateError, data: updatedBooking } = await supabase
     .from("bookings")
@@ -131,11 +145,22 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (updateError) {
-    console.error("Failed to update booking payment status:", updateError);
+    console.error(`[Paynow Webhook] Failed to update booking payment status:`, {
+      bookingId: booking.id,
+      bookingRef: payload.externalId,
+      error: updateError,
+      attemptedStatus: newPaymentStatus,
+    });
     return NextResponse.json({ error: "update_failed" }, { status: 500 });
   }
 
-  console.log(`Successfully updated booking ${booking.id} payment status to ${newPaymentStatus}`, updatedBooking);
+  console.log(`[Paynow Webhook] Successfully updated booking ${booking.id} payment status to ${newPaymentStatus}`, {
+    bookingId: booking.id,
+    bookingRef: payload.externalId,
+    oldStatus: booking.payment_status,
+    newStatus: newPaymentStatus,
+    updatedBooking: updatedBooking,
+  });
 
   // Wyślij mail potwierdzający opłacenie rezerwacji tylko dla potwierdzonych płatności
   if (status === "CONFIRMED" && booking.contact_email) {

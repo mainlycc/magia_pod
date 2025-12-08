@@ -345,7 +345,9 @@ export async function POST(req: Request) {
     let agreementPdfUrl: string | null = null;
 
     try {
-      const pdfRes = await fetch(`${baseUrl}/api/pdf`, {
+      // W development zawsze używaj origin (localhost), w produkcji baseUrl
+      const pdfUrl = process.env.NODE_ENV === "development" ? origin : baseUrl;
+      const pdfRes = await fetch(`${pdfUrl}/api/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { jsPDF } from "jspdf";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Konfiguracja runtime dla Vercel - upewniamy się, że funkcja działa w środowisku serverless
+export const runtime = "nodejs";
+export const maxDuration = 30; // Maksymalny czas wykonania funkcji (sekundy)
+
+// Polskie znaki dla systemu: ą ć ę ł ń ó ś ź ż Ą Ć Ę Ł Ń Ó Ś Ź Ż
+// Przykładowe użycie: "ąęćłńóśźż ĄĆĘŁŃÓŚŹŻ"
+
 type PdfPayload = {
   booking_ref: string;
   trip: { title: string; start_date?: string | null; end_date?: string | null; price_cents?: number | null };
@@ -32,23 +39,12 @@ type PdfPayload = {
   }>;
 };
 
-// Dane firmy organizującej (stałe)
 const ORGANIZER_DATA = {
-  name: "Magia Podróżowania GRUPA DE-PL",
-  address: "Szczepankowo 37, 61-311 Poznań",
+  name: "Magia Podrozwania GRUPA DE-PL",
+  address: "Szczepankowo 37, 61-311 Poznan",
   nip: "6981710393",
 };
 
-// Stałe dla formatowania
-const PAGE_WIDTH = 210; // A4 width in mm
-const PAGE_HEIGHT = 297; // A4 height in mm
-const MARGIN_LEFT = 25;
-const MARGIN_RIGHT = 25;
-const MARGIN_TOP = 25;
-const MARGIN_BOTTOM = 25;
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
-
-// Funkcja formatowania daty
 function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "-";
   try {
@@ -63,70 +59,18 @@ function formatDate(dateString: string | null | undefined): string {
   }
 }
 
-// Funkcja rysująca linię poziomą
-function drawHorizontalLine(doc: jsPDF, y: number, width: number = CONTENT_WIDTH): void {
-  doc.setLineWidth(0.5);
-  doc.line(MARGIN_LEFT, y, MARGIN_LEFT + width, y);
-}
-
-// Funkcja rysująca linię poziomą grubą
-function drawThickHorizontalLine(doc: jsPDF, y: number, width: number = CONTENT_WIDTH): void {
-  doc.setLineWidth(1);
-  doc.line(MARGIN_LEFT, y, MARGIN_LEFT + width, y);
-}
-
-// Funkcja dodająca tekst z automatycznym łamaniem
-function addText(
-  doc: jsPDF,
-  text: string,
-  x: number,
-  y: number,
-  options: {
-    fontSize?: number;
-    fontStyle?: "normal" | "bold";
-    maxWidth?: number;
-    align?: "left" | "center" | "right" | "justify";
-  } = {}
-): number {
-  const {
-    fontSize = 11,
-    fontStyle = "normal",
-    maxWidth = CONTENT_WIDTH,
-    align = "left",
-  } = options;
-
-  doc.setFontSize(fontSize);
-  doc.setFont("helvetica", fontStyle);
-
-  const lines = doc.splitTextToSize(text, maxWidth);
-  const lineHeight = fontSize * 1.2;
-  let currentY = y;
-
-  lines.forEach((line: string) => {
-    doc.text(line, x, currentY, { align });
-    currentY += lineHeight;
-  });
-
-  return currentY;
-}
-
-// Funkcja generująca PDF
 function generatePdf(data: PdfPayload): Buffer {
+  // Inicjalizacja jsPDF z domyślnymi ustawieniami
+  // jsPDF 2.x automatycznie obsługuje UTF-8, więc polskie znaki powinny działać poprawnie
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
     format: "a4",
-    compress: true,
   });
   
-  // Wyłącz automatyczne nagłówki i stopki strony
-  doc.setProperties({
-    title: `Umowa uczestnictwa - ${data.booking_ref}`,
-    subject: "Umowa uczestnictwa w wycieczce",
-    author: "Magia Podróżowania",
-  });
-
-  // Przygotuj dane
+  doc.setCharSpace(0);
+  doc.setLineHeightFactor(1.0);
+  
   const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
   const totalPrice = data.trip.price_cents
     ? ((data.trip.price_cents * data.participants.length) / 100).toFixed(2)
@@ -137,376 +81,365 @@ function generatePdf(data: PdfPayload): Buffer {
   const clientAddress = data.address
     ? `${data.address.street}, ${data.address.zip} ${data.address.city}`
     : "-";
-  const hasCompany = !!(data.company_name || data.company_nip);
-
-  let y = MARGIN_TOP;
-
-  // ========== STRONA 1 ==========
-
-  // Nagłówek
-  doc.setFontSize(20);
-  doc.setFont("helvetica", "bold");
-  const titleText = "UMOWA UCZESTNICTWA W WYCIECZCE";
-  const titleWidth = doc.getTextWidth(titleText);
-  doc.text(titleText, (PAGE_WIDTH - titleWidth) / 2, y);
-  y += 12;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(60, 60, 60);
-  const subtitleText = `Kod rezerwacji: ${data.booking_ref}`;
-  const subtitleWidth = doc.getTextWidth(subtitleText);
-  doc.text(subtitleText, (PAGE_WIDTH - subtitleWidth) / 2, y);
-  y += 12;
-
-  // Linia pod nagłówkiem
-  doc.setDrawColor(0, 0, 0);
-  drawThickHorizontalLine(doc, y);
-  y += 18;
-
-  // § 1. Strony umowy
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text("§ 1. Strony umowy", MARGIN_LEFT, y);
-  y += 12;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("1. Organizator:", MARGIN_LEFT, y);
-  y += 8;
-
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  y = addText(doc, ORGANIZER_DATA.name, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  y = addText(doc, `Adres: ${ORGANIZER_DATA.address}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  y = addText(doc, `NIP: ${ORGANIZER_DATA.nip}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  y += 10;
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("2. Klient:", MARGIN_LEFT, y);
-  y += 8;
-
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  y = addText(doc, clientName, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  if (data.address) {
-    y = addText(doc, `Adres: ${clientAddress}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  }
-  y = addText(doc, `E-mail: ${data.contact_email}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  if (data.contact_phone) {
-    y = addText(doc, `Telefon: ${data.contact_phone}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-  }
-  y += 10;
-
-  if (hasCompany) {
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("3. Firma klienta:", MARGIN_LEFT, y);
-    y += 8;
-
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(30, 30, 30);
-    if (data.company_name) {
-      y = addText(doc, `Nazwa: ${data.company_name}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-    }
-    if (data.company_nip) {
-      y = addText(doc, `NIP: ${data.company_nip}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-    }
-    if (data.company_address) {
-      const companyAddr = `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`;
-      y = addText(doc, `Adres: ${companyAddr}`, MARGIN_LEFT + 5, y, { fontSize: 11 });
-    }
-    y += 10;
-  }
-
-  // § 2. Przedmiot umowy
-  y += 8;
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("§ 2. Przedmiot umowy", MARGIN_LEFT, y);
-  y += 10;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  const subjectText =
-    "Organizator zobowiązuje się do zorganizowania i przeprowadzenia wycieczki, a Klient zobowiązuje się do uiszczenia należnej opłaty za uczestnictwo w wycieczce.";
-  y = addText(doc, subjectText, MARGIN_LEFT, y, { fontSize: 11, maxWidth: CONTENT_WIDTH });
-  y += 12;
-
-  // Szczegóły wycieczki - w ramce
-  const detailsBoxY = y;
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.5);
-  doc.setFillColor(250, 250, 250);
-  doc.roundedRect(MARGIN_LEFT, y - 5, CONTENT_WIDTH, 50, 3, 3, "FD");
   
-  const labelWidth = 55;
-  const valueX = MARGIN_LEFT + labelWidth + 5;
-  y += 3;
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Nazwa wycieczki:", MARGIN_LEFT + 5, y);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  y = addText(doc, data.trip.title, valueX, y, { fontSize: 11, maxWidth: CONTENT_WIDTH - labelWidth - 10 });
-  y += 7;
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Termin wycieczki:", MARGIN_LEFT + 5, y);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  const dateRange = `${formatDate(data.trip.start_date)} – ${formatDate(data.trip.end_date)}`;
-  doc.text(dateRange, valueX, y);
-  y += 7;
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Cena za osobę:", MARGIN_LEFT + 5, y);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  doc.text(`${price} PLN`, valueX, y);
-  y += 7;
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Liczba uczestników:", MARGIN_LEFT + 5, y);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  doc.text(String(data.participants.length), valueX, y);
-  y += 7;
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Cena całkowita:", MARGIN_LEFT + 5, y);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(16, 163, 74);
-  doc.text(`${totalPrice} PLN`, valueX, y);
-  y += 15;
-
-  // § 3. Uczestnicy wycieczki
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("§ 3. Uczestnicy wycieczki", MARGIN_LEFT, y);
-  y += 12;
-
-  // Tabela uczestników
-  const tableStartY = y;
-  const tableWidth = CONTENT_WIDTH;
-  const colWidths = [18, 75, 42, 55]; // Lp., Imię i nazwisko, PESEL, Dokument
-  const rowHeight = 9;
-  const headerHeight = 12;
-
-  // Nagłówek tabeli
-  let currentX = MARGIN_LEFT;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.setFillColor(240, 240, 240);
-  doc.setDrawColor(180, 180, 180);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(currentX, y - headerHeight + 3, tableWidth, headerHeight, 2, 2, "FD");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Lp.", currentX + colWidths[0] / 2, y, { align: "center" });
-  currentX += colWidths[0];
-  doc.text("Imię i nazwisko", currentX + colWidths[1] / 2, y, { align: "center" });
-  currentX += colWidths[1];
-  doc.text("PESEL", currentX + colWidths[2] / 2, y, { align: "center" });
-  currentX += colWidths[2];
-  doc.text("Dokument", currentX + colWidths[3] / 2, y, { align: "center" });
-  y += headerHeight;
-
-  // Wiersze z danymi
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  doc.setDrawColor(220, 220, 220);
-  doc.setLineWidth(0.3);
-  
-  data.participants.forEach((participant, index) => {
-    if (y + rowHeight > PAGE_HEIGHT - MARGIN_BOTTOM - 30) {
-      // Jeśli brakuje miejsca, przejdź do następnej strony
-      doc.addPage();
-      y = MARGIN_TOP;
-    }
-
-    currentX = MARGIN_LEFT;
-    const rowY = y;
-
-    // Tło wiersza (co drugi wiersz ma inne tło)
-    if (index % 2 === 1) {
-      doc.setFillColor(252, 252, 252);
-      doc.rect(currentX, rowY, tableWidth, rowHeight, "F");
-    }
-
-    // Lp.
-    doc.setTextColor(0, 0, 0);
-    doc.text(String(index + 1), currentX + colWidths[0] / 2, rowY + 6, { align: "center" });
-    currentX += colWidths[0];
-
-    // Linia pionowa między kolumnami
-    doc.setDrawColor(200, 200, 200);
-    doc.line(currentX, rowY, currentX, rowY + rowHeight);
-
-    // Imię i nazwisko
-    doc.setTextColor(30, 30, 30);
-    const fullName = `${participant.first_name} ${participant.last_name}`;
-    const nameLines = doc.splitTextToSize(fullName, colWidths[1] - 6);
-    doc.text(nameLines, currentX + 3, rowY + 6);
-    currentX += colWidths[1];
-
-    // Linia pionowa między kolumnami
-    doc.line(currentX, rowY, currentX, rowY + rowHeight);
-
-    // PESEL
-    doc.text(participant.pesel, currentX + colWidths[2] / 2, rowY + 6, { align: "center" });
-    currentX += colWidths[2];
-
-    // Linia pionowa między kolumnami
-    doc.line(currentX, rowY, currentX, rowY + rowHeight);
-
-    // Dokument
-    const documentText =
-      participant.document_type && participant.document_number
-        ? `${participant.document_type}: ${participant.document_number}`
-        : "-";
-    const docLines = doc.splitTextToSize(documentText, colWidths[3] - 6);
-    doc.text(docLines, currentX + 3, rowY + 6);
-    currentX += colWidths[3];
-
-    // Linia pozioma oddzielająca wiersze
-    doc.setDrawColor(220, 220, 220);
-    doc.line(MARGIN_LEFT, rowY + rowHeight, MARGIN_LEFT + tableWidth, rowY + rowHeight);
-    y += rowHeight;
-  });
-
-  // Zamknij ramkę tabeli
-  const tableTotalHeight = y - tableStartY + headerHeight;
-  doc.setDrawColor(180, 180, 180);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(MARGIN_LEFT, tableStartY - headerHeight + 3, tableWidth, tableTotalHeight, 2, 2, "S");
-
-  // ========== STRONA 2 ==========
-  doc.addPage();
-  y = MARGIN_TOP;
-
-  // § 4. Warunki uczestnictwa
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("§ 4. Warunki uczestnictwa", MARGIN_LEFT, y);
-  y += 12;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  const conditions = [
-    "1. Klient zobowiązuje się do uiszczenia pełnej opłaty za wycieczkę zgodnie z warunkami płatności określonymi przez Organizatora.",
-    "2. Klient potwierdza, że zapoznał się z regulaminem wycieczki i warunkami uczestnictwa oraz akceptuje je w całości.",
-    "3. Klient zobowiązuje się do przestrzegania przepisów bezpieczeństwa oraz regulaminu wycieczki podczas całego trwania imprezy.",
-    "4. Organizator zobowiązuje się do zapewnienia uczestnikom wycieczki odpowiednich warunków zgodnie z programem wycieczki.",
-    "5. Wszelkie zmiany w programie wycieczki mogą być wprowadzone wyłącznie za zgodą obu stron lub w przypadku wystąpienia siły wyższej.",
-  ];
-
-  conditions.forEach((condition, index) => {
-    // Dodaj małe wcięcie dla każdego punktu
-    y = addText(doc, condition, MARGIN_LEFT + 2, y, { fontSize: 11, maxWidth: CONTENT_WIDTH - 2 });
-    y += 8;
-  });
-
-  y += 8;
-
-  // § 5. Postanowienia końcowe
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("§ 5. Postanowienia końcowe", MARGIN_LEFT, y);
-  y += 12;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(30, 30, 30);
-  const finalProvisions = [
-    "1. Umowa została zawarta na podstawie danych podanych przez Klienta podczas rezerwacji. Klient ponosi odpowiedzialność za prawdziwość i aktualność podanych danych.",
-    "2. Klient potwierdza, że wyraził zgodę na przetwarzanie danych osobowych zgodnie z RODO oraz akceptuje regulamin i warunki uczestnictwa w wycieczce.",
-    "3. W sprawach nieuregulowanych w niniejszej umowie zastosowanie mają przepisy Kodeksu Cywilnego oraz przepisy dotyczące imprez turystycznych.",
-    "4. Umowa została sporządzona w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.",
-  ];
-
-  finalProvisions.forEach((provision) => {
-    y = addText(doc, provision, MARGIN_LEFT + 2, y, { fontSize: 11, maxWidth: CONTENT_WIDTH - 2 });
-    y += 8;
-  });
-
-  y += 25;
-
-  // Linia oddzielająca
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.8);
-  drawThickHorizontalLine(doc, y);
-  y += 12;
-
-  // Data wygenerowania
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "italic");
-  doc.setTextColor(100, 100, 100);
-  const generationDate = new Date().toLocaleDateString("pl-PL", {
+  const today = new Date();
+  const contractDate = today.toLocaleDateString("pl-PL", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   });
-  doc.text(`Data wygenerowania umowy: ${generationDate}`, MARGIN_LEFT, y);
-  y += 25;
+  const contractPlace = "Poznan";
+
+  let y = 20;
+  const fullTextWidth = 170;
+  const textWidth = 165;
+
+  // Naglowek
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text("UMOWA O UDZIAL W GRUPOWEJ IMPREZIE TURYSTYCZNEJ", 105, y, { align: "center" });
+  y += 8;
+  
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "italic");
+  doc.text("(zwana dalej \"Umowa\")", 105, y, { align: "center" });
+  y += 10;
+  
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Kod rezerwacji: ${data.booking_ref}`, 105, y, { align: "center" });
+  y += 12;
+
+  // Strony umowy
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const partiesText = `Zawarta w dniu ${contractDate} w ${contractPlace} pomiedzy:`;
+  doc.text(partiesText, 20, y);
+  y += 8;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Biuro Podrozy \"Magia Podrozwania\"", 20, y);
+  y += 6;
+
+  doc.setFont("helvetica", "normal");
+  const orgAddrLines = doc.splitTextToSize(`z siedziba w ${ORGANIZER_DATA.address}`, textWidth);
+  doc.text(orgAddrLines, 25, y);
+  y += orgAddrLines.length * 5;
+  doc.text(`NIP: ${ORGANIZER_DATA.nip}`, 25, y);
+  y += 6;
+  doc.text("zwanym dalej \"Organizatorem\",", 25, y);
+  y += 8;
+
+  doc.text("a", 20, y);
+  y += 6;
+
+  const clientDisplayName = data.company_name || clientName;
+  const clientDisplayAddr = data.company_address 
+    ? `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`
+    : clientAddress;
+  const clientId = data.company_nip || (data.participants[0]?.pesel ? `PESEL: ${data.participants[0].pesel}` : "");
+
+  const clientNameLines = doc.splitTextToSize(clientDisplayName, textWidth);
+  doc.text(clientNameLines, 25, y);
+  y += clientNameLines.length * 5;
+  
+  const clientAddrLines = doc.splitTextToSize(`zamieszkalym/a w ${clientDisplayAddr}`, textWidth);
+  doc.text(clientAddrLines, 25, y);
+  y += clientAddrLines.length * 5;
+  
+  if (clientId) {
+    doc.text(clientId, 25, y);
+    y += 5;
+  }
+  
+  doc.text("zwanym dalej \"Klientem\" (dzialajacym jako organizator/przedstawiciel grupy).", 25, y);
+  y += 8;
+
+  doc.text("Organizator i Klient zwani sa dalej laczenie \"Stronami\".", 20, y);
+  y += 12;
+
+  // § 1. Przedmiot Umowy
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 1. Przedmiot Umowy", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const subject1Text = "1. Przedmiotem Umowy jest organizacja i sprzedaz Klientowi, a przez niego uczestnikom, grupowej imprezy turystycznej, zwanej dalej \"Impreza Turystyczna\", zgodnie z warunkami niniejszej Umowy oraz Programem i Opisem Imprezy Turystycznej stanowiacymi Zalacznik nr 1 do Umowy.";
+  const subject1Lines = doc.splitTextToSize(subject1Text, fullTextWidth);
+  doc.text(subject1Lines, 20, y);
+  y += subject1Lines.length * 5 + 5;
+
+  doc.text("2. Impreza Turystyczna to:", 20, y);
+  y += 6;
+
+  doc.text("o Nazwa Imprezy Turystycznej: " + data.trip.title, 25, y);
+  y += 6;
+
+  const dateRange = `${formatDate(data.trip.start_date)} – ${formatDate(data.trip.end_date)}`;
+  doc.text("o Termin rozpoczecia i zakonczenia: " + dateRange, 25, y);
+  y += 6;
+
+  doc.text("o Liczba uczestnikow grupy: " + String(data.participants.length), 25, y);
+  y += 6;
+
+  doc.text("o Uslugi wchodzace w sklad Imprezy: przelot/przejazd, zakwaterowanie, wyzywienie, ubezpieczenie, opieka pilota/przewodnika - szczegolowy opis w Zalaczniku nr 1.", 25, y);
+  y += 12;
+
+  // § 2. Cena i Warunki Platnosci
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 2. Cena i Warunki Platnosci", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.text(`1. Calkowita cena Imprezy Turystycznej wynosi: ${totalPrice} PLN.`, 20, y);
+  y += 6;
+
+  doc.text("2. Cena obejmuje wszystkie uslugi wyszczegolnione w Zalaczniku nr 1.", 20, y);
+  y += 6;
+
+  doc.text("3. Platnosc za Impreze Turystyczna odbywa sie w nastepujacych ratach:", 20, y);
+  y += 6;
+
+  const depositAmount = totalPrice !== "-" ? ((parseFloat(totalPrice) * 0.3).toFixed(2)) : "-";
+  const finalAmount = totalPrice !== "-" ? ((parseFloat(totalPrice) * 0.7).toFixed(2)) : "-";
+  
+  doc.text(`o Rata I (zaliczka): ${depositAmount} PLN platna w terminie 7 dni od daty podpisania Umowy.`, 25, y);
+  y += 6;
+
+  const finalPaymentDate = data.trip.start_date 
+    ? new Date(new Date(data.trip.start_date).getTime() - 14 * 24 * 60 * 60 * 1000).toLocaleDateString("pl-PL", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : "-";
+  doc.text(`o Rata II (doplata): Pozostala kwota, tj. ${finalAmount} PLN, platna najpozniej do dnia ${finalPaymentDate}.`, 25, y);
+  y += 6;
+
+  doc.text("4. Platnosci nalezy dokonywac przelewem na rachunek bankowy Organizatora.", 20, y);
+  y += 6;
+
+  doc.text("5. Organizator zastrzega sobie prawo do podwyzszenia ceny Imprezy Turystycznej wylacznie w przypadkach okreslonych w ustawie z dnia 24 listopada 2017 r. o imprezach turystycznych i powiazanych uslugach turystycznych.", 20, y);
+  y += 12;
+
+  // § 3. Obowiazki i Odpowiedzialnosc Organizatora
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+  
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 3. Obowiazki i Odpowiedzialnosc Organizatora", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const organizerObligations = [
+    "1. Organizator zobowiazuje sie do zrealizowania Imprezy Turystycznej zgodnie z Umowa i Zalacznikiem nr 1 z nalezita starannoscia.",
+    "2. Organizator ma obowiazek zapewnic Klientowi i uczestnikom grupy ubezpieczenie turystyczne na czas trwania Imprezy Turystycznej (OC, NNW, koszty leczenia, assistance).",
+    "3. Organizator ponosi odpowiedzialnosc za niewykonanie lub nienalezyte wykonanie uslug turystycznych wchodzacych w sklad Imprezy Turystycznej, z zastrzezeniem wyjatkow przewidzianych w ustawie.",
+  ];
+
+  organizerObligations.forEach((text) => {
+    const lines = doc.splitTextToSize(text, fullTextWidth);
+    doc.text(lines, 20, y);
+    y += lines.length * 5 + 3;
+  });
+
+  y += 5;
+
+  // § 4. Obowiazki i Odpowiedzialnosc Klienta
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 4. Obowiazki i Odpowiedzialnosc Klienta", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const clientObligations = [
+    "1. Klient zobowiazuje sie do dokonania platnosci w terminach i wysokosciach okreslonych w § 2.",
+    "2. Klient ponosi odpowiedzialnosc za terminowe dostarczenie Organizatorowi kompletnej listy uczestnikow oraz wszystkich niezbednych danych i dokumentow (np. paszporty, wizy, dane do ubezpieczenia) wymaganych do realizacji Imprezy Turystycznej.",
+    "3. Klient zobowiazuje sie do zapoznania uczestnikow grupy z Programem Imprezy, Warunkami Uczestnictwa oraz wszelkimi instrukcjami przekazanymi przez Organizatora.",
+  ];
+
+  clientObligations.forEach((text) => {
+    const lines = doc.splitTextToSize(text, fullTextWidth);
+    doc.text(lines, 20, y);
+    y += lines.length * 5 + 3;
+  });
+
+  y += 5;
+
+  // § 5. Odstapienie od Umowy i Anulowanie
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 5. Odstapienie od Umowy i Anulowanie", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const cancellationText1 = "1. Klient moze odstapic od Umowy w kazdym czasie przed rozpoczeciem Imprezy Turystycznej. Odstapienie musi nastapic w formie pisemnej.";
+  const cancellationLines1 = doc.splitTextToSize(cancellationText1, fullTextWidth);
+  doc.text(cancellationLines1, 20, y);
+  y += cancellationLines1.length * 5 + 3;
+
+  doc.text("2. W przypadku odstapienia od Umowy przez Klienta, Organizator ma prawo do potracenia oplaty za odstapienie (koszty rezygnacji) w nastepujacej wysokosci:", 20, y);
+  y += 6;
+
+  doc.text("o 30% ceny jesli odstapienie nastapilo wiecej niz 30 dni przed rozpoczeciem Imprezy.", 25, y);
+  y += 5;
+  doc.text("o 50% ceny jesli odstapienie nastapilo od 14 do 30 dni przed rozpoczeciem Imprezy.", 25, y);
+  y += 5;
+  doc.text("o 100% ceny jesli odstapienie nastapilo w terminie krotszym niz 14 dni przed rozpoczeciem Imprezy.", 25, y);
+  y += 6;
+
+  const cancellationText3 = "3. Organizator moze rozwiazac Umowe i zwrocic Klientowi pelna wplate, jesli minimalna liczba uczestnikow grupy nie zostanie osiagnieta. Termin powiadomienia Klienta to najpozniej 14 dni przed rozpoczeciem Imprezy.";
+  const cancellationLines3 = doc.splitTextToSize(cancellationText3, fullTextWidth);
+  doc.text(cancellationLines3, 20, y);
+  y += cancellationLines3.length * 5 + 5;
+
+  // § 6. Reklamacje
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 6. Reklamacje", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const complaints = [
+    "1. Wszelkie usterki lub niezgodnosci w trakcie trwania Imprezy Turystycznej Klient jest zobowiazany zglosic niezwlocznie pilotowi, przewodnikowi lub Organizatorowi w celu ich usuniecia.",
+    "2. Reklamacje dotyczace nienalezytgo wykonania Umowy nalezy skladac Organizatorowi na pismie, nie pozniej niz 14 dni od daty zakonczenia Imprezy Turystycznej.",
+  ];
+
+  complaints.forEach((text) => {
+    const lines = doc.splitTextToSize(text, fullTextWidth);
+    doc.text(lines, 20, y);
+    y += lines.length * 5 + 3;
+  });
+
+  y += 5;
+
+  // § 7. Postanowienia Koncowe
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 7. Postanowienia Koncowe", 20, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const finalProvisions = [
+    "1. W sprawach nieuregulowanych niniejsza Umowa maja zastosowanie przepisy Kodeksu Cywilnego oraz Ustawy z dnia 24 listopada 2017 r. o imprezach turystycznych i powiazanych uslugach turystycznych.",
+    "2. Wszelkie zmiany niniejszej Umowy wymagaja formy pisemnej pod rygorem niewaznosci.",
+    "3. Ewentualne spory wynikle z realizacji niniejszej Umowy rozstrzygane beda przez sad wlasciwy dla siedziby Organizatora.",
+    "4. Umowe sporzadzono w dwoch jednobrzmiacych egzemplarzach, po jednym dla kazdej ze Stron.",
+  ];
+
+  finalProvisions.forEach((provision) => {
+    const lines = doc.splitTextToSize(provision, fullTextWidth);
+    doc.text(lines, 20, y);
+    y += lines.length * 5 + 3;
+  });
+
+  y += 15;
 
   // Podpisy
-  const signatureBoxWidth = (CONTENT_WIDTH - 40) / 2;
-  const leftSignatureX = MARGIN_LEFT;
-  const rightSignatureX = MARGIN_LEFT + signatureBoxWidth + 40;
-  const signatureStartY = y;
-
-  // Podpis Organizatora
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Podpis Organizatora", leftSignatureX, y);
-  y += 55;
-
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.5);
-  drawHorizontalLine(doc, y, signatureBoxWidth);
+  doc.text("Organizator:", 20, y);
+  doc.text("Klient (Organizator Grupy):", 120, y);
   y += 6;
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(60, 60, 60);
-  const organizerLines = doc.splitTextToSize(ORGANIZER_DATA.name, signatureBoxWidth - 5);
-  doc.text(organizerLines, leftSignatureX, y);
+  const organizerNameLines = doc.splitTextToSize(ORGANIZER_DATA.name, 80);
+  doc.text(organizerNameLines, 20, y);
+  const clientSignatureLines = doc.splitTextToSize(clientDisplayName, 80);
+  doc.text(clientSignatureLines, 120, y);
+  y += Math.max(organizerNameLines.length, clientSignatureLines.length) * 5 + 10;
 
-  // Podpis Klienta
-  y = signatureStartY;
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("Podpis Klienta", rightSignatureX, y);
-  y += 55;
+  doc.text("[Podpis Organizatora]", 20, y);
+  doc.text("[Podpis Klienta]", 120, y);
+  y += 20;
 
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.5);
-  drawHorizontalLine(doc, y, signatureBoxWidth);
-  y += 6;
+  // Zalacznik nr 1
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
 
-  doc.setFontSize(9);
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("ZALACZNIK NR 1 - OPIS I PROGRAM IMPREZY TURYSTYCZNEJ", 105, y, { align: "center" });
+  y += 12;
+
+  doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(60, 60, 60);
-  const clientLines = doc.splitTextToSize(clientName, signatureBoxWidth - 5);
-  doc.text(clientLines, rightSignatureX, y);
+  doc.text("Lista uczestnikow:", 20, y);
+  y += 8;
 
-  // Konwertuj do Buffer
+  // Tabela uczestników
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setFillColor(240, 240, 240);
+  doc.rect(20, y - 5, 170, 8, "F");
+  doc.text("Lp.", 25, y);
+  doc.text("Imie i nazwisko", 50, y);
+  doc.text("PESEL", 120, y);
+  doc.text("Dokument", 150, y);
+  y += 10;
+
+  doc.setFont("helvetica", "normal");
+  data.participants.forEach((participant, index) => {
+    if (y > 280) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.text(String(index + 1), 25, y);
+    const nameWidth = 70;
+    const nameLines = doc.splitTextToSize(`${participant.first_name} ${participant.last_name}`, nameWidth);
+    doc.text(nameLines, 50, y);
+    doc.text(participant.pesel, 120, y);
+    const docText = participant.document_type && participant.document_number
+      ? `${participant.document_type}: ${participant.document_number}`
+      : "-";
+    const docWidth = 40;
+    const docLines = doc.splitTextToSize(docText, docWidth);
+    doc.text(docLines, 150, y);
+    y += Math.max(nameLines.length, docLines.length) * 5 + 2;
+  });
+
+  // Generowanie PDF jako ArrayBuffer, następnie konwersja do Buffer
+  // To podejście działa zarówno lokalnie jak i na Vercel
   const arrayBuffer = doc.output("arraybuffer");
+  
+  // Konwersja ArrayBuffer do Buffer - działa poprawnie w środowisku serverless Vercel
   return Buffer.from(arrayBuffer);
 }
 
@@ -522,28 +455,51 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
+    // Generowanie PDF
     const buf = generatePdf(body);
 
-    // Upload do Supabase Storage (agreements/<booking_ref>.pdf)
-    const supabaseAdmin = createAdminClient();
-    const { error: upErr } = await supabaseAdmin.storage
-      .from("agreements")
-      .upload(`${body.booking_ref}.pdf`, buf, { contentType: "application/pdf", upsert: true });
-
-    if (upErr) {
-      // jeśli nie uda się upload, i tak zwróć PDF base64, żeby e-mail mógł pójść
-      const base64 = buf.toString("base64");
-      return NextResponse.json({ base64, filename: `${body.booking_ref}.pdf` });
+    // Walidacja, że Buffer został poprawnie utworzony
+    if (!Buffer.isBuffer(buf)) {
+      throw new Error("Failed to generate PDF buffer");
     }
 
-    // Zapisz URL w bookings (przechowuj ścieżkę, generuj signed URL na żądanie)
-    await supabaseAdmin
+    const supabaseAdmin = createAdminClient();
+    
+    // Próba zapisania PDF do Supabase Storage
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("agreements")
+      .upload(`${body.booking_ref}.pdf`, buf, { 
+        contentType: "application/pdf", 
+        upsert: true 
+      });
+
+    // Jeśli upload się nie powiódł, zwracamy PDF jako base64 (fallback)
+    if (upErr) {
+      console.warn("Failed to upload PDF to storage:", upErr.message);
+      const base64 = buf.toString("base64");
+      return NextResponse.json({ 
+        base64, 
+        filename: `${body.booking_ref}.pdf`,
+        warning: "PDF generated but not saved to storage"
+      });
+    }
+
+    // Aktualizacja rekordu booking z URL do PDF
+    const { error: updateErr } = await supabaseAdmin
       .from("bookings")
       .update({ agreement_pdf_url: `${body.booking_ref}.pdf` })
       .eq("booking_ref", body.booking_ref);
 
+    if (updateErr) {
+      console.warn("Failed to update booking with PDF URL:", updateErr.message);
+    }
+
+    // Zwracamy PDF jako base64
     const base64 = buf.toString("base64");
-    return NextResponse.json({ base64, filename: `${body.booking_ref}.pdf` });
+    return NextResponse.json({ 
+      base64, 
+      filename: `${body.booking_ref}.pdf` 
+    });
   } catch (error) {
     console.error("PDF generation error:", error);
     return NextResponse.json(
