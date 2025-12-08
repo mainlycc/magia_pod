@@ -55,7 +55,6 @@ function PaymentStatusSelectWithRefresh({
   initialStatus: PaymentStatusValue;
   onStatusChange?: (bookingId: string, newStatus: PaymentStatusValue) => void;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState<PaymentStatusValue>(initialStatus);
   const [isPending, startTransition] = useTransition();
 
@@ -83,7 +82,7 @@ function PaymentStatusSelectWithRefresh({
 
           toast.success("Status płatności zaktualizowany");
           onStatusChange?.(bookingId, nextStatus);
-          router.refresh();
+          // Nie odświeżamy całej strony - Realtime subscription zaktualizuje dane automatycznie
         } catch (error) {
           setValue(previous);
           toast.error("Nie udało się zapisać statusu płatności");
@@ -143,29 +142,41 @@ export default function AdminPaymentsPage() {
             old: payload.old,
             timestamp: new Date().toISOString(),
           });
-          // Odśwież dane po zmianie w rezerwacji
-          loadData();
+          // Zaktualizuj lokalny stan zamiast przeładowywać wszystkie dane
+          if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
+            setBookings((prev) =>
+              prev.map((booking) =>
+                booking.id === payload.new.id
+                  ? { ...booking, ...payload.new } as BookingWithTrip
+                  : booking
+              )
+            );
+          } else {
+            // Fallback: odśwież dane tylko jeśli nie możemy zaktualizować lokalnie
+            loadData();
+          }
         }
       )
       .subscribe();
 
-    // Odśwież dane przy powrocie na stronę (focus okna)
+    // Odśwież dane przy powrocie na stronę (focus okna) - tylko jeśli strona była nieaktywna dłużej niż 30 sekund
+    let lastFocusTime = Date.now();
     const handleFocus = () => {
-      loadData();
+      const now = Date.now();
+      // Odśwież tylko jeśli minęło więcej niż 30 sekund od ostatniego focusu
+      if (now - lastFocusTime > 30000) {
+        loadData();
+        lastFocusTime = now;
+      }
     };
     window.addEventListener("focus", handleFocus);
 
-    // Polling jako fallback dla Realtime - odświeżaj dane co 5 sekund
-    // To zapewnia, że nawet jeśli Realtime nie działa, dane będą aktualne
-    const pollingInterval = setInterval(() => {
-      console.log(`[Admin Payments] Polling: odświeżanie danych płatności... (${new Date().toISOString()})`);
-      loadData();
-    }, 5000); // 5 sekund - częstsze odświeżanie dla lepszej aktualności danych
+    // Polling usunięty - Realtime subscription wystarczy do aktualizacji danych
+    // Jeśli Realtime nie działa, użytkownik może ręcznie odświeżyć stronę
 
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener("focus", handleFocus);
-      clearInterval(pollingInterval);
     };
   }, []);
 
@@ -285,16 +296,8 @@ export default function AdminPaymentsPage() {
 
       if (data.success) {
         toast.success(data.message || "Status płatności został zaktualizowany");
-        // Odśwież dane natychmiast po sprawdzeniu statusu
+        // Odśwież dane po sprawdzeniu statusu - Realtime powinien też zaktualizować automatycznie
         await loadData();
-        // Dodatkowo odśwież po krótkim opóźnieniu, aby upewnić się że zmiany są widoczne
-        setTimeout(() => {
-          loadData();
-        }, 500);
-        // Jeszcze jedno odświeżenie po dłuższym opóźnieniu dla pewności
-        setTimeout(() => {
-          loadData();
-        }, 2000);
       } else {
         toast.error(data.message || "Nie udało się sprawdzić statusu płatności");
       }
@@ -485,17 +488,8 @@ export default function AdminPaymentsPage() {
       
       console.log(`[Admin Payments] Checked ${checkedCount} bookings, updated ${updatedCount}`);
       
-      // Odśwież dane po sprawdzeniu wszystkich płatności - z opóźnieniem, żeby dać czas na aktualizację
-      setTimeout(async () => {
-        console.log(`[Admin Payments] Refreshing data after checking all statuses...`);
-        await loadData();
-        
-        // Sprawdź jeszcze raz po odświeżeniu
-        setTimeout(async () => {
-          console.log(`[Admin Payments] Final refresh after checking all statuses...`);
-          await loadData();
-        }, 1000);
-      }, 500);
+      // Odśwież dane po sprawdzeniu wszystkich płatności - Realtime powinien też zaktualizować automatycznie
+      await loadData();
       
       if (updatedCount > 0) {
         toast.success(`Zaktualizowano ${updatedCount} płatności. Odświeżanie danych...`);
