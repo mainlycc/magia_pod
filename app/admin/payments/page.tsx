@@ -169,7 +169,7 @@ export default function AdminPaymentsPage() {
       await loadBookings(null);
     } catch (err) {
       toast.error("Nie udało się wczytać danych");
-      console.error(err);
+      console.error("Error in loadData:", err);
     } finally {
       setLoading(false);
     }
@@ -177,46 +177,36 @@ export default function AdminPaymentsPage() {
 
   const loadBookings = async (tripId: string | null) => {
     try {
-      const supabase = createClient();
-      let query = supabase
-        .from("bookings")
-        .select(
-          `
-          id,
-          booking_ref,
-          contact_email,
-          contact_phone,
-          payment_status,
-          created_at,
-          trip_id,
-          trips:trips!inner(id, title, slug)
-        `,
-        )
-        .order("created_at", { ascending: false });
+      // Użyj API endpointu z admin clientem, który omija RLS
+      const url = tripId 
+        ? `/api/admin/bookings?trip_id=${encodeURIComponent(tripId)}`
+        : `/api/admin/bookings`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store", // Wyłącz cache, aby zawsze pobierać najnowsze dane
+      });
 
-      if (tripId) {
-        query = query.eq("trip_id", tripId);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || "fetch_failed");
       }
 
-      const { data: bookingsData, error } = await query;
-
-      if (error) {
-        throw error;
-      }
+      const bookingsData: BookingWithTrip[] = await response.json();
 
       if (bookingsData) {
-        // Mapuj dane, aby przekształcić tablicę trips w pojedynczy obiekt
-        const mappedBookings: BookingWithTrip[] = bookingsData.map((booking: any) => ({
-          ...booking,
-          trips: Array.isArray(booking.trips) && booking.trips.length > 0 
-            ? booking.trips[0] 
-            : null,
-        }));
-        setBookings(mappedBookings);
+        console.log(`[Admin Payments] Loaded ${bookingsData.length} bookings`);
+        setBookings(bookingsData);
+      } else {
+        console.log("[Admin Payments] No bookings data received");
+        setBookings([]);
       }
     } catch (err) {
       toast.error("Nie udało się wczytać płatności");
-      console.error(err);
+      console.error("[Admin Payments] Error loading bookings:", err);
     }
   };
 
