@@ -1,15 +1,13 @@
 "use client";
 
 import { use, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { CheckCircle2, Upload, CreditCard, Loader2 } from "lucide-react";
+import { CheckCircle2, Upload, Loader2 } from "lucide-react";
 
 type BookingData = {
   booking: {
@@ -42,12 +40,10 @@ type BookingData = {
 
 export default function BookingPage({ params }: { params: Promise<{ token: string }> | { token: string } }) {
   const { token } = use(params instanceof Promise ? params : Promise.resolve(params));
-  const router = useRouter();
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploadingAgreement, setUploadingAgreement] = useState(false);
-  const [initiatingPayment, setInitiatingPayment] = useState(false);
   const [agreementUploaded, setAgreementUploaded] = useState(false);
 
   useEffect(() => {
@@ -60,13 +56,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
         }
         const data = await response.json();
         setBookingData(data);
-        
-        // Jeśli płatność nie jest opłacona, automatycznie inicjuj płatność Paynow
-        const booking = data.booking;
-        if (booking && booking.payment_status !== "paid" && booking.payment_status !== "overpaid") {
-          // Automatycznie przekieruj do płatności Paynow
-          handlePaynowPaymentAuto(booking.booking_ref);
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Błąd podczas ładowania danych");
       } finally {
@@ -76,36 +65,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
     fetchBooking();
   }, [token]);
-
-  const handlePaynowPaymentAuto = async (bookingRef: string) => {
-    try {
-      const response = await fetch("/api/payments/paynow/init", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          booking_ref: bookingRef,
-        }),
-      });
-
-      if (!response.ok) {
-        // Jeśli nie uda się zainicjować płatności, nie pokazuj błędu - użytkownik może kliknąć przycisk
-        console.warn("Auto-init payment failed, user can click button manually");
-        return;
-      }
-
-      const data = await response.json();
-      
-      if (data.redirectUrl) {
-        // Przekieruj użytkownika do Paynow
-        window.location.href = data.redirectUrl;
-      }
-    } catch (err) {
-      // Ignoruj błąd - użytkownik może kliknąć przycisk płatności ręcznie
-      console.warn("Auto-init payment error:", err);
-    }
-  };
 
   const handleAgreementUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -137,41 +96,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       toast.error(err instanceof Error ? err.message : "Błąd podczas przesyłania umowy");
     } finally {
       setUploadingAgreement(false);
-    }
-  };
-
-  const handlePaynowPayment = async () => {
-    if (!bookingData) return;
-
-    setInitiatingPayment(true);
-
-    try {
-      const response = await fetch("/api/payments/paynow/init", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          booking_ref: bookingData.booking.booking_ref,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || "Nie udało się zainicjować płatności");
-      }
-
-      const data = await response.json();
-      
-      if (data.redirectUrl) {
-        // Przekieruj użytkownika do Paynow
-        window.location.href = data.redirectUrl;
-      } else {
-        throw new Error("Brak URL przekierowania");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Błąd podczas inicjalizacji płatności");
-      setInitiatingPayment(false);
     }
   };
 
@@ -298,72 +222,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
         </CardContent>
       </Card>
 
-      {/* Płatność Paynow */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Płatność</CardTitle>
-          <CardDescription>Dokonaj płatności za rezerwację przez Paynow</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {booking.payment_status === "paid" || booking.payment_status === "overpaid" ? (
-            <Alert>
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertTitle>Płatność zakończona</AlertTitle>
-              <AlertDescription>
-                Płatność za rezerwację została pomyślnie przetworzona.
-                {booking.payment_status === "overpaid" && (
-                  <span className="block mt-1 text-sm">
-                    Uwaga: Wykryto nadpłatę. Skontaktuj się z nami w celu zwrotu nadpłaty.
-                  </span>
-                )}
-              </AlertDescription>
-            </Alert>
-          ) : booking.payment_status === "partial" ? (
-            <Alert>
-              <AlertTitle>Płatność częściowa</AlertTitle>
-              <AlertDescription>
-                Rezerwacja została częściowo opłacona. Możesz dokonać dopłaty.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="space-y-4">
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Kwota do zapłaty</p>
-                    <p className="text-2xl font-bold text-primary">
-                      {(totalPrice / 100).toFixed(2)} PLN
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                onClick={handlePaynowPayment}
-                className="w-full"
-                disabled={initiatingPayment}
-                size="lg"
-              >
-                {initiatingPayment ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Przekierowywanie do Paynow...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Zapłać przez Paynow
-                  </>
-                )}
-              </Button>
-
-              <p className="text-xs text-center text-muted-foreground">
-                Zostaniesz przekierowany do bezpiecznej strony płatności Paynow
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

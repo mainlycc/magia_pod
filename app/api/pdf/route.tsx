@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
-import { renderToStream } from "@react-pdf/renderer";
-import React from "react";
+import { jsPDF } from "jspdf";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 type PdfPayload = {
   booking_ref: string;
@@ -36,63 +32,6 @@ type PdfPayload = {
   }>;
 };
 
-// Rejestracja czcionki Noto Sans - obsługuje polskie znaki diakrytyczne
-let fontRegistered = false;
-let useCustomFont = false;
-
-async function registerFont() {
-  if (fontRegistered) return useCustomFont;
-  
-  try {
-    // Ścieżka do folderu z czcionkami
-    const fontPath = join(process.cwd(), "public", "fonts");
-    const normalFontPath = join(fontPath, "NotoSans-Regular.ttf");
-    const boldFontPath = join(fontPath, "NotoSans-Bold.ttf");
-    
-    // Sprawdź czy pliki istnieją
-    try {
-      // Wczytaj pliki jako Buffer i przekonwertuj na base64
-      const normalFont = readFileSync(normalFontPath);
-      const boldFont = readFileSync(boldFontPath);
-      
-      const normalBase64 = normalFont.toString("base64");
-      const boldBase64 = boldFont.toString("base64");
-      
-      // Użyj base64 jako data URL - react-pdf powinien to obsłużyć
-      Font.register({
-        family: "NotoSans",
-        fonts: [
-          {
-            src: `data:font/ttf;base64,${normalBase64}`,
-            fontWeight: "normal",
-          },
-          {
-            src: `data:font/ttf;base64,${boldBase64}`,
-            fontWeight: "bold",
-          },
-        ],
-      });
-      
-      useCustomFont = true;
-      fontRegistered = true;
-      console.log("Font Noto Sans registered successfully from local files");
-      return true;
-    } catch (fileError) {
-      // Jeśli lokalne pliki nie istnieją, użyj Helvetica jako fallback
-      console.warn("Local font files not found. Please download Noto Sans fonts to public/fonts/ folder.");
-      console.warn("Falling back to Helvetica (may not support all Polish characters).");
-      useCustomFont = false;
-      fontRegistered = true; // Oznacz jako zarejestrowane, żeby nie próbować ponownie
-      return false;
-    }
-  } catch (error) {
-    console.error("Font registration error, falling back to Helvetica:", error);
-    useCustomFont = false;
-    fontRegistered = true;
-    return false;
-  }
-}
-
 // Dane firmy organizującej (stałe)
 const ORGANIZER_DATA = {
   name: "Magia Podróżowania GRUPA DE-PL",
@@ -100,131 +39,16 @@ const ORGANIZER_DATA = {
   nip: "6981710393",
 };
 
-// Funkcja tworząca StyleSheet z odpowiednią czcionką
-function createStyles(fontFamily: string) {
-  return StyleSheet.create({
-    page: {
-      padding: 50,
-      fontSize: 11,
-      fontFamily: fontFamily,
-      lineHeight: 1.6,
-      color: "#000000",
-    },
-  header: {
-    marginBottom: 30,
-    textAlign: "center",
-    paddingBottom: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: "#000000",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  subtitle: {
-    fontSize: 12,
-    marginBottom: 0,
-    marginTop: 8,
-  },
-  section: {
-    marginBottom: 20,
-    marginTop: 15,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: "bold",
-    marginBottom: 12,
-    marginTop: 8,
-    textDecoration: "underline",
-  },
-  paragraph: {
-    marginBottom: 10,
-    textAlign: "justify",
-    lineHeight: 1.6,
-  },
-  row: {
-    flexDirection: "row",
-    marginBottom: 8,
-    paddingVertical: 2,
-  },
-  label: {
-    fontWeight: "bold",
-    width: 140,
-    minWidth: 140,
-  },
-  value: {
-    flex: 1,
-  },
-  table: {
-    marginTop: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#000000",
-  },
-  tableRow: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#cccccc",
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    minHeight: 30,
-  },
-  tableHeader: {
-    backgroundColor: "#e8e8e8",
-    fontWeight: "bold",
-    fontSize: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: "#000000",
-  },
-  tableCell: {
-    flex: 2,
-    fontSize: 10,
-    paddingHorizontal: 4,
-  },
-  tableCellSmall: {
-    flex: 1,
-    fontSize: 10,
-    paddingHorizontal: 4,
-    minWidth: 50,
-  },
-  footer: {
-    marginTop: 40,
-    paddingTop: 20,
-    borderTopWidth: 2,
-    borderTopColor: "#000000",
-  },
-  signatureRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 50,
-    gap: 30,
-  },
-  signatureBox: {
-    width: "45%",
-  },
-  signatureLine: {
-    borderTopWidth: 1,
-    borderTopColor: "#000000",
-    marginTop: 50,
-    paddingTop: 5,
-    minHeight: 50,
-  },
-  small: {
-    fontSize: 9,
-    color: "#333333",
-  },
-  bold: {
-    fontWeight: "bold",
-  },
-  });
-}
+// Stałe dla formatowania
+const PAGE_WIDTH = 210; // A4 width in mm
+const PAGE_HEIGHT = 297; // A4 height in mm
+const MARGIN_LEFT = 20;
+const MARGIN_RIGHT = 20;
+const MARGIN_TOP = 20;
+const MARGIN_BOTTOM = 20;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 
-// Domyślne style z Helvetica (fallback)
-const defaultStyles = createStyles("Helvetica");
-
+// Funkcja formatowania daty
 function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "-";
   try {
@@ -239,7 +63,62 @@ function formatDate(dateString: string | null | undefined): string {
   }
 }
 
-function AgreementDoc({ data, styles }: { data: PdfPayload; styles: ReturnType<typeof createStyles> }) {
+// Funkcja rysująca linię poziomą
+function drawHorizontalLine(doc: jsPDF, y: number, width: number = CONTENT_WIDTH): void {
+  doc.setLineWidth(0.5);
+  doc.line(MARGIN_LEFT, y, MARGIN_LEFT + width, y);
+}
+
+// Funkcja rysująca linię poziomą grubą
+function drawThickHorizontalLine(doc: jsPDF, y: number, width: number = CONTENT_WIDTH): void {
+  doc.setLineWidth(1);
+  doc.line(MARGIN_LEFT, y, MARGIN_LEFT + width, y);
+}
+
+// Funkcja dodająca tekst z automatycznym łamaniem
+function addText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  options: {
+    fontSize?: number;
+    fontStyle?: "normal" | "bold";
+    maxWidth?: number;
+    align?: "left" | "center" | "right" | "justify";
+  } = {}
+): number {
+  const {
+    fontSize = 11,
+    fontStyle = "normal",
+    maxWidth = CONTENT_WIDTH,
+    align = "left",
+  } = options;
+
+  doc.setFontSize(fontSize);
+  doc.setFont("helvetica", fontStyle);
+
+  const lines = doc.splitTextToSize(text, maxWidth);
+  const lineHeight = fontSize * 1.2;
+  let currentY = y;
+
+  lines.forEach((line: string) => {
+    doc.text(line, x, currentY, { align });
+    currentY += lineHeight;
+  });
+
+  return currentY;
+}
+
+// Funkcja generująca PDF
+function generatePdf(data: PdfPayload): Buffer {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  // Przygotuj dane
   const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
   const totalPrice = data.trip.price_cents
     ? ((data.trip.price_cents * data.participants.length) / 100).toFixed(2)
@@ -252,228 +131,311 @@ function AgreementDoc({ data, styles }: { data: PdfPayload; styles: ReturnType<t
     : "-";
   const hasCompany = !!(data.company_name || data.company_nip);
 
-  return (
-    <Document>
-      <Page size="A4" style={styles.page}>
-        {/* Nagłówek */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Umowa uczestnictwa w wycieczce</Text>
-          <Text style={styles.subtitle}>Kod rezerwacji: {data.booking_ref}</Text>
-        </View>
+  let y = MARGIN_TOP;
 
-        {/* Strony umowy */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>§ 1. Strony umowy</Text>
-          
-          <View style={styles.paragraph}>
-            <Text style={styles.bold}>1. Organizator:</Text>
-            <Text>{"\n"}   {ORGANIZER_DATA.name}</Text>
-            <Text>{"\n"}   Adres: {ORGANIZER_DATA.address}</Text>
-            <Text>{"\n"}   NIP: {ORGANIZER_DATA.nip}</Text>
-          </View>
+  // ========== STRONA 1 ==========
 
-          <View style={styles.paragraph}>
-            <Text style={styles.bold}>2. Klient:</Text>
-            <Text>{"\n"}   {clientName}</Text>
-            {data.address && (
-              <>
-                <Text>{"\n"}   Adres: {clientAddress}</Text>
-              </>
-            )}
-            <Text>{"\n"}   E-mail: {data.contact_email}</Text>
-            {data.contact_phone && <Text>{"\n"}   Telefon: {data.contact_phone}</Text>}
-          </View>
+  // Nagłówek
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  const titleText = "UMOWA UCZESTNICTWA W WYCIECZCE";
+  const titleWidth = doc.getTextWidth(titleText);
+  doc.text(titleText, (PAGE_WIDTH - titleWidth) / 2, y);
+  y += 10;
 
-          {hasCompany && (
-            <View style={styles.paragraph}>
-              <Text style={styles.bold}>3. Firma klienta:</Text>
-              {data.company_name && <Text>{"\n"}   Nazwa: {data.company_name}</Text>}
-              {data.company_nip && <Text>{"\n"}   NIP: {data.company_nip}</Text>}
-              {data.company_address && (
-                <Text>
-                  {"\n"}   Adres: {data.company_address.street}, {data.company_address.zip}{" "}
-                  {data.company_address.city}
-                </Text>
-              )}
-            </View>
-          )}
-        </View>
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  const subtitleText = `Kod rezerwacji: ${data.booking_ref}`;
+  const subtitleWidth = doc.getTextWidth(subtitleText);
+  doc.text(subtitleText, (PAGE_WIDTH - subtitleWidth) / 2, y);
+  y += 10;
 
-        {/* Przedmiot umowy */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>§ 2. Przedmiot umowy</Text>
-          <View style={styles.paragraph}>
-            <Text>
-              Organizator zobowiązuje się do zorganizowania i przeprowadzenia wycieczki, a Klient
-              zobowiązuje się do uiszczenia należnej opłaty za uczestnictwo w wycieczce.
-            </Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Nazwa wycieczki:</Text>
-            <Text style={styles.value}>{data.trip.title}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Termin wycieczki:</Text>
-            <Text style={styles.value}>
-              {formatDate(data.trip.start_date)} – {formatDate(data.trip.end_date)}
-            </Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Cena za osobę:</Text>
-            <Text style={styles.value}>{price} PLN</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Liczba uczestników:</Text>
-            <Text style={styles.value}>{data.participants.length}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Cena całkowita:</Text>
-            <Text style={styles.value}>
-              <Text style={styles.bold}>{totalPrice} PLN</Text>
-            </Text>
-          </View>
-        </View>
+  // Linia pod nagłówkiem
+  drawThickHorizontalLine(doc, y);
+  y += 15;
 
-        {/* Uczestnicy */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>§ 3. Uczestnicy wycieczki</Text>
-          <View style={styles.table}>
-            <View style={[styles.tableRow, styles.tableHeader]}>
-              <Text style={[styles.tableCellSmall, styles.bold, { textAlign: "center" }]}>Lp.</Text>
-              <Text style={[styles.tableCell, styles.bold]}>Imię i nazwisko</Text>
-              <Text style={[styles.tableCellSmall, styles.bold, { textAlign: "center" }]}>PESEL</Text>
-              <Text style={[styles.tableCellSmall, styles.bold]}>Dokument</Text>
-            </View>
-            {data.participants.map((p, i) => (
-              <View key={i} style={styles.tableRow}>
-                <Text style={[styles.tableCellSmall, { textAlign: "center" }]}>{i + 1}</Text>
-                <Text style={styles.tableCell}>
-                  {p.first_name} {p.last_name}
-                </Text>
-                <Text style={[styles.tableCellSmall, { textAlign: "center" }]}>{p.pesel}</Text>
-                <Text style={styles.tableCellSmall}>
-                  {p.document_type && p.document_number
-                    ? `${p.document_type}: ${p.document_number}`
-                    : "-"}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Page>
+  // § 1. Strony umowy
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 1. Strony umowy", MARGIN_LEFT, y);
+  y += 8;
 
-      {/* Druga strona - warunki i podpisy */}
-      <Page size="A4" style={styles.page}>
-        {/* Warunki uczestnictwa */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>§ 4. Warunki uczestnictwa</Text>
-          <View style={styles.paragraph}>
-            <Text>
-              1. Klient zobowiązuje się do uiszczenia pełnej opłaty za wycieczkę zgodnie z
-              warunkami płatności określonymi przez Organizatora.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              2. Klient potwierdza, że zapoznał się z regulaminem wycieczki i warunkami
-              uczestnictwa oraz akceptuje je w całości.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              3. Klient zobowiązuje się do przestrzegania przepisów bezpieczeństwa oraz
-              regulaminu wycieczki podczas całego trwania imprezy.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              4. Organizator zobowiązuje się do zapewnienia uczestnikom wycieczki odpowiednich
-              warunków zgodnie z programem wycieczki.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              5. Wszelkie zmiany w programie wycieczki mogą być wprowadzone wyłącznie za
-              zgodą obu stron lub w przypadku wystąpienia siły wyższej.
-            </Text>
-          </View>
-        </View>
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("1. Organizator:", MARGIN_LEFT, y);
+  y += 6;
 
-        {/* Postanowienia końcowe */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>§ 5. Postanowienia końcowe</Text>
-          <View style={styles.paragraph}>
-            <Text>
-              1. Umowa została zawarta na podstawie danych podanych przez Klienta podczas
-              rezerwacji. Klient ponosi odpowiedzialność za prawdziwość i aktualność podanych danych.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              2. Klient potwierdza, że wyraził zgodę na przetwarzanie danych osobowych zgodnie
-              z RODO oraz akceptuje regulamin i warunki uczestnictwa w wycieczce.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              3. W sprawach nieuregulowanych w niniejszej umowie zastosowanie mają przepisy
-              Kodeksu Cywilnego oraz przepisy dotyczące imprez turystycznych.
-            </Text>
-          </View>
-          <View style={styles.paragraph}>
-            <Text>
-              4. Umowa została sporządzona w dwóch jednobrzmiących egzemplarzach, po jednym dla
-              każdej ze stron.
-            </Text>
-          </View>
-        </View>
+  doc.setFont("helvetica", "normal");
+  y = addText(doc, `   ${ORGANIZER_DATA.name}`, MARGIN_LEFT, y, { fontSize: 11 });
+  y = addText(doc, `   Adres: ${ORGANIZER_DATA.address}`, MARGIN_LEFT, y, { fontSize: 11 });
+  y = addText(doc, `   NIP: ${ORGANIZER_DATA.nip}`, MARGIN_LEFT, y, { fontSize: 11 });
+  y += 8;
 
-        {/* Podpisy */}
-        <View style={styles.footer}>
-          <View style={styles.paragraph}>
-            <Text style={styles.small}>
-              Data wygenerowania umowy: {new Date().toLocaleDateString("pl-PL", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })}
-            </Text>
-          </View>
-          <View style={styles.signatureRow}>
-            <View style={styles.signatureBox}>
-              <Text style={[styles.bold, { marginBottom: 5 }]}>Podpis Organizatora</Text>
-              <View style={styles.signatureLine}>
-                <Text style={styles.small}>{ORGANIZER_DATA.name}</Text>
-              </View>
-            </View>
-            <View style={styles.signatureBox}>
-              <Text style={[styles.bold, { marginBottom: 5 }]}>Podpis Klienta</Text>
-              <View style={styles.signatureLine}>
-                <Text style={styles.small}>{clientName}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </Page>
-    </Document>
-  );
-}
+  doc.setFont("helvetica", "bold");
+  doc.text("2. Klient:", MARGIN_LEFT, y);
+  y += 6;
 
-async function pdfBufferFromData(data: PdfPayload): Promise<Buffer> {
-  // Zarejestruj czcionkę przed renderowaniem
-  const fontAvailable = await registerFont();
-  
-  // Użyj odpowiedniego StyleSheet w zależności od dostępności czcionki
-  const styles = fontAvailable ? createStyles("NotoSans") : defaultStyles;
-  
-  const stream = await renderToStream(<AgreementDoc data={data} styles={styles} />);
-  const chunks: Uint8Array[] = [];
-  await new Promise<void>((resolve, reject) => {
-    stream.on("data", (chunk) => chunks.push(chunk));
-    stream.on("end", () => resolve());
-    stream.on("error", (err) => reject(err));
+  doc.setFont("helvetica", "normal");
+  y = addText(doc, `   ${clientName}`, MARGIN_LEFT, y, { fontSize: 11 });
+  if (data.address) {
+    y = addText(doc, `   Adres: ${clientAddress}`, MARGIN_LEFT, y, { fontSize: 11 });
+  }
+  y = addText(doc, `   E-mail: ${data.contact_email}`, MARGIN_LEFT, y, { fontSize: 11 });
+  if (data.contact_phone) {
+    y = addText(doc, `   Telefon: ${data.contact_phone}`, MARGIN_LEFT, y, { fontSize: 11 });
+  }
+  y += 8;
+
+  if (hasCompany) {
+    doc.setFont("helvetica", "bold");
+    doc.text("3. Firma klienta:", MARGIN_LEFT, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+    if (data.company_name) {
+      y = addText(doc, `   Nazwa: ${data.company_name}`, MARGIN_LEFT, y, { fontSize: 11 });
+    }
+    if (data.company_nip) {
+      y = addText(doc, `   NIP: ${data.company_nip}`, MARGIN_LEFT, y, { fontSize: 11 });
+    }
+    if (data.company_address) {
+      const companyAddr = `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`;
+      y = addText(doc, `   Adres: ${companyAddr}`, MARGIN_LEFT, y, { fontSize: 11 });
+    }
+    y += 8;
+  }
+
+  // § 2. Przedmiot umowy
+  y += 5;
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 2. Przedmiot umowy", MARGIN_LEFT, y);
+  y += 8;
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  const subjectText =
+    "Organizator zobowiązuje się do zorganizowania i przeprowadzenia wycieczki, a Klient zobowiązuje się do uiszczenia należnej opłaty za uczestnictwo w wycieczce.";
+  y = addText(doc, subjectText, MARGIN_LEFT, y, { fontSize: 11, maxWidth: CONTENT_WIDTH });
+  y += 8;
+
+  // Szczegóły wycieczki
+  const labelWidth = 50;
+  const valueX = MARGIN_LEFT + labelWidth;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Nazwa wycieczki:", MARGIN_LEFT, y);
+  doc.setFont("helvetica", "normal");
+  y = addText(doc, data.trip.title, valueX, y, { fontSize: 11, maxWidth: CONTENT_WIDTH - labelWidth });
+  y += 6;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Termin wycieczki:", MARGIN_LEFT, y);
+  doc.setFont("helvetica", "normal");
+  const dateRange = `${formatDate(data.trip.start_date)} – ${formatDate(data.trip.end_date)}`;
+  doc.text(dateRange, valueX, y);
+  y += 6;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Cena za osobę:", MARGIN_LEFT, y);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${price} PLN`, valueX, y);
+  y += 6;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Liczba uczestników:", MARGIN_LEFT, y);
+  doc.setFont("helvetica", "normal");
+  doc.text(String(data.participants.length), valueX, y);
+  y += 6;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Cena całkowita:", MARGIN_LEFT, y);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${totalPrice} PLN`, valueX, y);
+  y += 10;
+
+  // § 3. Uczestnicy wycieczki
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 3. Uczestnicy wycieczki", MARGIN_LEFT, y);
+  y += 8;
+
+  // Tabela uczestników
+  const tableStartY = y;
+  const tableWidth = CONTENT_WIDTH;
+  const colWidths = [15, 70, 40, 65]; // Lp., Imię i nazwisko, PESEL, Dokument
+  const rowHeight = 8;
+  const headerHeight = 10;
+
+  // Nagłówek tabeli
+  let currentX = MARGIN_LEFT;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setFillColor(232, 232, 232);
+  doc.rect(currentX, y - headerHeight + 2, tableWidth, headerHeight, "F");
+  doc.text("Lp.", currentX + colWidths[0] / 2, y, { align: "center" });
+  currentX += colWidths[0];
+  doc.text("Imię i nazwisko", currentX + colWidths[1] / 2, y, { align: "center" });
+  currentX += colWidths[1];
+  doc.text("PESEL", currentX + colWidths[2] / 2, y, { align: "center" });
+  currentX += colWidths[2];
+  doc.text("Dokument", currentX + colWidths[3] / 2, y, { align: "center" });
+  y += headerHeight;
+
+  // Ramka tabeli
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(1);
+  doc.rect(MARGIN_LEFT, tableStartY - headerHeight + 2, tableWidth, headerHeight, "S");
+
+  // Wiersze z danymi
+  doc.setFont("helvetica", "normal");
+  data.participants.forEach((participant, index) => {
+    if (y + rowHeight > PAGE_HEIGHT - MARGIN_BOTTOM - 30) {
+      // Jeśli brakuje miejsca, przejdź do następnej strony
+      doc.addPage();
+      y = MARGIN_TOP;
+    }
+
+    currentX = MARGIN_LEFT;
+    const rowY = y;
+
+    // Lp.
+    doc.text(String(index + 1), currentX + colWidths[0] / 2, rowY + 5, { align: "center" });
+    currentX += colWidths[0];
+
+    // Imię i nazwisko
+    const fullName = `${participant.first_name} ${participant.last_name}`;
+    const nameLines = doc.splitTextToSize(fullName, colWidths[1] - 4);
+    doc.text(nameLines, currentX + 2, rowY + 5);
+    currentX += colWidths[1];
+
+    // PESEL
+    doc.text(participant.pesel, currentX + colWidths[2] / 2, rowY + 5, { align: "center" });
+    currentX += colWidths[2];
+
+    // Dokument
+    const documentText =
+      participant.document_type && participant.document_number
+        ? `${participant.document_type}: ${participant.document_number}`
+        : "-";
+    const docLines = doc.splitTextToSize(documentText, colWidths[3] - 4);
+    doc.text(docLines, currentX + 2, rowY + 5);
+    currentX += colWidths[3];
+
+    // Linia oddzielająca wiersze
+    drawHorizontalLine(doc, rowY + rowHeight, tableWidth);
+    y += rowHeight;
   });
-  return Buffer.concat(chunks);
+
+  // Zamknij ramkę tabeli
+  const tableTotalHeight = y - tableStartY + headerHeight;
+  doc.rect(MARGIN_LEFT, tableStartY - headerHeight + 2, tableWidth, tableTotalHeight, "S");
+
+  // ========== STRONA 2 ==========
+  doc.addPage();
+  y = MARGIN_TOP;
+
+  // § 4. Warunki uczestnictwa
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 4. Warunki uczestnictwa", MARGIN_LEFT, y);
+  y += 10;
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  const conditions = [
+    "1. Klient zobowiązuje się do uiszczenia pełnej opłaty za wycieczkę zgodnie z warunkami płatności określonymi przez Organizatora.",
+    "2. Klient potwierdza, że zapoznał się z regulaminem wycieczki i warunkami uczestnictwa oraz akceptuje je w całości.",
+    "3. Klient zobowiązuje się do przestrzegania przepisów bezpieczeństwa oraz regulaminu wycieczki podczas całego trwania imprezy.",
+    "4. Organizator zobowiązuje się do zapewnienia uczestnikom wycieczki odpowiednich warunków zgodnie z programem wycieczki.",
+    "5. Wszelkie zmiany w programie wycieczki mogą być wprowadzone wyłącznie za zgodą obu stron lub w przypadku wystąpienia siły wyższej.",
+  ];
+
+  conditions.forEach((condition) => {
+    y = addText(doc, condition, MARGIN_LEFT, y, { fontSize: 11, maxWidth: CONTENT_WIDTH });
+    y += 6;
+  });
+
+  y += 10;
+
+  // § 5. Postanowienia końcowe
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("§ 5. Postanowienia końcowe", MARGIN_LEFT, y);
+  y += 10;
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  const finalProvisions = [
+    "1. Umowa została zawarta na podstawie danych podanych przez Klienta podczas rezerwacji. Klient ponosi odpowiedzialność za prawdziwość i aktualność podanych danych.",
+    "2. Klient potwierdza, że wyraził zgodę na przetwarzanie danych osobowych zgodnie z RODO oraz akceptuje regulamin i warunki uczestnictwa w wycieczce.",
+    "3. W sprawach nieuregulowanych w niniejszej umowie zastosowanie mają przepisy Kodeksu Cywilnego oraz przepisy dotyczące imprez turystycznych.",
+    "4. Umowa została sporządzona w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.",
+  ];
+
+  finalProvisions.forEach((provision) => {
+    y = addText(doc, provision, MARGIN_LEFT, y, { fontSize: 11, maxWidth: CONTENT_WIDTH });
+    y += 6;
+  });
+
+  y += 20;
+
+  // Linia oddzielająca
+  drawThickHorizontalLine(doc, y);
+  y += 10;
+
+  // Data wygenerowania
+  doc.setFontSize(9);
+  doc.setTextColor(51, 51, 51);
+  const generationDate = new Date().toLocaleDateString("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  doc.text(`Data wygenerowania umowy: ${generationDate}`, MARGIN_LEFT, y);
+  y += 20;
+
+  // Podpisy
+  const signatureBoxWidth = (CONTENT_WIDTH - 30) / 2;
+  const leftSignatureX = MARGIN_LEFT;
+  const rightSignatureX = MARGIN_LEFT + signatureBoxWidth + 30;
+
+  // Podpis Organizatora
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text("Podpis Organizatora", leftSignatureX, y);
+  y += 50;
+
+  drawHorizontalLine(doc, y, signatureBoxWidth);
+  y += 5;
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(51, 51, 51);
+  const organizerLines = doc.splitTextToSize(ORGANIZER_DATA.name, signatureBoxWidth);
+  doc.text(organizerLines, leftSignatureX, y);
+
+  // Podpis Klienta
+  y = MARGIN_TOP + 200;
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text("Podpis Klienta", rightSignatureX, y);
+  y += 50;
+
+  drawHorizontalLine(doc, y, signatureBoxWidth);
+  y += 5;
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(51, 51, 51);
+  const clientLines = doc.splitTextToSize(clientName, signatureBoxWidth);
+  doc.text(clientLines, rightSignatureX, y);
+
+  // Konwertuj do Buffer
+  const arrayBuffer = doc.output("arraybuffer");
+  return Buffer.from(arrayBuffer);
 }
 
 export async function POST(req: Request) {
@@ -487,7 +449,8 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
-    const buf = await pdfBufferFromData(body);
+
+    const buf = generatePdf(body);
 
     // Upload do Supabase Storage (agreements/<booking_ref>.pdf)
     const supabaseAdmin = createAdminClient();
@@ -511,8 +474,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ base64, filename: `${body.booking_ref}.pdf` });
   } catch (error) {
     console.error("PDF generation error:", error);
-    return NextResponse.json({ error: "PDF generation failed", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "PDF generation failed",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
   }
 }
-
-

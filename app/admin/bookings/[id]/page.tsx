@@ -132,10 +132,60 @@ export default function BookingDetailsPage() {
         toast.success("Umowa wygenerowana");
         await loadBooking();
       } else {
-        throw new Error("Nie udało się wygenerować umowy");
+        let errorData: any = null;
+        let rawText = "";
+        
+        try {
+          rawText = await res.text();
+          console.log("Raw response text:", rawText ? rawText.substring(0, 500) : "(empty)");
+          
+          if (rawText && rawText.trim()) {
+            try {
+              errorData = JSON.parse(rawText);
+              console.log("Parsed error data:", errorData);
+            } catch (parseError) {
+              console.error("JSON parse error:", parseError);
+              // Jeśli nie jest JSON, użyj tekstu jako błędu
+              errorData = { 
+                error: "Nieprawidłowa odpowiedź z serwera", 
+                details: rawText.substring(0, 200) 
+              };
+            }
+          } else {
+            console.warn("Empty response text");
+            errorData = { 
+              error: `HTTP ${res.status}: ${res.statusText || "Brak odpowiedzi"}`,
+              details: "Serwer zwrócił pustą odpowiedź"
+            };
+          }
+        } catch (textError) {
+          console.error("Error reading response text:", textError);
+          errorData = { 
+            error: `HTTP ${res.status}: ${res.statusText || "Błąd odczytu odpowiedzi"}`,
+            details: textError instanceof Error ? textError.message : String(textError)
+          };
+        }
+        
+        // Upewnij się, że errorData nie jest null ani pustym obiektem
+        if (!errorData || (typeof errorData === 'object' && Object.keys(errorData).length === 0)) {
+          errorData = { 
+            error: `HTTP ${res.status}: Nie udało się wygenerować umowy`,
+            details: "Nieznany błąd - brak szczegółów"
+          };
+        }
+        
+        const errorMessage = errorData.details || errorData.error || errorData.message || `HTTP ${res.status}: Nie udało się wygenerować umowy`;
+        console.error("Error generating agreement:", { 
+          status: res.status, 
+          statusText: res.statusText, 
+          errorData,
+          rawText: rawText ? rawText.substring(0, 200) : "(empty)"
+        });
+        toast.error(`Błąd: ${errorMessage}`);
       }
     } catch (err) {
-      toast.error("Błąd podczas generowania umowy");
+      console.error("Error generating agreement:", err);
+      toast.error(`Błąd podczas generowania umowy: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
     }
   };
 

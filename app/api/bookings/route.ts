@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readFile } from "fs/promises";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createPaynowPayment } from "@/lib/paynow";
@@ -387,8 +388,22 @@ export async function POST(req: Request) {
           // Nie blokujemy rezerwacji jeśli zapis umowy się nie powiedzie
         }
       }
-    } catch {
-      // intentionally swallow — brak PDF nie powinien blokować rezerwacji
+    } catch (err) {
+      console.error("PDF generation request failed:", err);
+      // brak PDF nie blokuje rezerwacji – spróbujemy fallbacku niżej
+    }
+
+    // Fallback: jeśli nie udało się wygenerować PDF, dołącz przykładową umowę z /public
+    if (!attachment) {
+      try {
+        const fallbackPath = `${process.cwd()}/public/example-agreement.pdf`;
+        const buf = await readFile(fallbackPath);
+        attachment = { filename: "umowa.pdf", base64: buf.toString("base64") };
+        agreementPdfUrl = "example-agreement.pdf";
+        console.warn("Using fallback agreement PDF attachment (example-agreement.pdf)");
+      } catch (fallbackErr) {
+        console.error("Failed to attach fallback agreement PDF:", fallbackErr);
+      }
     }
 
     if (payload.contact_email) {
@@ -421,7 +436,7 @@ export async function POST(req: Request) {
           trip.end_date,
           seatsRequested,
         );
-        textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nKod rezerwacji: ${booking.booking_ref}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n4. Dokonanie płatności za rezerwację\n\nLink do przesłania podpisanej umowy i płatności:\n${bookingLink}`;
+        textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nKod rezerwacji: ${booking.booking_ref}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n\nLink do przesłania podpisanej umowy:\n${bookingLink}`;
 
         await fetch(`${baseUrl}/api/email`, {
           method: "POST",

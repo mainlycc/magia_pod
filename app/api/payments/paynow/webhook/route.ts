@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // Paynow v3 webhook payload format
 type PaynowWebhookPayload = {
@@ -61,7 +61,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  // Webhook musi omijać RLS – używamy admin clienta
+  const supabase = createAdminClient();
 
   const { data: booking, error: bookingError } = await supabase
     .from("bookings")

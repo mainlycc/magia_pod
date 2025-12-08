@@ -34,17 +34,7 @@ export async function POST(
       return NextResponse.json({ error: "Trip not found" }, { status: 404 });
     }
 
-    // Przygotuj dane do generowania PDF
-    const { origin } = new URL(request.url);
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? origin;
-
-    const tripInfo = {
-      title: trip.title as string,
-      start_date: trip.start_date ?? null,
-      end_date: trip.end_date ?? null,
-      price_cents: trip.price_cents ?? null,
-    };
-
+    // Sprawdź czy są uczestnicy
     const participants = Array.isArray(booking.participants)
       ? booking.participants.map((p: any) => ({
           first_name: p.first_name,
@@ -57,31 +47,111 @@ export async function POST(
         }))
       : [];
 
-    // Wywołaj endpoint PDF
-    const pdfRes = await fetch(`${baseUrl}/api/pdf`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        booking_ref: booking.booking_ref,
-        trip: tripInfo,
-        contact_email: booking.contact_email,
-        contact_first_name: booking.contact_first_name || null,
-        contact_last_name: booking.contact_last_name || null,
-        contact_phone: booking.contact_phone || null,
-        address: booking.address || null,
-        company_name: booking.company_name || null,
-        company_nip: booking.company_nip || null,
-        company_address: booking.company_address || null,
-        participants,
-      }),
-    });
-
-    if (!pdfRes.ok) {
-      const errorData = await pdfRes.json().catch(() => ({ error: "PDF generation failed" }));
-      return NextResponse.json(errorData, { status: pdfRes.status });
+    if (participants.length === 0) {
+      return NextResponse.json({ error: "Brak uczestników w rezerwacji" }, { status: 400 });
     }
 
-    const { base64, filename } = (await pdfRes.json()) as { base64: string; filename: string };
+    // Sprawdź wymagane pola
+    if (!booking.booking_ref) {
+      return NextResponse.json({ error: "Brak numeru rezerwacji" }, { status: 400 });
+    }
+
+    if (!booking.contact_email) {
+      return NextResponse.json({ error: "Brak adresu email klienta" }, { status: 400 });
+    }
+
+    if (!trip.title) {
+      return NextResponse.json({ error: "Brak nazwy wycieczki" }, { status: 400 });
+    }
+
+    const tripInfo = {
+      title: trip.title as string,
+      start_date: trip.start_date ?? null,
+      end_date: trip.end_date ?? null,
+      price_cents: trip.price_cents ?? null,
+    };
+
+    // Przygotuj dane do generowania PDF
+    const pdfPayload = {
+      booking_ref: booking.booking_ref,
+      trip: tripInfo,
+      contact_email: booking.contact_email,
+      contact_first_name: booking.contact_first_name || null,
+      contact_last_name: booking.contact_last_name || null,
+      contact_phone: booking.contact_phone || null,
+      address: booking.address || null,
+      company_name: booking.company_name || null,
+      company_nip: booking.company_nip || null,
+      company_address: booking.company_address || null,
+      participants,
+    };
+
+    // Wywołaj endpoint PDF - użyj localhost dla środowiska deweloperskiego
+    const { origin } = new URL(request.url);
+    const baseUrl = 
+      process.env.NEXT_PUBLIC_BASE_URL ?? 
+      process.env.NEXT_PUBLIC_APP_URL ?? 
+      (origin.includes('localhost') ? 'http://localhost:3000' : origin);
+
+    let pdfRes: Response;
+    try {
+      pdfRes = await fetch(`${baseUrl}/api/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pdfPayload),
+      });
+    } catch (fetchError) {
+      console.error("Failed to call PDF endpoint:", fetchError);
+      return NextResponse.json({ 
+        error: "Nie udało się wygenerować PDF", 
+        details: fetchError instanceof Error ? fetchError.message : String(fetchError) 
+      }, { status: 500 });
+    }
+
+    // Odczytaj odpowiedź tylko raz
+    const pdfResponseText = await pdfRes.text();
+    
+    if (!pdfRes.ok) {
+      let errorData: any;
+      try {
+        if (pdfResponseText && pdfResponseText.trim()) {
+          try {
+            errorData = JSON.parse(pdfResponseText);
+          } catch (parseError) {
+            errorData = { error: "PDF generation failed", details: pdfResponseText.substring(0, 200) };
+          }
+        } else {
+          errorData = { error: "PDF generation failed", details: `HTTP ${pdfRes.status}: ${pdfRes.statusText || "Empty response"}` };
+        }
+      } catch (textError) {
+        errorData = { error: "PDF generation failed", details: `HTTP ${pdfRes.status}: ${pdfRes.statusText || "Failed to read response"}` };
+      }
+      console.error("PDF generation error:", { status: pdfRes.status, statusText: pdfRes.statusText, errorData, rawText: pdfResponseText.substring(0, 200) });
+      return NextResponse.json({
+        error: errorData.error || "PDF generation failed",
+        details: errorData.details || errorData.message || errorData.error || `HTTP ${pdfRes.status}`,
+      }, { status: pdfRes.status });
+    }
+
+    // Parsuj odpowiedź sukcesu
+    let pdfResult: { base64: string; filename: string };
+    try {
+      if (!pdfResponseText || !pdfResponseText.trim()) {
+        throw new Error("Empty response from PDF endpoint");
+      }
+      pdfResult = JSON.parse(pdfResponseText);
+      if (!pdfResult.base64 || !pdfResult.filename) {
+        throw new Error("Invalid response format from PDF endpoint");
+      }
+    } catch (parseError) {
+      console.error("Failed to parse PDF response:", parseError);
+      return NextResponse.json({
+        error: "Failed to parse PDF response",
+        details: parseError instanceof Error ? parseError.message : String(parseError)
+      }, { status: 500 });
+    }
+
+    const { base64, filename } = pdfResult;
 
     // Zapisz informację o umowie w tabeli agreements
     const { data: existingAgreement, error: agreementCheckError } = await supabaseAdmin
@@ -107,7 +177,10 @@ export async function POST(
 
       if (updateError) {
         console.error("Error updating agreement:", updateError);
-        return NextResponse.json({ error: "Failed to update agreement" }, { status: 500 });
+        return NextResponse.json({ 
+          error: "Failed to update agreement",
+          details: updateError.message || String(updateError)
+        }, { status: 500 });
       }
     } else {
       // Utwórz nowy rekord
@@ -119,7 +192,10 @@ export async function POST(
 
       if (insertError) {
         console.error("Error creating agreement:", insertError);
-        return NextResponse.json({ error: "Failed to create agreement record" }, { status: 500 });
+        return NextResponse.json({ 
+          error: "Failed to create agreement record",
+          details: insertError.message || String(insertError)
+        }, { status: 500 });
       }
     }
 
@@ -130,7 +206,19 @@ export async function POST(
     });
   } catch (error) {
     console.error("POST /api/bookings/[id]/agreement error", error);
-    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("Error details:", { message: errorMessage, stack: errorStack });
+    
+    return NextResponse.json({ 
+      error: "Unexpected error",
+      details: errorMessage
+    }, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
   }
 }
 

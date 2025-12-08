@@ -103,13 +103,13 @@ export function generateBookingConfirmationEmail(
                   <td align="center" style="padding: 0;">
                     <a href="${bookingLink}" 
                        style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3); transition: all 0.3s ease;">
-                      Prześlij podpisaną umowę i opłać rezerwację
+                      Prześlij podpisaną umowę
                     </a>
                   </td>
                 </tr>
               </table>
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6b7280; text-align: center; line-height: 1.5;">
-                Kliknij powyższy przycisk, aby przejść do strony, gdzie możesz przesłać podpisaną umowę i dokonać płatności.
+                Kliknij powyższy przycisk, aby przejść do strony, gdzie możesz przesłać podpisaną umowę w formacie PDF.
               </p>
               
               <!-- Instructions -->
@@ -122,7 +122,6 @@ export function generateBookingConfirmationEmail(
                   <li><strong>Podpisz umowę</strong></li>
                   <li><strong>Kliknij przycisk powyżej</strong>, aby przejść do strony rezerwacji</li>
                   <li><strong>Prześlij podpisaną umowę</strong> (PDF) przez formularz na stronie</li>
-                  <li><strong>Dokonaj płatności</strong> za rezerwację</li>
                 </ol>
               </div>
               
