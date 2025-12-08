@@ -1,22 +1,11 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { ReusableTable } from "@/components/reusable-table";
 import { toast } from "sonner";
 import {
@@ -48,25 +37,10 @@ type Coordinator = {
 };
 
 export default function AdminTripsPage() {
+  const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingTripId, setEditingTripId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    title: "",
-    slug: "",
-    description: "",
-    start_date: "",
-    end_date: "",
-    price: "",
-    seats: "",
-    category: "",
-    location: "",
-  });
-  const [selectedCoordinators, setSelectedCoordinators] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -158,6 +132,48 @@ export default function AdminTripsPage() {
     return coordinators.filter(
       (coord) => coord.allowed_trip_ids && coord.allowed_trip_ids.includes(tripId)
     );
+  };
+
+  const handleDeleteSelected = async (selectedTrips: Trip[]) => {
+    if (selectedTrips.length === 0) return;
+
+    try {
+      const deletePromises = selectedTrips.map((trip) =>
+        fetch(`/api/trips/${trip.id}`, {
+          method: "DELETE",
+        })
+      );
+
+      const results = await Promise.allSettled(deletePromises);
+      const failed: Array<{ trip: Trip; reason: string }> = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === "rejected") {
+          failed.push({ trip: selectedTrips[i], reason: "Błąd sieci" });
+        } else if (!result.value.ok) {
+          const errorData = await result.value.json().catch(() => ({ error: "Unknown error" }));
+          failed.push({
+            trip: selectedTrips[i],
+            reason: errorData.message || errorData.error || "Nieznany błąd",
+          });
+        }
+      }
+
+      if (failed.length > 0) {
+        const failedNames = failed.map((f) => f.trip.title).join(", ");
+        toast.error(
+          `Nie udało się usunąć ${failed.length} z ${selectedTrips.length} wycieczek: ${failedNames}`
+        );
+      } else {
+        toast.success(`Usunięto ${selectedTrips.length} wycieczek`);
+      }
+
+      await loadData();
+    } catch (err) {
+      toast.error("Błąd podczas usuwania wycieczek");
+      console.error(err);
+    }
   };
 
   // Definicja kolumn dla tabeli
@@ -253,16 +269,9 @@ export default function AdminTripsPage() {
         header: "",
         cell: ({ row }) => (
           <div className="flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => openEditDialog(row.original.id)}
-            >
-              Edytuj
-            </Button>
-            <Button asChild variant="secondary" size="sm">
-              <Link href={`/admin/trips/${row.original.id}/bookings`}>
-                Rezerwacje
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/admin/trips/${row.original.id}/edit`}>
+                Edytuj
               </Link>
             </Button>
             <DropdownMenu>
@@ -296,512 +305,29 @@ export default function AdminTripsPage() {
     [coordinators]
   );
 
-  const toggleCoordinator = (coordinatorId: string) => {
-    setSelectedCoordinators((prev) => {
-      const next = new Set(prev);
-      if (next.has(coordinatorId)) {
-        next.delete(coordinatorId);
-      } else {
-        next.add(coordinatorId);
-      }
-      return next;
-    });
-  };
-
-  const openEditDialog = async (tripId: string) => {
-    setEditingTripId(tripId);
-    setEditDialogOpen(true);
-    
-    // Załaduj dane wycieczki
-    try {
-      const tripRes = await fetch(`/api/trips/${tripId}`);
-      if (tripRes.ok) {
-        const trip = await tripRes.json();
-        const formatDate = (dateStr: string | null) => {
-          if (!dateStr) return "";
-          const date = new Date(dateStr);
-          return date.toISOString().split("T")[0];
-        };
-        setFormData({
-          title: trip.title ?? "",
-          slug: trip.slug ?? "",
-          description: trip.description ?? "",
-          start_date: formatDate(trip.start_date),
-          end_date: formatDate(trip.end_date),
-          price: trip.price_cents ? String(trip.price_cents / 100) : "",
-          seats: String(trip.seats_total ?? ""),
-          category: trip.category ?? "",
-          location: trip.location ?? "",
-        });
-      }
-
-      // Załaduj przypisanych koordynatorów
-      const coordinatorsRes = await fetch(`/api/trips/${tripId}/coordinators`);
-      if (coordinatorsRes.ok) {
-        const assignedCoordinators = await coordinatorsRes.json();
-        setSelectedCoordinators(new Set(assignedCoordinators.map((c: Coordinator) => c.id)));
-      }
-    } catch (err) {
-      toast.error("Nie udało się wczytać danych wycieczki");
-    }
-  };
-
-  const handleEditTrip = async () => {
-    if (!editingTripId || !formData.title) {
-      toast.error("Nazwa jest wymagana");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/trips/${editingTripId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formData.title,
-          description: formData.description || null,
-          start_date: formData.start_date || null,
-          end_date: formData.end_date || null,
-          price_cents: formData.price ? Math.round(parseFloat(formData.price) * 100) : null,
-          seats_total: formData.seats ? parseInt(formData.seats) : null,
-          category: formData.category || null,
-          location: formData.location || null,
-        }),
-      });
-
-      if (res.ok) {
-        // Aktualizuj przypisanie koordynatorów
-        const currentCoordinators = getCoordinatorsForTrip(editingTripId);
-        const currentCoordinatorIds = new Set(currentCoordinators.map((c) => c.id));
-
-        // Znajdź koordynatorów do przypisania (nowi)
-        const toAssign = Array.from(selectedCoordinators).filter(
-          (id) => !currentCoordinatorIds.has(id)
-        );
-        // Znajdź koordynatorów do odpięcia (usunięci)
-        const toUnassign = Array.from(currentCoordinatorIds).filter(
-          (id) => !selectedCoordinators.has(id)
-        );
-
-        // Wykonaj przypisania i odpięcia
-        const assignPromises = toAssign.map((coordinatorId) =>
-          fetch(`/api/trips/${editingTripId}/coordinators`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              coordinator_id: coordinatorId,
-              action: "assign",
-            }),
-          })
-        );
-
-        const unassignPromises = toUnassign.map((coordinatorId) =>
-          fetch(`/api/trips/${editingTripId}/coordinators`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              coordinator_id: coordinatorId,
-              action: "unassign",
-            }),
-          })
-        );
-
-        const allPromises = [...assignPromises, ...unassignPromises];
-        if (allPromises.length > 0) {
-          const results = await Promise.allSettled(allPromises);
-          const failed = results.filter((r) => r.status === "rejected" || !r.value?.ok).length;
-
-          if (failed > 0) {
-            toast.warning(`Wycieczka została zaktualizowana, ale nie udało się zaktualizować ${failed} przypisań koordynatorów`);
-          } else {
-            toast.success("Wycieczka została zaktualizowana");
-          }
-        } else {
-          toast.success("Wycieczka została zaktualizowana");
-        }
-
-        setEditDialogOpen(false);
-        setEditingTripId(null);
-        setFormData({ title: "", slug: "", description: "", start_date: "", end_date: "", price: "", seats: "", category: "", location: "" });
-        setSelectedCoordinators(new Set());
-        await loadData();
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.error || "Nie udało się zaktualizować wycieczki");
-      }
-    } catch (err) {
-      toast.error("Błąd podczas aktualizacji wycieczki");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAddTrip = async () => {
-    if (!formData.title || !formData.slug) {
-      toast.error("Nazwa i slug są wymagane");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await fetch("/api/trips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formData.title,
-          slug: formData.slug,
-          description: formData.description || null,
-          start_date: formData.start_date || null,
-          end_date: formData.end_date || null,
-          price_cents: formData.price ? Math.round(parseFloat(formData.price) * 100) : null,
-          seats_total: formData.seats ? parseInt(formData.seats) : 0,
-          is_active: true,
-          category: formData.category || null,
-          location: formData.location || null,
-        }),
-      });
-
-      if (res.ok) {
-        const tripData = await res.json();
-        const tripId = tripData.id;
-
-        // Jeśli wybrano koordynatorów, przypisz ich do wycieczki
-        if (selectedCoordinators.size > 0 && tripId) {
-          const assignPromises = Array.from(selectedCoordinators).map((coordinatorId) =>
-            fetch(`/api/trips/${tripId}/coordinators`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                coordinator_id: coordinatorId,
-                action: "assign",
-              }),
-            })
-          );
-
-          const results = await Promise.allSettled(assignPromises);
-          const failed = results.filter((r) => r.status === "rejected" || !r.value?.ok).length;
-          
-          if (failed > 0) {
-            toast.warning(`Wycieczka została dodana, ale nie udało się przypisać ${failed} koordynatorów`);
-          } else {
-            toast.success("Wycieczka została dodana i koordynatorzy przypisani");
-          }
-        } else {
-          toast.success("Wycieczka została dodana");
-        }
-
-        setDialogOpen(false);
-        setFormData({ title: "", slug: "", description: "", start_date: "", end_date: "", price: "", seats: "", category: "", location: "" });
-        setSelectedCoordinators(new Set());
-        await loadData();
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.error || "Nie udało się dodać wycieczki");
-      }
-    } catch (err) {
-      toast.error("Błąd podczas dodawania wycieczki");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   if (loading) {
     return <div className="space-y-4">Ładowanie...</div>;
   }
 
   return (
     <div className="space-y-4">
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Dodaj nową wycieczkę</DialogTitle>
-              <DialogDescription>
-                Wypełnij formularz, aby dodać nową wycieczkę do systemu.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="title">Nazwa *</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Nazwa wycieczki"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="slug">Slug *</Label>
-                <Input
-                  id="slug"
-                  value={formData.slug}
-                  onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                  placeholder="slug-wycieczki"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description">Opis</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Opis wycieczki"
-                  rows={4}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="start_date">Data rozpoczęcia</Label>
-                  <Input
-                    id="start_date"
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="end_date">Data zakończenia</Label>
-                  <Input
-                    id="end_date"
-                    type="date"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="category">Kategoria</Label>
-                  <Input
-                    id="category"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    placeholder="np. Wycieczki górskie"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="location">Miejsce</Label>
-                  <Input
-                    id="location"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="np. Islandia"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="price">Cena (PLN)</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  placeholder="0.00"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="seats">Liczba miejsc</Label>
-                <Input
-                  id="seats"
-                  type="number"
-                  value={formData.seats}
-                  onChange={(e) => setFormData({ ...formData, seats: e.target.value })}
-                  placeholder="0"
-                />
-              </div>
-              {coordinators.length > 0 && (
-                <div className="grid gap-2">
-                  <Label>Koordynatorzy</Label>
-                  <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                    {coordinators.map((coord) => (
-                      <div key={coord.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`coord-${coord.id}`}
-                          checked={selectedCoordinators.has(coord.id)}
-                          onCheckedChange={() => toggleCoordinator(coord.id)}
-                        />
-                        <Label
-                          htmlFor={`coord-${coord.id}`}
-                          className="text-sm font-normal cursor-pointer flex-1"
-                        >
-                          {coord.full_name || "Brak imienia i nazwiska"}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                  {selectedCoordinators.size > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Wybrano {selectedCoordinators.size} koordynatorów
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDialogOpen(false);
-                  setFormData({ title: "", slug: "", description: "", start_date: "", end_date: "", price: "", seats: "", category: "", location: "" });
-                  setSelectedCoordinators(new Set());
-                }}
-              >
-                Anuluj
-              </Button>
-              <Button disabled={saving || !formData.title || !formData.slug} onClick={handleAddTrip}>
-                {saving ? "Zapisywanie..." : "Zapisz"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-      {/* Dialog edycji wycieczki */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edytuj wycieczkę</DialogTitle>
-            <DialogDescription>
-              Zmień dane wycieczki i zarządzaj przypisanymi koordynatorami.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="edit-title">Nazwa *</Label>
-              <Input
-                id="edit-title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Nazwa wycieczki"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-description">Opis</Label>
-              <Textarea
-                id="edit-description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Opis wycieczki"
-                rows={4}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-start_date">Data rozpoczęcia</Label>
-                <Input
-                  id="edit-start_date"
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-end_date">Data zakończenia</Label>
-                <Input
-                  id="edit-end_date"
-                  type="date"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-category">Kategoria</Label>
-                <Input
-                  id="edit-category"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  placeholder="np. Wycieczki górskie"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-location">Miejsce</Label>
-                <Input
-                  id="edit-location"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  placeholder="np. Islandia"
-                />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-price">Cena (PLN)</Label>
-              <Input
-                id="edit-price"
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                placeholder="0.00"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-seats">Liczba miejsc</Label>
-              <Input
-                id="edit-seats"
-                type="number"
-                value={formData.seats}
-                onChange={(e) => setFormData({ ...formData, seats: e.target.value })}
-                placeholder="0"
-              />
-            </div>
-            {coordinators.length > 0 && (
-              <div className="grid gap-2">
-                <Label>Koordynatorzy</Label>
-                <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                  {coordinators.map((coord) => (
-                    <div key={coord.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`edit-coord-${coord.id}`}
-                        checked={selectedCoordinators.has(coord.id)}
-                        onCheckedChange={() => toggleCoordinator(coord.id)}
-                      />
-                      <Label
-                        htmlFor={`edit-coord-${coord.id}`}
-                        className="text-sm font-normal cursor-pointer flex-1"
-                      >
-                        {coord.full_name || "Brak imienia i nazwiska"}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-                {selectedCoordinators.size > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Wybrano {selectedCoordinators.size} koordynatorów
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setEditDialogOpen(false);
-                setEditingTripId(null);
-                setFormData({ title: "", slug: "", description: "", start_date: "", end_date: "", price: "", seats: "", category: "", location: "" });
-                setSelectedCoordinators(new Set());
-              }}
-            >
-              Anuluj
-            </Button>
-            <Button disabled={saving || !formData.title} onClick={handleEditTrip}>
-              {saving ? "Zapisywanie..." : "Zapisz"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <ReusableTable
         columns={columns}
         data={trips}
         searchable={true}
         searchPlaceholder="Szukaj wycieczek..."
         searchColumn="title"
-        onAdd={() => setDialogOpen(true)}
+        onAdd={() => router.push("/admin/trips/new")}
         addButtonLabel="Dodaj wycieczkę"
         enableRowSelection={true}
         enablePagination={true}
         pageSize={10}
         emptyMessage="Brak wycieczek"
+        enableDeleteDialog={true}
+        onConfirmDelete={handleDeleteSelected}
+        deleteDialogTitle="Usuń zaznaczone wycieczki?"
+        deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone wycieczki? Ta operacja nie może być cofnięta. Nie można usunąć wycieczek z istniejącymi rezerwacjami."
+        deleteButtonLabel="Usuń zaznaczone"
       />
     </div>
   );

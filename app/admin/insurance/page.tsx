@@ -14,9 +14,11 @@ type InsuranceSubmission = {
   booking_id: string | null;
   participants_count: number;
   submission_date: string;
-  status: "pending" | "sent" | "accepted" | "error";
+  status: "pending" | "calculating" | "registered" | "sent" | "issued" | "accepted" | "error" | "cancelled" | "manual_check_required";
   error_message: string | null;
   policy_number: string | null;
+  external_policy_number: string | null;
+  policy_status_code: string | null;
   created_at: string;
   updated_at: string;
   trips: {
@@ -30,9 +32,14 @@ type InsuranceSubmission = {
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
     pending: "Oczekujące",
+    calculating: "Kalkulacja",
+    registered: "Zarejestrowane",
     sent: "Wysłane",
+    issued: "Wystawione",
     accepted: "Zaakceptowane",
     error: "Błąd",
+    cancelled: "Anulowane",
+    manual_check_required: "Wymaga kontroli",
   };
   return labels[status] || status;
 };
@@ -138,7 +145,20 @@ export default function AdminInsurancePage() {
         id: "policy",
         header: "Numer polisy",
         cell: ({ row }) => (
-          <div className="text-sm">{row.original.policy_number || "-"}</div>
+          <div className="text-sm">{row.original.external_policy_number || row.original.policy_number || "-"}</div>
+        ),
+      },
+      {
+        id: "policy_status",
+        header: "Status polisy HDI",
+        cell: ({ row }) => (
+          <div className="text-sm">
+            {row.original.policy_status_code ? (
+              <Badge variant="outline">{row.original.policy_status_code}</Badge>
+            ) : (
+              "-"
+            )}
+          </div>
         ),
       },
     ],
@@ -162,6 +182,12 @@ export default function AdminInsurancePage() {
             onClick={() => router.push("/admin/insurance/config")}
           >
             Konfiguracja
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push("/admin/insurance/products")}
+          >
+            Produkty
           </Button>
         </div>
       </div>

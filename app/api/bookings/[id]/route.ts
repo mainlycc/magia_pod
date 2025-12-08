@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-status";
 
 const updateSchema = z.object({
@@ -42,6 +43,13 @@ export async function GET(
 
   if (!data) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // Upewnij się, że payment_history jest tablicą
+  if (data.payment_history && !Array.isArray(data.payment_history)) {
+    data.payment_history = [];
+  } else if (!data.payment_history) {
+    data.payment_history = [];
   }
 
   return NextResponse.json(data);
@@ -95,5 +103,64 @@ export async function PATCH(
   }
 
   return NextResponse.json({ payment_status: data.payment_status });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    const supabase = await createClient();
+    const adminSupabase = createAdminClient();
+
+    // Pobierz rezerwację, aby uzyskać trip_id i liczbę uczestników
+    const { data: booking, error: bookingError } = await supabase
+      .from("bookings")
+      .select("trip_id, participants:participants(id)")
+      .eq("id", id)
+      .single();
+
+    if (bookingError || !booking) {
+      console.error("Failed to fetch booking for deletion", bookingError);
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+
+    const participantsCount = Array.isArray(booking.participants)
+      ? booking.participants.length
+      : 0;
+
+    // Zwolnij miejsca w wycieczce
+    if (participantsCount > 0 && booking.trip_id) {
+      const { error: releaseError } = await supabase.rpc("release_trip_seats", {
+        p_trip_id: booking.trip_id,
+        p_requested: participantsCount,
+      });
+
+      if (releaseError) {
+        console.error("Failed to release seats", releaseError);
+        // Kontynuuj usuwanie nawet jeśli zwolnienie miejsc się nie powiodło
+      }
+    }
+
+    // Usuń rezerwację (participants, agreements, payment_history zostaną usunięte przez CASCADE)
+    const { error: deleteError } = await adminSupabase
+      .from("bookings")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Failed to delete booking", deleteError);
+      if (deleteError.code === "PGRST301") {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/bookings/[id] error", error);
+    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+  }
 }
 

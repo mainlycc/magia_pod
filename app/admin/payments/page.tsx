@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { Loader2Icon } from "lucide-react";
+import { Loader2Icon, RefreshCwIcon, CheckCircle2Icon } from "lucide-react";
 
 type BookingWithTrip = {
   id: string;
@@ -122,6 +122,36 @@ export default function AdminPaymentsPage() {
 
   useEffect(() => {
     loadData();
+
+    // Subskrybuj zmiany w tabeli bookings, aby automatycznie odświeżać dane
+    const supabase = createClient();
+    const channel = supabase
+      .channel("bookings-payment-status-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "bookings",
+        },
+        (payload) => {
+          console.log("Booking updated:", payload);
+          // Odśwież dane po zmianie w rezerwacji
+          loadData();
+        }
+      )
+      .subscribe();
+
+    // Odśwież dane przy powrocie na stronę (focus okna)
+    const handleFocus = () => {
+      loadData();
+    };
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   const loadData = async () => {
@@ -193,6 +223,35 @@ export default function AdminPaymentsPage() {
     );
   };
 
+  const handleCheckPaynowStatus = async (bookingRef: string) => {
+    try {
+      const response = await fetch("/api/payments/paynow/check-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ booking_ref: bookingRef }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "check_failed");
+      }
+
+      if (data.success) {
+        toast.success(data.message || "Status płatności został zaktualizowany");
+        // Odśwież dane
+        loadData();
+      } else {
+        toast.error("Nie udało się sprawdzić statusu płatności");
+      }
+    } catch (error) {
+      console.error("Error checking Paynow status:", error);
+      toast.error("Nie udało się sprawdzić statusu płatności");
+    }
+  };
+
   const filteredBookings = bookings;
 
   const columns = useMemo<ColumnDef<BookingWithTrip>[]>(
@@ -262,6 +321,14 @@ export default function AdminPaymentsPage() {
                   initialStatus={booking.payment_status}
                   onStatusChange={handlePaymentStatusChange}
                 />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleCheckPaynowStatus(booking.booking_ref)}
+                  title="Sprawdź status płatności w Paynow"
+                >
+                  <CheckCircle2Icon className="size-4" />
+                </Button>
               </div>
               <span className="text-xs text-muted-foreground">
                 Utworzono: {createdAtLabel}
@@ -291,6 +358,17 @@ export default function AdminPaymentsPage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => loadData()}
+          disabled={loading}
+        >
+          <RefreshCwIcon className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          Odśwież
+        </Button>
+      </div>
       <ReusableTable
         columns={columns}
         data={filteredBookings}

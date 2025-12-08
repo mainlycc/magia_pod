@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createPaynowPayment } from "@/lib/paynow";
 import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
 
@@ -26,11 +27,22 @@ const consentsSchema = z.object({
   conditions: z.literal(true),
 });
 
+const companySchema = z.object({
+  name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
+  nip: z.string().regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr").optional().or(z.literal("").transform(() => undefined)),
+  address: addressSchema.optional(),
+});
+
 const bookingPayloadSchema = z.object({
   slug: z.string().min(1, "Brak identyfikatora wycieczki"),
+  contact_first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
+  contact_last_name: z.string().min(2, "Podaj nazwisko").optional().or(z.literal("").transform(() => undefined)),
   contact_email: z.string().email("Niepoprawny adres e-mail"),
   contact_phone: z.string().min(7, "Podaj numer telefonu"),
   address: addressSchema,
+  company_name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
+  company_nip: z.string().regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr").optional().or(z.literal("").transform(() => undefined)),
+  company_address: addressSchema.optional(),
   participants: z.array(participantSchema).min(1, "Dodaj przynajmniej jednego uczestnika"),
   consents: consentsSchema,
 });
@@ -107,54 +119,181 @@ export async function POST(req: Request) {
 
     const consents = buildConsents(payload.consents);
 
-    // Wstaw rezerwację (bez access_token w SELECT, żeby uniknąć problemów jeśli kolumna nie istnieje)
-    const { data: booking, error: bookingErr } = await supabase
-      .from("bookings")
-      .insert({
-        trip_id: trip.id,
-        booking_ref: bookingRef,
-        contact_email: payload.contact_email,
-        contact_phone: payload.contact_phone,
-        address: payload.address,
-        consents,
-        status: "confirmed",
-        payment_status: "unpaid",
-        source: "public_page",
-      })
-      .select("id, booking_ref")
-      .single();
+    // Wstaw rezerwację używając funkcji RPC przez admin clienta
+    // Funkcja RPC używa surowego SQL i omija cache PostgREST
+    let booking: { id: string; booking_ref: string } | null = null;
+    let accessToken: string | null = null;
+    
+    try {
+      const adminSupabase = createAdminClient();
+      
+      // Najpierw spróbuj użyć funkcji RPC przez admin clienta
+      const { data: rpcData, error: rpcError } = await adminSupabase.rpc('create_booking', {
+        p_trip_id: trip.id,
+        p_booking_ref: bookingRef,
+        p_contact_first_name: payload.contact_first_name || null,
+        p_contact_last_name: payload.contact_last_name || null,
+        p_contact_email: payload.contact_email,
+        p_contact_phone: payload.contact_phone,
+        p_address: payload.address,
+        p_company_name: payload.company_name || null,
+        p_company_nip: payload.company_nip || null,
+        p_company_address: payload.company_address || null,
+        p_consents: consents,
+        p_status: "confirmed",
+        p_payment_status: "unpaid",
+        p_source: "public_page",
+      });
 
-    if (bookingErr || !booking) {
+      if (rpcError || !rpcData) {
+        // Jeśli RPC nie działa, użyj bezpośredniego INSERT przez admin clienta
+        // Używamy tylko podstawowych kolumn które na pewno istnieją
+        console.warn("RPC create_booking failed, trying direct INSERT with admin client:", rpcError);
+        
+        // Fallback: INSERT używając tylko podstawowych kolumn (bez nowych pól z migracji)
+        const insertData = {
+          trip_id: trip.id,
+          booking_ref: bookingRef,
+          contact_email: payload.contact_email,
+          contact_phone: payload.contact_phone,
+          address: payload.address,
+          consents,
+          status: "confirmed" as const,
+          payment_status: "unpaid" as const,
+          source: "public_page" as const,
+        };
+        
+        const { data: bookingData, error: insertError } = await adminSupabase
+          .from("bookings")
+          .insert(insertData)
+          .select("id, booking_ref")
+          .single();
+
+        if (insertError || !bookingData) {
+          throw new Error(insertError?.message || "Failed to create booking - no data returned");
+        }
+        
+        booking = {
+          id: bookingData.id,
+          booking_ref: bookingData.booking_ref,
+        };
+        
+        // Zaktualizuj nowe pola przez UPDATE (jeśli są zdefiniowane)
+        // To omija problemy z cache PostgREST przy INSERT
+        const updateData: any = {};
+        if (payload.contact_first_name) updateData.contact_first_name = payload.contact_first_name;
+        if (payload.contact_last_name) updateData.contact_last_name = payload.contact_last_name;
+        if (payload.company_name) updateData.company_name = payload.company_name;
+        if (payload.company_nip) updateData.company_nip = payload.company_nip;
+        if (payload.company_address) updateData.company_address = payload.company_address;
+        
+        if (Object.keys(updateData).length > 0) {
+          const { error: updateError } = await adminSupabase
+            .from("bookings")
+            .update(updateData)
+            .eq("id", booking.id);
+          
+          if (updateError) {
+            console.warn("Failed to update additional booking fields:", updateError);
+            // Nie rzucamy błędu - booking już został utworzony
+          }
+        }
+      } else {
+        // RPC zadziałało
+        const bookingResult = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        
+        if (!bookingResult || !bookingResult.id) {
+          throw new Error("Failed to create booking - no data returned");
+        }
+        
+        booking = {
+          id: bookingResult.id,
+          booking_ref: bookingResult.booking_ref,
+        };
+      }
+    } catch (err: any) {
       console.error("Error creating booking:", {
-        error: bookingErr,
-        message: bookingErr?.message,
-        code: bookingErr?.code,
-        details: bookingErr?.details,
-        hint: bookingErr?.hint,
+        error: err,
+        message: err?.message,
+        code: err?.code,
       });
       await rollbackSeats();
       return NextResponse.json(
         { 
           error: "Failed to create booking",
-          details: bookingErr?.message || bookingErr?.hint || "Unknown error",
-          code: bookingErr?.code,
+          details: err?.message || "Unknown error",
+          code: err?.code,
         },
         { status: 500 }
       );
     }
 
-    // Spróbuj pobrać access_token osobno (jeśli kolumna istnieje)
-    let accessToken: string | null = null;
+    if (!booking) {
+      await rollbackSeats();
+      return NextResponse.json(
+        { error: "Failed to create booking" },
+        { status: 500 }
+      );
+    }
+
+    // Pobierz access_token używając admin clienta (omija RLS)
     try {
-      const { data: bookingWithToken } = await supabase
+      const adminSupabase = createAdminClient();
+      const { data: bookingWithToken, error: tokenError } = await adminSupabase
         .from("bookings")
         .select("access_token")
         .eq("id", booking.id)
         .single();
-      accessToken = bookingWithToken?.access_token || null;
-    } catch (err) {
-      // Ignoruj błąd - kolumna access_token może nie istnieć
-      console.warn("Could not fetch access_token (column may not exist):", err);
+      
+      if (!tokenError && bookingWithToken?.access_token) {
+        accessToken = bookingWithToken.access_token;
+        console.log("✅ Fetched access_token using admin client:", accessToken);
+      } else if (tokenError) {
+        console.error("❌ Could not fetch access_token:", {
+          error: tokenError.message,
+          code: tokenError.code,
+          hint: tokenError.hint,
+          booking_id: booking.id
+        });
+      }
+    } catch (err: any) {
+      console.error("❌ Error fetching access_token:", {
+        error: err?.message,
+        booking_id: booking.id
+      });
+    }
+
+    // Jeśli access_token nie został pobrany w INSERT, spróbuj pobrać osobno używając admin clienta
+    // (aby ominąć RLS który blokuje anon odczyt)
+    if (!accessToken) {
+      try {
+        // Użyj admin clienta aby ominąć RLS
+        const adminSupabase = createAdminClient();
+        const { data: bookingWithToken, error: tokenError } = await adminSupabase
+          .from("bookings")
+          .select("access_token")
+          .eq("id", booking.id)
+          .single();
+        
+        if (!tokenError && bookingWithToken?.access_token) {
+          accessToken = bookingWithToken.access_token;
+          console.log("✅ Fetched access_token using admin client:", accessToken);
+        } else if (tokenError) {
+          console.error("❌ Could not fetch access_token even with admin client:", {
+            error: tokenError.message,
+            code: tokenError.code,
+            hint: tokenError.hint,
+            booking_id: booking.id
+          });
+        }
+      } catch (err: any) {
+        console.error("❌ Error fetching access_token with admin client:", {
+          error: err?.message,
+          booking_id: booking.id
+        });
+      }
+    } else {
+      console.log("✅ access_token retrieved from INSERT:", accessToken);
     }
 
     const participantsPayload = payload.participants.map((participant) => ({
@@ -169,16 +308,19 @@ export async function POST(req: Request) {
       address: payload.address ?? null,
     }));
 
-    const { error: participantsErr } = await supabase.from("participants").insert(participantsPayload);
+    const adminSupabase = createAdminClient();
+    const { error: participantsErr } = await adminSupabase.from("participants").insert(participantsPayload);
 
     if (participantsErr) {
-      await supabase.from("bookings").delete().eq("id", booking.id);
+      await adminSupabase.from("bookings").delete().eq("id", booking.id);
       await rollbackSeats();
       return NextResponse.json({ error: "Failed to add participants" }, { status: 500 });
     }
 
+    // Pobierz baseUrl - priorytet: NEXT_PUBLIC_BASE_URL > origin z requestu
+    // Jeśli NEXT_PUBLIC_BASE_URL nie jest ustawione, użyjemy origin, ale to może być localhost
     const { origin } = new URL(req.url);
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? origin;
 
     const tripInfo = {
       title: trip.title as string,
@@ -198,11 +340,21 @@ export async function POST(req: Request) {
           booking_ref: booking.booking_ref,
           trip: tripInfo,
           contact_email: payload.contact_email,
+          contact_first_name: payload.contact_first_name || null,
+          contact_last_name: payload.contact_last_name || null,
+          contact_phone: payload.contact_phone || null,
+          address: payload.address || null,
+          company_name: payload.company_name || null,
+          company_nip: payload.company_nip || null,
+          company_address: payload.company_address || null,
           participants: payload.participants.map((p) => ({
             first_name: p.first_name,
             last_name: p.last_name,
             pesel: p.pesel,
-            email: p.email,
+            email: p.email || undefined,
+            phone: p.phone || undefined,
+            document_type: p.document_type || undefined,
+            document_number: p.document_number || undefined,
           })),
         }),
       });
@@ -211,6 +363,18 @@ export async function POST(req: Request) {
         const { base64, filename } = (await pdfRes.json()) as { base64: string; filename: string };
         attachment = { filename, base64 };
         agreementPdfUrl = filename;
+
+        // Zapisz informację o umowie w tabeli agreements
+        try {
+          await adminSupabase.from("agreements").insert({
+            booking_id: booking.id,
+            status: "generated",
+            pdf_url: filename,
+          });
+        } catch (agreementErr) {
+          console.error("Error saving agreement to database:", agreementErr);
+          // Nie blokujemy rezerwacji jeśli zapis umowy się nie powiedzie
+        }
       }
     } catch {
       // intentionally swallow — brak PDF nie powinien blokować rezerwacji
@@ -221,30 +385,32 @@ export async function POST(req: Request) {
         let emailHtml: string;
         let textContent: string;
         
+        // Tworzymy link do strony rezerwacji z access_token
+        let bookingLink: string;
         if (accessToken) {
-          // Pełny email z linkiem do podstrony
-          const bookingLink = `${baseUrl}/booking/${accessToken}`;
-          emailHtml = generateBookingConfirmationEmail(
-            booking.booking_ref,
-            bookingLink,
-            trip.title as string,
-            trip.start_date,
-            trip.end_date,
-            seatsRequested,
-          );
-          textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}\n\nLink do przesłania umowy i płatności: ${bookingLink}`;
+          bookingLink = `${baseUrl}/booking/${accessToken}`;
+          console.log("✅ Booking link created with access_token:", bookingLink);
         } else {
-          // Email bez linku (jeśli migracja nie została uruchomiona)
-          emailHtml = generateBookingConfirmationEmail(
-            booking.booking_ref,
-            `${baseUrl}/trip/${trip.public_slug || payload.slug}`,
-            trip.title as string,
-            trip.start_date,
-            trip.end_date,
-            seatsRequested,
-          );
-          textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}`;
+          // Logujemy szczegóły dla debugowania
+          console.error("❌ access_token is null for booking:", {
+            booking_ref: booking.booking_ref,
+            booking_id: booking.id,
+            message: "Check database and RLS policies"
+          });
+          // Tymczasowo używamy linku do strony wycieczki
+          bookingLink = `${baseUrl}/trip/${trip.public_slug || payload.slug}`;
+          console.warn("⚠️ Using fallback link to trip page:", bookingLink);
         }
+
+        emailHtml = generateBookingConfirmationEmail(
+          booking.booking_ref,
+          bookingLink,
+          trip.title as string,
+          trip.start_date,
+          trip.end_date,
+          seatsRequested,
+        );
+        textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\nKod rezerwacji: ${booking.booking_ref}\n\nLink do przesłania umowy i płatności: ${bookingLink}`;
 
         await fetch(`${baseUrl}/api/email`, {
           method: "POST",
@@ -263,18 +429,24 @@ export async function POST(req: Request) {
       }
     }
 
-    // Utworzenie płatności Paynow
+    // Utworzenie płatności Paynow v3
     let redirectUrl: string | null = null;
     const unitPrice = trip.price_cents ?? 0;
     const totalAmountCents = unitPrice * seatsRequested;
 
     if (totalAmountCents > 0) {
       try {
+        // Utwórz URL powrotu - jeśli mamy access_token, przekieruj do strony rezerwacji, w przeciwnym razie do strony powrotu
+        const returnUrl = accessToken
+          ? `${baseUrl}/booking/${accessToken}`
+          : `${baseUrl}/payments/return?booking_ref=${booking.booking_ref}`;
+
         const payment = await createPaynowPayment({
           amountCents: totalAmountCents,
           externalId: booking.booking_ref,
           description: `Rezerwacja ${booking.booking_ref} - ${trip.title}`,
-          continueUrl: `${baseUrl}/trip/${trip.public_slug || payload.slug}`,
+          buyerEmail: payload.contact_email,
+          continueUrl: returnUrl,
           notificationUrl: `${baseUrl}/api/payments/paynow/webhook`,
         });
         redirectUrl = payment.redirectUrl ?? null;
@@ -285,11 +457,27 @@ export async function POST(req: Request) {
       }
     }
 
+    // Zawsze zwracamy booking_url do strony rezerwacji (gdzie można załączyć umowę i zapłacić)
+    // Jeśli access_token nie istnieje, użyjemy booking_ref jako identyfikator
+    // (wymaga to obsługi w routingu /booking/[token] aby akceptował również booking_ref)
+    let bookingUrl: string | null = null;
+    if (accessToken) {
+      bookingUrl = `${baseUrl}/booking/${accessToken}`;
+      console.log("✅ Created booking_url with access_token:", bookingUrl);
+    } else {
+      // Fallback: użyj booking_ref - ale to wymaga zmiany w routingu
+      // Na razie użyjemy endpointu API który zwróci booking data
+      bookingUrl = `${baseUrl}/booking/${booking.booking_ref}`;
+      console.warn("⚠️ Using booking_ref as fallback for booking_url:", bookingUrl);
+      console.warn("   Please run migration 015_bookings_access_token.sql or 018_fix_access_token.sql");
+    }
+
     return NextResponse.json(
       {
         booking_ref: booking.booking_ref,
         agreement_pdf_url: agreementPdfUrl,
-        redirect_url: redirectUrl,
+        booking_url: bookingUrl, // URL do strony rezerwacji (załączanie umowy + płatność)
+        redirect_url: redirectUrl, // Opcjonalny URL do Paynow (jeśli płatność została utworzona)
       },
       { status: 201 },
     );

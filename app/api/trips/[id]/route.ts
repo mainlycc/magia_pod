@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
@@ -74,6 +75,65 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   } catch (err) {
     console.error("Error in PATCH /api/trips/[id]:", err);
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    const supabase = await createClient();
+    const adminSupabase = createAdminClient();
+
+    // Sprawdź czy użytkownik jest adminem
+    const isAdmin = await checkAdmin(supabase);
+    if (!isAdmin) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+    }
+
+    // Sprawdź czy wycieczka ma rezerwacje
+    const { data: bookings, error: bookingsError } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("trip_id", id)
+      .limit(1);
+
+    if (bookingsError) {
+      console.error("Error checking bookings:", bookingsError);
+      return NextResponse.json({ error: "check_failed" }, { status: 500 });
+    }
+
+    if (bookings && bookings.length > 0) {
+      return NextResponse.json(
+        { error: "cannot_delete", message: "Nie można usunąć wycieczki z istniejącymi rezerwacjami" },
+        { status: 409 }
+      );
+    }
+
+    // Usuń wycieczkę
+    const { error: deleteError } = await adminSupabase
+      .from("trips")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Error deleting trip:", deleteError);
+      if (deleteError.code === "23503") {
+        // Foreign key constraint violation
+        return NextResponse.json(
+          { error: "cannot_delete", message: "Nie można usunąć wycieczki z powiązanymi danymi" },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("Error in DELETE /api/trips/[id]:", err);
+    return NextResponse.json({ error: "unexpected" }, { status: 500 });
   }
 }
 

@@ -13,18 +13,71 @@ export async function GET(
       return NextResponse.json({ error: "Token is required" }, { status: 400 });
     }
 
-    // Walidacja formatu UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(token)) {
-      return NextResponse.json({ error: "Invalid token format" }, { status: 400 });
-    }
-
     const supabase = await createClient();
 
-    // Użyj funkcji SQL która omija RLS
-    const { data: bookingData, error } = await supabase.rpc("get_booking_by_token", {
-      booking_token: token,
-    });
+    // Sprawdź czy token to UUID (access_token) czy booking_ref
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuid = uuidRegex.test(token);
+
+    let bookingData: any[] | null = null;
+    let error: any = null;
+
+    if (isUuid) {
+      // Token to UUID - użyj funkcji SQL która omija RLS
+      const result = await supabase.rpc("get_booking_by_token", {
+        booking_token: token,
+      });
+      bookingData = result.data;
+      error = result.error;
+    } else {
+      // Token to booking_ref - pobierz bezpośrednio z tabeli
+      // Używamy admin clienta aby ominąć RLS
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const adminSupabase = createAdminClient();
+      
+      const { data: booking, error: bookingError } = await adminSupabase
+        .from("bookings")
+        .select(`
+          id,
+          booking_ref,
+          contact_email,
+          contact_phone,
+          address,
+          status,
+          payment_status,
+          agreement_pdf_url,
+          created_at,
+          trip_id,
+          trips:trips(id, title, start_date, end_date, price_cents)
+        `)
+        .eq("booking_ref", token)
+        .single();
+
+      if (bookingError || !booking) {
+        error = bookingError || new Error("Booking not found");
+        bookingData = null;
+      } else {
+        // Przekształć format do zgodnego z get_booking_by_token
+        // trips jest tablicą (nawet dla relacji 1:1), więc bierzemy pierwszy element
+        const trip = Array.isArray(booking.trips) ? booking.trips[0] : booking.trips;
+        bookingData = [{
+          id: booking.id,
+          booking_ref: booking.booking_ref,
+          contact_email: booking.contact_email,
+          contact_phone: booking.contact_phone,
+          address: booking.address,
+          status: booking.status,
+          payment_status: booking.payment_status,
+          agreement_pdf_url: booking.agreement_pdf_url,
+          created_at: booking.created_at,
+          trip_id: booking.trip_id,
+          trip_title: trip?.title || null,
+          trip_start_date: trip?.start_date || null,
+          trip_end_date: trip?.end_date || null,
+          trip_price_cents: trip?.price_cents || null,
+        }];
+      }
+    }
 
     if (error) {
       console.error("Error fetching booking by token:", error);

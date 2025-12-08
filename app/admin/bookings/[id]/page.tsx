@@ -82,6 +82,10 @@ export default function BookingDetailsPage() {
         throw new Error("Nie udało się wczytać rezerwacji");
       }
       const data = await res.json();
+      // Upewnij się, że payment_history jest tablicą
+      if (data && !Array.isArray(data.payment_history)) {
+        data.payment_history = [];
+      }
       setBooking(data);
       setInternalNotes(
         Array.isArray(data.internal_notes)
@@ -135,21 +139,6 @@ export default function BookingDetailsPage() {
     }
   };
 
-  if (loading) {
-    return <div className="space-y-4">Ładowanie...</div>;
-  }
-
-  if (!booking) {
-    return <div className="space-y-4">Rezerwacja nie znaleziona</div>;
-  }
-
-  const paymentSummary = booking.trips
-    ? calculatePaymentBalance(
-        booking.trips.price_cents || 0,
-        booking.payment_history || []
-      )
-    : null;
-
   // Typy pomocnicze dla tabel
   type Participant = Booking["participants"][number];
   type Payment = Booking["payment_history"][number];
@@ -196,17 +185,28 @@ export default function BookingDetailsPage() {
       {
         accessorKey: "payment_date",
         header: "Data",
-        cell: ({ row }) =>
-          new Date(row.original.payment_date).toLocaleDateString("pl-PL"),
+        cell: ({ row }) => {
+          const date = row.original.payment_date;
+          if (!date) return "-";
+          try {
+            return new Date(date).toLocaleDateString("pl-PL");
+          } catch {
+            return date;
+          }
+        },
       },
       {
         accessorKey: "amount_cents",
         header: "Kwota",
-        cell: ({ row }) => (
-          <span className="font-medium">
-            {(row.original.amount_cents / 100).toFixed(2)} PLN
-          </span>
-        ),
+        cell: ({ row }) => {
+          const amount = row.original.amount_cents;
+          if (typeof amount !== "number") return "-";
+          return (
+            <span className="font-medium">
+              {(amount / 100).toFixed(2)} PLN
+            </span>
+          );
+        },
       },
       {
         accessorKey: "payment_method",
@@ -221,6 +221,21 @@ export default function BookingDetailsPage() {
     ],
     []
   );
+
+  if (loading) {
+    return <div className="space-y-4">Ładowanie...</div>;
+  }
+
+  if (!booking) {
+    return <div className="space-y-4">Rezerwacja nie znaleziona</div>;
+  }
+
+  const paymentSummary = booking.trips
+    ? calculatePaymentBalance(
+        booking.trips.price_cents || 0,
+        booking.payment_history || []
+      )
+    : null;
 
   return (
     <div className="space-y-6">
@@ -369,9 +384,10 @@ export default function BookingDetailsPage() {
         )}
         <ReusableTable
           columns={paymentColumns}
-          data={booking.payment_history || []}
+          data={Array.isArray(booking.payment_history) ? booking.payment_history : []}
           searchable={false}
           enablePagination={false}
+          enableRowSelection={false}
           emptyMessage="Brak płatności"
         />
       </Card>
@@ -386,9 +402,9 @@ export default function BookingDetailsPage() {
               {booking.agreements[0].pdf_url && (
                 <Button
                   variant="outline"
-                  onClick={() => window.open(booking.agreements[0].pdf_url!, "_blank")}
+                  onClick={() => window.open(`/api/agreements/${booking.agreements[0].pdf_url}`, "_blank")}
                 >
-                  Podejrzyj umowę
+                  Otwórz w nowym oknie
                 </Button>
               )}
               <Button variant="outline">Wyślij umowę e-mailem ponownie</Button>
@@ -396,28 +412,42 @@ export default function BookingDetailsPage() {
           )}
         </div>
         {booking.agreements && booking.agreements.length > 0 && (
-          <div className="space-y-2">
-            {booking.agreements.map((agreement) => (
-              <div key={agreement.id} className="flex items-center gap-2">
-                <Badge variant="secondary">
-                  {agreement.status === "generated"
-                    ? "Wygenerowana"
-                    : agreement.status === "sent"
-                    ? "Wysłana"
-                    : "Podpisana"}
-                </Badge>
-                {agreement.sent_at && (
-                  <span className="text-sm text-muted-foreground">
-                    Wysłana: {new Date(agreement.sent_at).toLocaleDateString("pl-PL")}
-                  </span>
-                )}
-                {agreement.signed_at && (
-                  <span className="text-sm text-muted-foreground">
-                    Podpisana: {new Date(agreement.signed_at).toLocaleDateString("pl-PL")}
-                  </span>
-                )}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              {booking.agreements.map((agreement) => (
+                <div key={agreement.id} className="flex items-center gap-2">
+                  <Badge variant="secondary">
+                    {agreement.status === "generated"
+                      ? "Wygenerowana"
+                      : agreement.status === "sent"
+                      ? "Wysłana"
+                      : "Podpisana"}
+                  </Badge>
+                  {agreement.sent_at && (
+                    <span className="text-sm text-muted-foreground">
+                      Wysłana: {new Date(agreement.sent_at).toLocaleDateString("pl-PL")}
+                    </span>
+                  )}
+                  {agreement.signed_at && (
+                    <span className="text-sm text-muted-foreground">
+                      Podpisana: {new Date(agreement.signed_at).toLocaleDateString("pl-PL")}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {booking.agreements[0].pdf_url && (
+              <div className="mt-4">
+                <h3 className="font-medium text-sm uppercase text-muted-foreground mb-2">Podgląd umowy</h3>
+                <div className="w-full overflow-hidden rounded-lg border">
+                  <iframe
+                    src={`/api/agreements/${booking.agreements[0].pdf_url}`}
+                    className="h-[600px] w-full border-0"
+                    title="Podgląd umowy"
+                  />
+                </div>
               </div>
-            ))}
+            )}
           </div>
         )}
       </Card>

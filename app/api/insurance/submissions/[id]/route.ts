@@ -44,6 +44,13 @@ export async function GET(
         api_payload,
         api_response,
         policy_number,
+        external_offer_id,
+        external_policy_id,
+        external_policy_number,
+        policy_status_code,
+        sent_at,
+        last_sync_at,
+        sync_attempts,
         created_at,
         updated_at,
         trips:trips!inner(id, title, start_date, end_date)

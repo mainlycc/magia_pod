@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import Link from "next/link";
 import {
   Select,
   SelectContent,
@@ -15,8 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { X, CalendarIcon } from "lucide-react";
+import { format } from "date-fns/format";
+import { pl } from "date-fns/locale";
 
 type Coordinator = {
   id: string;
@@ -30,8 +43,37 @@ export default function EditTripPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [startDateOpen, setStartDateOpen] = useState(false);
+  const [endDateOpen, setEndDateOpen] = useState(false);
+  const startDateRef = useRef<HTMLDivElement>(null);
+  const endDateRef = useRef<HTMLDivElement>(null);
+
+  // Zamykanie kalendarza po kliknięciu poza nim
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (startDateRef.current && !startDateRef.current.contains(event.target as Node)) {
+        setStartDateOpen(false);
+      }
+      if (endDateRef.current && !endDateRef.current.contains(event.target as Node)) {
+        setEndDateOpen(false);
+      }
+    };
+
+    if (startDateOpen || endDateOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [startDateOpen, endDateOpen]);
   const [price, setPrice] = useState<string>("");
   const [seats, setSeats] = useState<string>("");
+  const [category, setCategory] = useState("");
+  const [location, setLocation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [publicSlug, setPublicSlug] = useState<string>("");
@@ -81,8 +123,14 @@ export default function EditTripPage() {
           console.log("Trip data loaded:", t);
           // Ustaw wszystkie pola, nawet jeśli są null/undefined
           setTitle(t.title || "");
+          setSlug(t.slug || "");
+          setDescription(t.description || "");
+          setStartDate(t.start_date ? new Date(t.start_date) : undefined);
+          setEndDate(t.end_date ? new Date(t.end_date) : undefined);
           setPrice(t.price_cents != null ? String(t.price_cents / 100) : "");
           setSeats(t.seats_total != null ? String(t.seats_total) : "");
+          setCategory(t.category || "");
+          setLocation(t.location || "");
           setIsPublic(Boolean(t.is_public));
           setPublicSlug(t.public_slug || "");
         } else {
@@ -103,22 +151,46 @@ export default function EditTripPage() {
   }, [id]);
 
   const save = async () => {
+    if (!title) {
+      setError("Nazwa jest wymagana");
+      return;
+    }
+
     setSaving(true);
     setError(null);
-    const res = await fetch(`/api/trips/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        price_cents: price ? Math.round(parseFloat(price) * 100) : null,
-        seats_total: seats ? parseInt(seats) : null,
-        is_public: isPublic,
-        public_slug: isPublic ? publicSlug || undefined : null,
-      }),
-    });
-    if (!res.ok) setError("Błąd zapisu");
-    else router.push("/admin/trips");
-    setSaving(false);
+    
+    try {
+      const res = await fetch(`/api/trips/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description: description || null,
+          start_date: startDate ? startDate.toISOString().split("T")[0] : null,
+          end_date: endDate ? endDate.toISOString().split("T")[0] : null,
+          price_cents: price ? Math.round(parseFloat(price) * 100) : null,
+          seats_total: seats ? parseInt(seats) : null,
+          category: category || null,
+          location: location || null,
+          is_public: isPublic,
+          public_slug: isPublic ? (publicSlug || null) : null,
+        }),
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        setError(errorData.error || "Błąd zapisu");
+        setSaving(false);
+        return;
+      }
+      
+      toast.success("Wycieczka została zaktualizowana");
+      // Nie przekierowujemy automatycznie, użytkownik może przejść do treści ręcznie
+    } catch (err) {
+      setError("Błąd podczas aktualizacji wycieczki");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const assignCoordinator = async () => {
@@ -181,19 +253,137 @@ export default function EditTripPage() {
 
   return (
     <div className="space-y-4">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/admin/trips">Wycieczki</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{title || "Edytuj wycieczkę"}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+      
       <Card className="p-5 space-y-4">
         <div className="grid gap-3">
           <div className="grid gap-2">
-            <Label>Nazwa</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Label>Nazwa *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nazwa wycieczki" />
+          </div>
+          <div className="grid gap-2">
+            <Label>Slug</Label>
+            <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="slug-wycieczki" disabled />
+            <p className="text-xs text-muted-foreground">Slug nie może być zmieniony po utworzeniu wycieczki</p>
+          </div>
+          <div className="grid gap-2">
+            <Label>Opis</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Opis wycieczki"
+              rows={4}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label>Data rozpoczęcia</Label>
+              <div className="relative" ref={startDateRef}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start text-left font-normal"
+                  onClick={() => {
+                    setStartDateOpen(!startDateOpen);
+                    setEndDateOpen(false);
+                  }}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {startDate ? format(startDate, "PPP", { locale: pl }) : "Wybierz datę"}
+                </Button>
+                {startDateOpen && (
+                  <div className="absolute z-50 mt-1 rounded-md border bg-popover shadow-md">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={(date) => {
+                        setStartDate(date);
+                        setStartDateOpen(false);
+                      }}
+                      locale={pl}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Data zakończenia</Label>
+              <div className="relative" ref={endDateRef}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start text-left font-normal"
+                  onClick={() => {
+                    setEndDateOpen(!endDateOpen);
+                    setStartDateOpen(false);
+                  }}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {endDate ? format(endDate, "PPP", { locale: pl }) : "Wybierz datę"}
+                </Button>
+                {endDateOpen && (
+                  <div className="absolute z-50 mt-1 rounded-md border bg-popover shadow-md">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={(date) => {
+                        setEndDate(date);
+                        setEndDateOpen(false);
+                      }}
+                      locale={pl}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label>Kategoria</Label>
+              <Input
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="np. Wycieczki górskie"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Miejsce</Label>
+              <Input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="np. Islandia"
+              />
+            </div>
           </div>
           <div className="grid gap-2">
             <Label>Cena (PLN)</Label>
-            <Input value={price} onChange={(e) => setPrice(e.target.value)} />
+            <Input
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="0.00"
+            />
           </div>
           <div className="grid gap-2">
             <Label>Liczba miejsc</Label>
-            <Input value={seats} onChange={(e) => setSeats(e.target.value)} />
+            <Input
+              type="number"
+              value={seats}
+              onChange={(e) => setSeats(e.target.value)}
+              placeholder="0"
+            />
           </div>
 
           <div className="mt-2 space-y-3 rounded-md border p-3">
@@ -229,7 +419,12 @@ export default function EditTripPage() {
         {error && <div className="text-sm text-red-600">{error}</div>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => router.back()}>Anuluj</Button>
-          <Button disabled={saving} onClick={save}>Zapisz</Button>
+          <Button asChild variant="secondary">
+            <Link href={`/admin/trips/${id}/content`}>Przejdź do treści</Link>
+          </Button>
+          <Button disabled={saving || !title} onClick={save}>
+            {saving ? "Zapisywanie..." : "Zapisz"}
+          </Button>
         </div>
       </Card>
 

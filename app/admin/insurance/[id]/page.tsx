@@ -17,11 +17,18 @@ type InsuranceSubmissionDetail = {
   booking_id: string | null;
   participants_count: number;
   submission_date: string;
-  status: "pending" | "sent" | "accepted" | "error";
+  status: "pending" | "calculating" | "registered" | "sent" | "issued" | "accepted" | "error" | "cancelled" | "manual_check_required";
   error_message: string | null;
   api_payload: any;
   api_response: any;
   policy_number: string | null;
+  external_offer_id: string | null;
+  external_policy_id: string | null;
+  external_policy_number: string | null;
+  policy_status_code: string | null;
+  sent_at: string | null;
+  last_sync_at: string | null;
+  sync_attempts: number;
   created_at: string;
   updated_at: string;
   trips: {
@@ -43,12 +50,26 @@ type InsuranceSubmissionDetail = {
   }>;
 };
 
+type InsuranceLog = {
+  id: string;
+  operation_type: string;
+  status: string;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
     pending: "Oczekujące",
+    calculating: "Kalkulacja",
+    registered: "Zarejestrowane",
     sent: "Wysłane",
+    issued: "Wystawione",
     accepted: "Zaakceptowane",
     error: "Błąd",
+    cancelled: "Anulowane",
+    manual_check_required: "Wymaga kontroli",
   };
   return labels[status] || status;
 };
@@ -84,10 +105,14 @@ export default function InsuranceSubmissionDetailsPage() {
   const router = useRouter();
   const submissionId = params.id as string;
   const [submission, setSubmission] = useState<InsuranceSubmissionDetail | null>(null);
+  const [logs, setLogs] = useState<InsuranceLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     loadSubmission();
+    loadLogs();
   }, [submissionId]);
 
   const loadSubmission = async () => {
@@ -104,6 +129,65 @@ export default function InsuranceSubmissionDetailsPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLogs = async () => {
+    try {
+      const res = await fetch(`/api/insurance/submissions/${submissionId}/logs`);
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load logs:", err);
+    }
+  };
+
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      const res = await fetch(`/api/insurance/submissions/${submissionId}/sync`, {
+        method: "GET",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Status został zsynchronizowany");
+        await loadSubmission();
+        await loadLogs();
+      } else {
+        toast.error(data.message || "Błąd podczas synchronizacji");
+      }
+    } catch (err) {
+      toast.error("Błąd podczas synchronizacji");
+      console.error(err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!confirm("Czy na pewno chcesz anulować to zgłoszenie?")) {
+      return;
+    }
+    try {
+      setCancelling(true);
+      const res = await fetch(`/api/insurance/submissions/${submissionId}/cancel`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Zgłoszenie zostało anulowane");
+        await loadSubmission();
+        await loadLogs();
+      } else {
+        toast.error(data.message || "Błąd podczas anulowania");
+      }
+    } catch (err) {
+      toast.error("Błąd podczas anulowania");
+      console.error(err);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -174,9 +258,29 @@ export default function InsuranceSubmissionDetailsPage() {
             Utworzone: {formatDate(submission.created_at)}
           </p>
         </div>
-        <Button variant="outline" onClick={() => router.back()}>
-          Wstecz
-        </Button>
+        <div className="flex gap-2">
+          {submission.external_policy_number && (
+            <Button
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              {syncing ? "Synchronizowanie..." : "Synchronizuj status"}
+            </Button>
+          )}
+          {["sent", "registered", "issued"].includes(submission.status) && (
+            <Button
+              variant="destructive"
+              onClick={handleCancel}
+              disabled={cancelling}
+            >
+              {cancelling ? "Anulowanie..." : "Anuluj zgłoszenie"}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => router.back()}>
+            Wstecz
+          </Button>
+        </div>
       </div>
 
       {/* Informacje podstawowe */}
@@ -213,10 +317,30 @@ export default function InsuranceSubmissionDetailsPage() {
             <Label className="text-muted-foreground">Liczba uczestników</Label>
             <div>{submission.participants_count}</div>
           </div>
-          {submission.policy_number && (
+          {submission.external_policy_number && (
             <div>
-              <Label className="text-muted-foreground">Numer polisy</Label>
-              <div className="font-medium">{submission.policy_number}</div>
+              <Label className="text-muted-foreground">Numer polisy HDI</Label>
+              <div className="font-medium">{submission.external_policy_number}</div>
+            </div>
+          )}
+          {submission.policy_status_code && (
+            <div>
+              <Label className="text-muted-foreground">Status polisy HDI</Label>
+              <div>
+                <Badge variant="outline">{submission.policy_status_code}</Badge>
+              </div>
+            </div>
+          )}
+          {submission.last_sync_at && (
+            <div>
+              <Label className="text-muted-foreground">Ostatnia synchronizacja</Label>
+              <div>{formatDate(submission.last_sync_at)}</div>
+            </div>
+          )}
+          {submission.sync_attempts > 0 && (
+            <div>
+              <Label className="text-muted-foreground">Liczba prób synchronizacji</Label>
+              <div>{submission.sync_attempts}</div>
             </div>
           )}
           {submission.error_message && (
@@ -279,6 +403,31 @@ export default function InsuranceSubmissionDetailsPage() {
             <pre className="text-xs">
               {JSON.stringify(submission.api_response, null, 2)}
             </pre>
+          </div>
+        </Card>
+      )}
+
+      {/* Historia operacji */}
+      {logs.length > 0 && (
+        <Card className="p-4 space-y-4">
+          <h2 className="text-lg font-semibold">Historia operacji</h2>
+          <div className="space-y-2">
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-center justify-between p-2 border rounded">
+                <div className="flex items-center gap-4">
+                  <Badge variant={log.status === "success" ? "default" : "destructive"}>
+                    {log.status === "success" ? "Sukces" : "Błąd"}
+                  </Badge>
+                  <span className="text-sm font-medium">{log.operation_type}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(log.created_at)}
+                  </span>
+                </div>
+                {log.error_message && (
+                  <div className="text-sm text-red-600">{log.error_message}</div>
+                )}
+              </div>
+            ))}
           </div>
         </Card>
       )}

@@ -117,6 +117,34 @@ export default function AdminBookingsPage() {
     }
   };
 
+  const handleDeleteSelected = async (selectedBookings: BookingWithTrip[]) => {
+    if (selectedBookings.length === 0) return;
+
+    try {
+      const deletePromises = selectedBookings.map((booking) =>
+        fetch(`/api/bookings/${booking.id}`, {
+          method: "DELETE",
+        })
+      );
+
+      const results = await Promise.allSettled(deletePromises);
+      const failed = results.filter((r) => r.status === "rejected" || !r.value.ok);
+
+      if (failed.length > 0) {
+        toast.error(
+          `Nie udało się usunąć ${failed.length} z ${selectedBookings.length} rezerwacji`
+        );
+      } else {
+        toast.success(`Usunięto ${selectedBookings.length} rezerwacji`);
+      }
+
+      await loadData();
+    } catch (err) {
+      toast.error("Błąd podczas usuwania rezerwacji");
+      console.error(err);
+    }
+  };
+
   const columns = useMemo<ColumnDef<BookingWithTrip>[]>(
     () => [
       {
@@ -251,6 +279,12 @@ export default function AdminBookingsPage() {
         enablePagination={true}
         pageSize={20}
         emptyMessage="Brak rezerwacji"
+        enableRowSelection={true}
+        enableDeleteDialog={true}
+        onConfirmDelete={handleDeleteSelected}
+        deleteDialogTitle="Usuń zaznaczone rezerwacje?"
+        deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone rezerwacje? Ta operacja nie może być cofnięta. Zostaną również usunięte wszystkie powiązane dane (uczestnicy, umowy, historia płatności)."
+        deleteButtonLabel="Usuń zaznaczone"
       />
     </div>
   );
