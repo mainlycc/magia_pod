@@ -149,12 +149,12 @@ export default function AdminPaymentsPage() {
     };
     window.addEventListener("focus", handleFocus);
 
-    // Polling jako fallback dla Realtime - odświeżaj dane co 30 sekund
+    // Polling jako fallback dla Realtime - odświeżaj dane co 10 sekund
     // To zapewnia, że nawet jeśli Realtime nie działa, dane będą aktualne
     const pollingInterval = setInterval(() => {
       console.log("Polling: odświeżanie danych płatności...");
       loadData();
-    }, 30000); // 30 sekund
+    }, 10000); // 10 sekund - częstsze odświeżanie dla lepszej aktualności danych
 
     return () => {
       supabase.removeChannel(channel);
@@ -255,7 +255,11 @@ export default function AdminPaymentsPage() {
         // Dodatkowo odśwież po krótkim opóźnieniu, aby upewnić się że zmiany są widoczne
         setTimeout(() => {
           loadData();
-        }, 1000);
+        }, 500);
+        // Jeszcze jedno odświeżenie po dłuższym opóźnieniu dla pewności
+        setTimeout(() => {
+          loadData();
+        }, 2000);
       } else {
         toast.error(data.message || "Nie udało się sprawdzić statusu płatności");
       }

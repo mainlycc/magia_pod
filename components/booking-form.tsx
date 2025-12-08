@@ -832,7 +832,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                       <CardContent className="p-0">
                         <div className="w-full overflow-hidden rounded-lg border">
                           <iframe
-                            src="/example-agreement.pdf"
+                            src="/api/pdf/preview"
                             className="h-[400px] w-full border-0 md:h-[600px]"
                             title="Podgląd umowy"
                           />

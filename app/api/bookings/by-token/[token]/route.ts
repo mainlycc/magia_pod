@@ -90,8 +90,11 @@ export async function GET(
 
     const booking = bookingData[0];
 
-    // Pobierz uczestników
-    const { data: participants, error: participantsError } = await supabase
+    // Pobierz uczestników - używamy admin clienta aby ominąć RLS dla publicznego dostępu
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const adminSupabase = createAdminClient();
+    
+    const { data: participants, error: participantsError } = await adminSupabase
       .from("participants")
       .select("id, first_name, last_name, pesel, email, phone, document_type, document_number")
       .eq("booking_id", booking.id);

@@ -133,13 +133,21 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Aktualizuj status płatności w rezerwacji
+  // Aktualizuj status płatności i status rezerwacji w rezerwacji
   console.log(`[Paynow Webhook] Updating booking ${booking.id} (${payload.externalId}) payment status from ${booking.payment_status} to ${newPaymentStatus}`);
   console.log(`[Paynow Webhook] Payment details: paymentId=${payload.paymentId}, status=${status}, amount=${amountCents} cents`);
   
+  // Przygotuj obiekt aktualizacji - jeśli płatność jest potwierdzona, ustaw również status rezerwacji na "confirmed"
+  const updateData: { payment_status: string; status?: string } = { payment_status: newPaymentStatus };
+  if (status === "CONFIRMED") {
+    // Aktualizuj status rezerwacji na "confirmed" gdy płatność jest potwierdzona
+    updateData.status = "confirmed";
+    console.log(`[Paynow Webhook] Also updating booking status to "confirmed"`);
+  }
+  
   const { error: updateError, data: updatedBooking } = await supabase
     .from("bookings")
-    .update({ payment_status: newPaymentStatus })
+    .update(updateData)
     .eq("id", booking.id)
     .select()
     .single();

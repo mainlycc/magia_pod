@@ -129,10 +129,17 @@ export async function POST(request: NextRequest) {
       }
 
       if (shouldUpdate && newPaymentStatus !== booking.payment_status) {
-        // Aktualizuj status płatności w rezerwacji
+        // Aktualizuj status płatności i status rezerwacji w rezerwacji
+        // Jeśli płatność jest potwierdzona, ustaw również status rezerwacji na "confirmed"
+        const updateData: { payment_status: string; status?: string } = { payment_status: newPaymentStatus };
+        if (status === "CONFIRMED") {
+          updateData.status = "confirmed";
+          console.log(`[Paynow Check Status] Also updating booking status to "confirmed"`);
+        }
+        
         const { error: updateError } = await supabase
           .from("bookings")
-          .update({ payment_status: newPaymentStatus })
+          .update(updateData)
           .eq("id", booking.id);
 
         if (updateError) {

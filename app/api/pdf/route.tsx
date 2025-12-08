@@ -9,7 +9,7 @@ export const maxDuration = 30; // Maksymalny czas wykonania funkcji (sekundy)
 // Polskie znaki dla systemu: ą ć ę ł ń ó ś ź ż Ą Ć Ę Ł Ń Ó Ś Ź Ż
 // Przykładowe użycie: "ąęćłńóśźż ĄĆĘŁŃÓŚŹŻ"
 
-type PdfPayload = {
+export type PdfPayload = {
   booking_ref: string;
   trip: { title: string; start_date?: string | null; end_date?: string | null; price_cents?: number | null };
   contact_email: string;
@@ -59,7 +59,7 @@ function formatDate(dateString: string | null | undefined): string {
   }
 }
 
-function generatePdf(data: PdfPayload): Buffer {
+export function generatePdf(data: PdfPayload): Buffer {
   // Inicjalizacja jsPDF z domyślnymi ustawieniami
   // jsPDF 2.x automatycznie obsługuje UTF-8, więc polskie znaki powinny działać poprawnie
   const doc = new jsPDF({
