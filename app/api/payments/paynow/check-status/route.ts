@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getPaynowPaymentStatus } from "@/lib/paynow";
+
+// Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {
@@ -131,34 +136,45 @@ export async function POST(request: NextRequest) {
       if (shouldUpdate && newPaymentStatus !== booking.payment_status) {
         // Aktualizuj status płatności i status rezerwacji w rezerwacji
         // Jeśli płatność jest potwierdzona, ustaw również status rezerwacji na "confirmed"
+        // Używamy admin clienta, aby ominąć RLS i mieć pewność, że aktualizacja się powiedzie
+        const adminClient = createAdminClient();
         const updateData: { payment_status: string; status?: string } = { payment_status: newPaymentStatus };
         if (status === "CONFIRMED") {
           updateData.status = "confirmed";
           console.log(`[Paynow Check Status] Also updating booking status to "confirmed"`);
         }
         
-        const { error: updateError } = await supabase
+        const { error: updateError, data: updatedBooking } = await adminClient
           .from("bookings")
           .update(updateData)
-          .eq("id", booking.id);
+          .eq("id", booking.id)
+          .select()
+          .single();
 
         if (updateError) {
-          console.error("Failed to update booking payment status:", updateError);
+          console.error("[Paynow Check Status] Failed to update booking payment status:", updateError);
           return NextResponse.json(
-            { error: "update_failed" },
+            { error: "update_failed", details: updateError.message },
             { status: 500 }
           );
         }
 
-        console.log(`[Paynow Check Status] Successfully updated booking ${booking.id} payment status from ${booking.payment_status} to ${newPaymentStatus}`);
+        console.log(`[Paynow Check Status] Successfully updated booking ${booking.id} payment status from ${booking.payment_status} to ${newPaymentStatus}`, {
+          bookingId: booking.id,
+          bookingRef: booking.booking_ref,
+          oldStatus: booking.payment_status,
+          newStatus: newPaymentStatus,
+          updatedBooking: updatedBooking,
+        });
 
-        // Odśwież dane w cache Supabase, aby zmiany były widoczne natychmiast
-        // To pomaga w przypadku gdy Realtime nie działa
-        await supabase
+        // Zweryfikuj, że aktualizacja się powiodła
+        const { data: verifyBooking } = await adminClient
           .from("bookings")
-          .select("id, payment_status")
+          .select("id, payment_status, status")
           .eq("id", booking.id)
           .single();
+        
+        console.log(`[Paynow Check Status] Verification - booking ${booking.id} now has payment_status=${verifyBooking?.payment_status}, status=${verifyBooking?.status}`);
 
         return NextResponse.json({
           success: true,

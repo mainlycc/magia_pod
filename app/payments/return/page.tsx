@@ -22,30 +22,45 @@ function PaymentReturnContent() {
     const bookingRef = searchParams.get("booking_ref");
 
     const checkPaymentStatus = async () => {
-      if (bookingRef && paymentId) {
-        // Automatycznie sprawdź status płatności przez API Paynow
+      // Zawsze spróbuj sprawdzić status płatności przez API Paynow, jeśli mamy booking_ref
+      if (bookingRef) {
         try {
+          console.log(`[Payment Return] Checking payment status for booking_ref: ${bookingRef}`);
           const response = await fetch("/api/payments/paynow/check-status", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ booking_ref: bookingRef, payment_id: paymentId }),
+            body: JSON.stringify({ 
+              booking_ref: bookingRef, 
+              payment_id: paymentId || undefined // payment_id jest opcjonalne
+            }),
           });
 
           const data = await response.json();
+          console.log(`[Payment Return] Check status response:`, data);
           
-          if (data.success && data.paynow_status === "CONFIRMED") {
-            setStatus("success");
-            setMessage("Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
-            return;
+          if (data.success) {
+            if (data.paynow_status === "CONFIRMED" || data.payment_status === "paid") {
+              setStatus("success");
+              setMessage(data.message || "Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
+              return;
+            } else if (data.paynow_status === "PENDING") {
+              setStatus("pending");
+              setMessage("Płatność jest w trakcie przetwarzania. Status zostanie zaktualizowany automatycznie.");
+              return;
+            } else if (data.paynow_status === "REJECTED" || data.paynow_status === "EXPIRED") {
+              setStatus("error");
+              setMessage("Płatność nie została zrealizowana. Spróbuj ponownie.");
+              return;
+            }
           }
         } catch (error) {
-          console.error("Error checking payment status:", error);
+          console.error("[Payment Return] Error checking payment status:", error);
         }
       }
 
-      // Fallback do sprawdzania parametrów URL
+      // Fallback do sprawdzania parametrów URL (jeśli Paynow przekazuje status w URL)
       if (paymentStatus) {
         switch (paymentStatus.toUpperCase()) {
           case "CONFIRMED":
@@ -66,9 +81,39 @@ function PaymentReturnContent() {
             setStatus("loading");
             setMessage("Sprawdzanie statusu płatności...");
         }
+      } else if (bookingRef) {
+        // Jeśli nie ma parametrów, ale mamy booking_ref, spróbuj ponownie sprawdzić status po krótkim opóźnieniu
+        // Czasami Paynow potrzebuje chwili na przetworzenie płatności
+        setTimeout(async () => {
+          try {
+            const response = await fetch("/api/payments/paynow/check-status", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ booking_ref: bookingRef }),
+            });
+
+            const data = await response.json();
+            if (data.success && (data.paynow_status === "CONFIRMED" || data.payment_status === "paid")) {
+              setStatus("success");
+              setMessage("Płatność została pomyślnie zrealizowana i zaktualizowana w systemie.");
+            } else {
+              setStatus("pending");
+              setMessage(
+                "Płatność została przekierowana. Status płatności zostanie zaktualizowany automatycznie. Odśwież stronę za chwilę."
+              );
+            }
+          } catch (error) {
+            console.error("[Payment Return] Error in delayed check:", error);
+            setStatus("pending");
+            setMessage(
+              "Płatność została przekierowana. Status płatności zostanie zaktualizowany automatycznie."
+            );
+          }
+        }, 2000); // Sprawdź ponownie po 2 sekundach
       } else {
-        // Jeśli nie ma parametrów, zakładamy że płatność może być w trakcie przetwarzania
-        // Webhook zaktualizuje status w bazie
+        // Jeśli nie ma ani parametrów, ani booking_ref
         setStatus("pending");
         setMessage(
           "Płatność została przekierowana. Status płatności zostanie zaktualizowany automatycznie."
