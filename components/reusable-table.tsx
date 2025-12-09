@@ -43,6 +43,7 @@ export interface ReusableTableProps<TData, TValue> {
   searchable?: boolean;
   searchPlaceholder?: string;
   searchColumn?: string;
+  customGlobalFilterFn?: (row: any, filterValue: string) => boolean;
   onAdd?: () => void;
   addButtonLabel?: string;
   onEdit?: (row: TData) => void;
@@ -69,6 +70,7 @@ export interface ReusableTableProps<TData, TValue> {
     formData: Record<string, string>,
     setFormData: (formData: Record<string, string>) => void,
   ) => React.ReactNode;
+  customToolbarButtons?: (selectedRowsCount: number) => React.ReactNode;
 }
 
 export function ReusableTable<TData, TValue>({
@@ -77,6 +79,7 @@ export function ReusableTable<TData, TValue>({
   searchable = true,
   searchPlaceholder = "Szukaj...",
   searchColumn,
+  customGlobalFilterFn,
   onAdd,
   addButtonLabel = "Dodaj",
   onEdit,
@@ -99,6 +102,7 @@ export function ReusableTable<TData, TValue>({
   deleteDialogTitle = "Usuń zaznaczone elementy?",
   deleteDialogDescription,
   addFormFields,
+  customToolbarButtons,
 }: ReusableTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -162,7 +166,9 @@ export function ReusableTable<TData, TValue>({
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: searchColumn
+    globalFilterFn: customGlobalFilterFn
+      ? (row, columnId, filterValue) => customGlobalFilterFn(row.original, filterValue)
+      : searchColumn
       ? (row, columnId, filterValue) => {
           const value = (row.original as any)[searchColumn];
           return value?.toString().toLowerCase().includes(filterValue.toLowerCase());
@@ -193,7 +199,8 @@ export function ReusableTable<TData, TValue>({
     if (onSelectionChange) {
       onSelectionChange(currentSelectedRows);
     }
-  }, [rowSelection, table, onSelectionChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, data]);
 
   const handleAddClick = () => {
     if (enableAddDialog) {
@@ -287,6 +294,7 @@ export function ReusableTable<TData, TValue>({
           {filters && <div className="flex items-center gap-2">{filters}</div>}
         </div>
         <div className="flex items-center gap-2">
+          {customToolbarButtons && customToolbarButtons(table.getFilteredSelectedRowModel().rows.length)}
           {(onDeleteSelected || enableDeleteDialog) && 
            table.getFilteredSelectedRowModel().rows.length > 0 && (
             <Button onClick={handleDeleteClick} size="sm" variant="destructive">

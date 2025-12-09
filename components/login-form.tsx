@@ -143,15 +143,6 @@ export function LoginForm({
                 {isLoading ? "Logowanie..." : "Zaloguj się"}
               </Button>
             </div>
-            <div className="mt-4 text-center text-sm">
-              Nie masz konta?{" "}
-              <Link
-                href="/auth/sign-up"
-                className="underline underline-offset-4"
-              >
-                Zarejestruj się
-              </Link>
-            </div>
           </form>
         </CardContent>
       </Card>

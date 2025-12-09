@@ -6,6 +6,7 @@ import {
   IconFileDescription,
   IconInnerShadowTop,
   IconMap,
+  IconMail,
   IconReceipt,
   IconSettings,
   IconShieldCheck,
@@ -68,9 +69,19 @@ const adminData = {
       icon: IconUsers,
     },
     {
+      title: "Koordynatorzy",
+      url: "/admin/koordynatorzy",
+      icon: IconUserPlus,
+    },
+    {
       title: "Zaproszenia koordynatorów",
       url: "/admin/coordinators/invite",
       icon: IconUserPlus,
+    },
+    {
+      title: "Komunikacja masowa",
+      url: "/admin/komunikacja-masowa",
+      icon: IconMail,
     },
     {
       title: "Przykład",

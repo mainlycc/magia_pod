@@ -422,7 +422,7 @@ export default function AdminPaymentsPage() {
         header: "Akcje",
         cell: ({ row }) => (
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/admin/trips/${row.original.trip_id}/bookings`}>
+            <Link href={`/admin/bookings/${row.original.id}`}>
               Szczegóły
             </Link>
           </Button>

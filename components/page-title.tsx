@@ -9,8 +9,10 @@ const pageTitles: Record<string, string> = {
   "/admin/payments": "Płatności",
   "/admin/faktury": "Faktury",
   "/admin/uczestnicy": "Uczestnicy",
+  "/admin/koordynatorzy": "Koordynatorzy",
   "/admin/insurance": "Ubezpieczenia",
   "/admin/coordinators/invite": "Zaproszenia koordynatorów",
+  "/admin/komunikacja-masowa": "Komunikacja masowa",
   "/admin/przyklad": "Przykład",
   "/coord": "Moje wyjazdy",
 }
