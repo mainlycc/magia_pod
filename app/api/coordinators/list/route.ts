@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+type TripInfo = {
+  id: string;
+  title: string;
+  start_date: string | null;
+};
+
 // Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
@@ -44,7 +50,7 @@ export async function GET(request: NextRequest) {
       console.error("Failed to load trips:", tripsError);
     }
 
-    const tripsMap = new Map((trips || []).map((trip) => [trip.id, trip]));
+    const tripsMap = new Map<string, TripInfo>((trips || []).map((trip) => [trip.id, trip]));
 
     // Pobierz dane użytkowników z auth.users używając admin client
     const adminClient = createAdminClient();
@@ -59,11 +65,11 @@ export async function GET(request: NextRequest) {
       const tripIds = profile.allowed_trip_ids || [];
       const assignedTrips = tripIds
         .map((id: string) => tripsMap.get(id))
-        .filter((trip) => trip !== undefined)
-        .map((trip) => ({
-          id: trip!.id,
-          title: trip!.title,
-          start_date: trip!.start_date,
+        .filter((trip: TripInfo | undefined): trip is TripInfo => trip !== undefined)
+        .map((trip: TripInfo) => ({
+          id: trip.id,
+          title: trip.title,
+          start_date: trip.start_date,
         }));
 
       return {
