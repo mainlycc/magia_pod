@@ -260,7 +260,7 @@ export default function AdminCoordinatorsPage() {
           const fullName = (row.full_name || "").toLowerCase();
           const email = (row.email || "").toLowerCase();
           const tripTitles = (row.assigned_trips || [])
-            .map((trip) => trip.title.toLowerCase())
+            .map((trip: { id: string; title: string; start_date: string | null }) => trip.title.toLowerCase())
             .join(" ");
           
           return (
