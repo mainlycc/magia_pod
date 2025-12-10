@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { TripContentEditor } from "@/components/trip-content-editor";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, X, Loader2, Edit2 } from "lucide-react";
+import { ArrowLeft, Upload, X, Loader2, Edit2, Link as LinkIcon } from "lucide-react";
 import Image from "next/image";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,6 +23,8 @@ export default function TripContentPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [addingFromUrl, setAddingFromUrl] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
   const [programAtrakcje, setProgramAtrakcje] = useState("");
   const [dodatkoweSwiadczenia, setDodatkoweSwiadczenia] = useState("");
   const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
@@ -150,6 +152,69 @@ export default function TripContentPage() {
     }
   };
 
+  const validateImageUrl = async (url: string): Promise<boolean> => {
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      const contentType = response.headers.get("content-type");
+      return contentType?.startsWith("image/") ?? false;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleAddImageFromUrl = async () => {
+    if (!imageUrl.trim() || !id) return;
+
+    try {
+      setAddingFromUrl(true);
+
+      // Walidacja URL
+      try {
+        new URL(imageUrl);
+      } catch {
+        toast.error("Nieprawidłowy adres URL");
+        return;
+      }
+
+      // Sprawdź czy to obraz
+      const isValidImage = await validateImageUrl(imageUrl);
+      if (!isValidImage) {
+        toast.error("Podany URL nie wskazuje na obraz");
+        return;
+      }
+
+      // Sprawdź czy URL już istnieje w galerii
+      if (galleryUrls.includes(imageUrl)) {
+        toast.error("To zdjęcie już jest w galerii");
+        return;
+      }
+
+      // Dodaj URL do galerii
+      const updatedUrls = [...galleryUrls, imageUrl];
+      
+      // Zapisz do bazy
+      const res = await fetch(`/api/trips/${id}/content`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gallery_urls: updatedUrls,
+        }),
+      });
+
+      if (res.ok) {
+        setGalleryUrls(updatedUrls);
+        setImageUrl("");
+        toast.success("Zdjęcie zostało dodane z linku");
+      } else {
+        toast.error("Nie udało się dodać zdjęcia");
+      }
+    } catch (err) {
+      toast.error("Nie udało się dodać zdjęcia");
+    } finally {
+      setAddingFromUrl(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto max-w-5xl p-6">
@@ -223,22 +288,48 @@ export default function TripContentPage() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Galeria</h2>
-            <Label htmlFor="image-upload" className="cursor-pointer">
-              <Button variant="outline" size="sm" asChild disabled={uploading}>
-                <span>
-                  <Upload className="h-4 w-4 mr-2" />
-                  {uploading ? "Dodawanie..." : "Dodaj zdjęcie"}
-                </span>
-              </Button>
-            </Label>
-            <input
-              id="image-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-              disabled={uploading}
-            />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="url"
+                  placeholder="https://example.com/image.jpg"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleAddImageFromUrl();
+                    }
+                  }}
+                  className="w-64"
+                  disabled={addingFromUrl}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddImageFromUrl}
+                  disabled={addingFromUrl || !imageUrl.trim()}
+                >
+                  <LinkIcon className="h-4 w-4 mr-2" />
+                  {addingFromUrl ? "Dodawanie..." : "Dodaj z linku"}
+                </Button>
+              </div>
+              <Label htmlFor="image-upload" className="cursor-pointer">
+                <Button variant="outline" size="sm" asChild disabled={uploading}>
+                  <span>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploading ? "Dodawanie..." : "Dodaj z pliku"}
+                  </span>
+                </Button>
+              </Label>
+              <input
+                id="image-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                disabled={uploading}
+              />
+            </div>
           </div>
           {galleryUrls.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

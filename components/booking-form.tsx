@@ -618,7 +618,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         />
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-3">
+                      <div className="grid gap-4 md:grid-cols-3 mt-6">
                         <FormField
                           control={control}
                           name={`participants.${index}.pesel`}
@@ -660,7 +660,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         />
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-[1.5fr,1fr]">
+                      <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
                         <FormField
                           control={control}
                           name={`participants.${index}.document_type`}
@@ -703,7 +703,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                   ))}
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="default"
                     onClick={() =>
                       append({
                         first_name: "",
@@ -828,6 +828,9 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   <section className="space-y-4">
                     <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
+                    </p>
                     <Card>
                       <CardContent className="p-0">
                         <div className="w-full overflow-hidden rounded-lg border">
@@ -907,13 +910,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                         )}
                       />
                     </div>
-                    <Alert>
-                      <AlertTitle>Podgląd umowy</AlertTitle>
-                      <AlertDescription>
-                        Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
-                        W kolejnych iteracjach pojawi się tutaj interaktywny podgląd dokumentu.
-                      </AlertDescription>
-                    </Alert>
                   </section>
                 </CardContent>
                 <CardFooter className="flex justify-between gap-3">

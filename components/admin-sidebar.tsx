@@ -19,7 +19,6 @@ import { createClient } from "@/lib/supabase/client"
 
 import { NavSimple } from "@/components/nav-simple"
 import { NavUser } from "@/components/nav-user"
-import { ThemeSwitcher } from "@/components/theme-switcher"
 import {
   Sidebar,
   SidebarContent,
@@ -83,11 +82,6 @@ const adminData = {
       url: "/admin/komunikacja-masowa",
       icon: IconMail,
     },
-    {
-      title: "Przykład",
-      url: "/admin/przyklad",
-      icon: IconSettings,
-    },
   ],
 }
 
@@ -148,10 +142,6 @@ export function AdminSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
         <NavSimple items={adminData.navMain} label="Menu" />
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex items-center justify-center p-2">
-          <ThemeSwitcher />
-        </div>
-        <SidebarSeparator />
         <NavUser user={displayUser} />
       </SidebarFooter>
     </Sidebar>

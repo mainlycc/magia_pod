@@ -93,8 +93,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("dodatkowe_swiadczenia" in body) {
       updateData.dodatkowe_swiadczenia = dodatkowe_swiadczenia ?? null;
     }
-    if ("gallery_urls" in body && Array.isArray(gallery_urls)) {
-      updateData.gallery_urls = gallery_urls;
+    if ("gallery_urls" in body) {
+      if (Array.isArray(gallery_urls)) {
+        updateData.gallery_urls = gallery_urls;
+      } else if (gallery_urls === null || gallery_urls === undefined) {
+        updateData.gallery_urls = [];
+      }
     }
     if ("intro_text" in body) {
       updateData.intro_text = intro_text ?? null;
@@ -109,15 +113,59 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       updateData.reservation_info_text = reservation_info_text ?? null;
     }
 
+    // Jeśli nie ma żadnych danych do aktualizacji, zwróć sukces
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: true });
+    }
+
     const { error } = await supabase.from("trips").update(updateData).eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      console.error("Error updating trip content:", error);
+      
+      // Jeśli błąd dotyczy nieistniejącej kolumny (PGRST204), spróbuj zaktualizować bez niej
+      if (error.code === 'PGRST204' && error.message.includes('column')) {
+        const columnMatch = error.message.match(/'([^']+)'/);
+        const missingColumn = columnMatch?.[1];
+        
+        if (missingColumn && missingColumn in updateData) {
+          console.warn(`Column '${missingColumn}' does not exist in database schema cache. Removing from update.`);
+          const retryUpdateData = { ...updateData };
+          delete retryUpdateData[missingColumn as keyof typeof retryUpdateData];
+          
+          // Spróbuj ponownie bez problematycznej kolumny
+          if (Object.keys(retryUpdateData).length > 0) {
+            const { error: retryError } = await supabase.from("trips").update(retryUpdateData).eq("id", id);
+            if (retryError) {
+              return NextResponse.json({ 
+                error: "update_failed", 
+                details: retryError.message,
+                missing_column: missingColumn,
+                message: `Column '${missingColumn}' does not exist in database. Please run migrations: supabase/013_trips_content_fields.sql and supabase/014_trips_content_texts.sql`
+              }, { status: 500 });
+            }
+            return NextResponse.json({ 
+              success: true, 
+              warning: `Column '${missingColumn}' was skipped because it doesn't exist in the database. Please run migrations to add it.`
+            });
+          } else {
+            return NextResponse.json({ 
+              error: "update_failed", 
+              details: `All columns are missing. Column '${missingColumn}' does not exist.`,
+              missing_column: missingColumn,
+              message: "Please run migrations: supabase/013_trips_content_fields.sql and supabase/014_trips_content_texts.sql"
+            }, { status: 500 });
+          }
+        }
+      }
+      
+      return NextResponse.json({ error: "update_failed", details: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "unexpected" }, { status: 500 });
+  } catch (err) {
+    console.error("Error in PATCH /api/trips/[id]/content:", err);
+    return NextResponse.json({ error: "unexpected", details: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }
 

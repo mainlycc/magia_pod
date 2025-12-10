@@ -6,6 +6,9 @@ import {
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useTheme } from "next-themes"
+import { useEffect, useState } from "react"
+import { Laptop, Moon, Sun } from "lucide-react"
 
 import {
   Avatar,
@@ -17,6 +20,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -56,6 +61,12 @@ export function NavUser({
   const { isMobile } = useSidebar()
   const router = useRouter()
   const initials = getInitials(user.name, user.email)
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -68,6 +79,8 @@ export function NavUser({
       router.push("/auth/login")
     }
   }
+
+  const ICON_SIZE = 16
 
   return (
     <SidebarMenu>
@@ -112,6 +125,29 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {mounted && (
+              <>
+                <DropdownMenuLabel>Motyw</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={theme}
+                  onValueChange={(value) => setTheme(value)}
+                >
+                  <DropdownMenuRadioItem className="flex gap-2" value="light">
+                    <Sun size={ICON_SIZE} className="text-muted-foreground" />
+                    <span>Jasny</span>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className="flex gap-2" value="dark">
+                    <Moon size={ICON_SIZE} className="text-muted-foreground" />
+                    <span>Ciemny</span>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className="flex gap-2" value="system">
+                    <Laptop size={ICON_SIZE} className="text-muted-foreground" />
+                    <span>Systemowy</span>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onClick={handleLogout}>
               <IconLogout />
               Wyloguj się

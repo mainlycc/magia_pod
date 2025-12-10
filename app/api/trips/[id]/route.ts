@@ -93,26 +93,7 @@ export async function DELETE(
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    // Sprawdź czy wycieczka ma rezerwacje
-    const { data: bookings, error: bookingsError } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("trip_id", id)
-      .limit(1);
-
-    if (bookingsError) {
-      console.error("Error checking bookings:", bookingsError);
-      return NextResponse.json({ error: "check_failed" }, { status: 500 });
-    }
-
-    if (bookings && bookings.length > 0) {
-      return NextResponse.json(
-        { error: "cannot_delete", message: "Nie można usunąć wycieczki z istniejącymi rezerwacjami" },
-        { status: 409 }
-      );
-    }
-
-    // Usuń wycieczkę
+    // Usuń wycieczkę (rezerwacje i powiązane dane zostaną usunięte automatycznie przez CASCADE)
     const { error: deleteError } = await adminSupabase
       .from("trips")
       .delete()
@@ -120,14 +101,7 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("Error deleting trip:", deleteError);
-      if (deleteError.code === "23503") {
-        // Foreign key constraint violation
-        return NextResponse.json(
-          { error: "cannot_delete", message: "Nie można usunąć wycieczki z powiązanymi danymi" },
-          { status: 409 }
-        );
-      }
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return NextResponse.json({ error: "delete_failed", details: deleteError.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });

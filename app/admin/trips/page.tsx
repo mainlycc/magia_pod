@@ -326,7 +326,7 @@ export default function AdminTripsPage() {
         enableDeleteDialog={true}
         onConfirmDelete={handleDeleteSelected}
         deleteDialogTitle="Usuń zaznaczone wycieczki?"
-        deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone wycieczki? Ta operacja nie może być cofnięta. Nie można usunąć wycieczek z istniejącymi rezerwacjami."
+        deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone wycieczki? Ta operacja nie może być cofnięta. Wszystkie powiązane rezerwacje, uczestnicy, płatności i inne dane zostaną również usunięte."
         deleteButtonLabel="Usuń zaznaczone"
       />
     </div>
