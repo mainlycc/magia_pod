@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { CheckCircle2, Upload, Loader2 } from "lucide-react";
 
@@ -45,6 +46,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   const [error, setError] = useState<string | null>(null);
   const [uploadingAgreement, setUploadingAgreement] = useState(false);
   const [agreementUploaded, setAgreementUploaded] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -66,7 +68,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     fetchBooking();
   }, [token]);
 
-  const handleAgreementUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -75,9 +77,18 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       return;
     }
 
+    setSelectedFile(file);
+  };
+
+  const handleSendAgreement = async () => {
+    if (!selectedFile) {
+      toast.error("Najpierw wybierz plik PDF");
+      return;
+    }
+
     setUploadingAgreement(true);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", selectedFile);
 
     try {
       const response = await fetch(`/api/bookings/by-token/${token}/upload-agreement`, {
@@ -90,8 +101,8 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
         throw new Error(data?.error || "Nie udało się przesłać umowy");
       }
 
-      toast.success("Podpisana umowa została przesłana pomyślnie");
       setAgreementUploaded(true);
+      setSelectedFile(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Błąd podczas przesyłania umowy");
     } finally {
@@ -184,15 +195,19 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       {/* Upload umowy */}
       <Card>
         <CardHeader>
-          <CardTitle>Podpisana umowa</CardTitle>
+          <CardTitle>Załączam umowę pdf</CardTitle>
           <CardDescription>Prześlij podpisaną umowę w formacie PDF</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {agreementUploaded ? (
-            <Alert>
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertTitle>Umowa przesłana</AlertTitle>
-              <AlertDescription>Podpisana umowa została pomyślnie przesłana.</AlertDescription>
+            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+              <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <AlertTitle className="text-xl font-semibold text-green-900 dark:text-green-100">
+                Dziękujemy za wysłanie umowy
+              </AlertTitle>
+              <AlertDescription className="text-base text-green-800 dark:text-green-200">
+                Podpisana umowa została pomyślnie przesłana.
+              </AlertDescription>
             </Alert>
           ) : (
             <div className="space-y-4">
@@ -201,7 +216,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
                   <div className="flex items-center gap-2 p-4 border-2 border-dashed rounded-lg hover:bg-muted/50 transition-colors">
                     <Upload className="h-5 w-5 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      {uploadingAgreement ? "Przesyłanie..." : "Kliknij, aby wybrać plik PDF"}
+                      {selectedFile ? selectedFile.name : "Kliknij, aby wybrać plik PDF"}
                     </span>
                   </div>
                 </Label>
@@ -209,7 +224,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
                   id="agreement-upload"
                   type="file"
                   accept=".pdf,application/pdf"
-                  onChange={handleAgreementUpload}
+                  onChange={handleFileSelect}
                   disabled={uploadingAgreement}
                   className="hidden"
                 />
@@ -217,6 +232,20 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
               <p className="text-xs text-muted-foreground">
                 Maksymalny rozmiar pliku: 10MB. Tylko pliki PDF są dozwolone.
               </p>
+              <Button
+                onClick={handleSendAgreement}
+                disabled={!selectedFile || uploadingAgreement}
+                className="w-full"
+              >
+                {uploadingAgreement ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Wysyłanie...
+                  </>
+                ) : (
+                  "Wyślij umowę"
+                )}
+              </Button>
             </div>
           )}
         </CardContent>

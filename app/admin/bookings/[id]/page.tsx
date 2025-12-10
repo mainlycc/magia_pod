@@ -8,6 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { ColumnDef } from "@tanstack/react-table";
 import { ReusableTable } from "@/components/reusable-table";
 import {
@@ -69,6 +75,9 @@ export default function BookingDetailsPage() {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
   const [internalNotes, setInternalNotes] = useState("");
+  const [agreementTab, setAgreementTab] = useState<"generated" | "signed">(
+    "generated"
+  );
 
   useEffect(() => {
     loadBooking();
@@ -87,6 +96,10 @@ export default function BookingDetailsPage() {
         data.payment_history = [];
       }
       setBooking(data);
+      const hasSigned = data?.agreements?.some(
+        (agreement: any) => agreement.status === "signed"
+      );
+      setAgreementTab(hasSigned ? "signed" : "generated");
       setInternalNotes(
         Array.isArray(data.internal_notes)
           ? data.internal_notes.map((n: any) => n.text || "").join("\n")
@@ -287,6 +300,13 @@ export default function BookingDetailsPage() {
       )
     : null;
 
+  const generatedAgreement = booking.agreements?.find(
+    (agreement) => agreement.status !== "signed"
+  );
+  const signedAgreement = booking.agreements?.find(
+    (agreement) => agreement.status === "signed"
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -461,44 +481,99 @@ export default function BookingDetailsPage() {
             </>
           )}
         </div>
-        {booking.agreements && booking.agreements.length > 0 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              {booking.agreements.map((agreement) => (
-                <div key={agreement.id} className="flex items-center gap-2">
+        {booking.agreements && booking.agreements.length > 0 ? (
+          <Tabs
+            value={agreementTab}
+            onValueChange={(value) =>
+              setAgreementTab(value as "generated" | "signed")
+            }
+            className="space-y-4"
+          >
+            <TabsList>
+              {generatedAgreement && <TabsTrigger value="generated">Wygenerowana</TabsTrigger>}
+              {signedAgreement && <TabsTrigger value="signed">Podpisana</TabsTrigger>}
+            </TabsList>
+
+            {generatedAgreement && (
+              <TabsContent value="generated" className="space-y-4">
+                <div className="flex items-center gap-2">
                   <Badge variant="secondary">
-                    {agreement.status === "generated"
+                    {generatedAgreement.status === "generated"
                       ? "Wygenerowana"
-                      : agreement.status === "sent"
+                      : generatedAgreement.status === "sent"
                       ? "Wysłana"
                       : "Podpisana"}
                   </Badge>
-                  {agreement.sent_at && (
+                  {generatedAgreement.sent_at && (
                     <span className="text-sm text-muted-foreground">
-                      Wysłana: {new Date(agreement.sent_at).toLocaleDateString("pl-PL")}
+                      Wysłana:{" "}
+                      {new Date(generatedAgreement.sent_at).toLocaleDateString("pl-PL")}
                     </span>
                   )}
-                  {agreement.signed_at && (
+                  {generatedAgreement.signed_at && (
                     <span className="text-sm text-muted-foreground">
-                      Podpisana: {new Date(agreement.signed_at).toLocaleDateString("pl-PL")}
+                      Podpisana:{" "}
+                      {new Date(generatedAgreement.signed_at).toLocaleDateString("pl-PL")}
                     </span>
                   )}
                 </div>
-              ))}
-            </div>
-            {booking.agreements[0].pdf_url && (
-              <div className="mt-4">
-                <h3 className="font-medium text-sm uppercase text-muted-foreground mb-2">Podgląd umowy</h3>
-                <div className="w-full overflow-hidden rounded-lg border">
-                  <iframe
-                    src={`/api/agreements/${booking.agreements[0].pdf_url}`}
-                    className="h-[600px] w-full border-0"
-                    title="Podgląd umowy"
-                  />
-                </div>
-              </div>
+                {generatedAgreement.pdf_url ? (
+                  <div className="mt-2">
+                    <h3 className="font-medium text-sm uppercase text-muted-foreground mb-2">
+                      Podgląd umowy
+                    </h3>
+                    <div className="w-full overflow-hidden rounded-lg border">
+                      <iframe
+                        src={`/api/agreements/${generatedAgreement.pdf_url}`}
+                        className="h-[600px] w-full border-0"
+                        title="Podgląd umowy wygenerowanej"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Brak pliku PDF dla wygenerowanej umowy.
+                  </p>
+                )}
+              </TabsContent>
             )}
-          </div>
+
+            {signedAgreement && (
+              <TabsContent value="signed" className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">Podpisana</Badge>
+                  {signedAgreement.signed_at && (
+                    <span className="text-sm text-muted-foreground">
+                      Podpisana:{" "}
+                      {new Date(signedAgreement.signed_at).toLocaleDateString("pl-PL")}
+                    </span>
+                  )}
+                </div>
+                {signedAgreement.pdf_url ? (
+                  <div className="mt-2">
+                    <h3 className="font-medium text-sm uppercase text-muted-foreground mb-2">
+                      Podgląd umowy podpisanej
+                    </h3>
+                    <div className="w-full overflow-hidden rounded-lg border">
+                      <iframe
+                        src={`/api/agreements/${signedAgreement.pdf_url}`}
+                        className="h-[600px] w-full border-0"
+                        title="Podgląd umowy podpisanej"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Brak pliku PDF dla podpisanej umowy.
+                  </p>
+                )}
+              </TabsContent>
+            )}
+          </Tabs>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Brak wygenerowanej umowy. Wygeneruj dokument, aby zobaczyć podgląd.
+          </p>
         )}
       </Card>
 
