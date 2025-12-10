@@ -1,383 +1,692 @@
-import Link from "next/link";
-import Image from "next/image";
-import { createClient } from "@/lib/supabase/server";
+"use client"
+
+import Link from "next/link"
+import Image from "next/image"
+import { useState, useEffect, use } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+  Calendar,
+  MapPin,
+  Users,
+  Clock,
+  CheckCircle,
+  Plane,
+  Hotel,
+  Utensils,
+  Shield,
+  Headphones,
+  FileText,
+  CalendarDays,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Briefcase,
+  Thermometer,
+  AlertCircle,
+  Sparkles,
+} from "lucide-react"
 
 type Trip = {
-  id: string;
-  title: string;
-  slug: string;
-  public_slug?: string | null;
-  description: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  price_cents: number | null;
-  seats_total: number | null;
-  seats_reserved: number | null;
-  is_active: boolean | null;
-  is_public: boolean | null;
-  gallery_urls: string[] | null;
-  program_atrakcje: string | null;
-  dodatkowe_swiadczenia: string | null;
-  intro_text: string | null;
-  section_poznaj_title: string | null;
-  section_poznaj_description: string | null;
-  reservation_info_text: string | null;
-};
+  id: string
+  title: string
+  slug: string
+  public_slug?: string | null
+  description: string | null
+  start_date: string | null
+  end_date: string | null
+  price_cents: number | null
+  seats_total: number | null
+  seats_reserved: number | null
+  is_active: boolean | null
+  is_public: boolean | null
+  gallery_urls: string[] | null
+  program_atrakcje: string | null
+  dodatkowe_swiadczenia: string | null
+  intro_text: string | null
+  section_poznaj_title: string | null
+  section_poznaj_description: string | null
+  reservation_info_text: string | null
+  location: string | null
+  category: string | null
+}
 
-export default async function TripPage({
-  params,
-}: {
-  params: Promise<{ slug: string }> | { slug: string };
-}) {
-  const { slug } = await (params instanceof Promise ? params : Promise.resolve(params));
-  const supabase = await createClient();
+function calculateDays(startDate: string | null, endDate: string | null): number {
+  if (!startDate || !endDate) return 0
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  const diffTime = Math.abs(end.getTime() - start.getTime())
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays + 1 // +1 to include both start and end day
+}
 
-  // RLS automatycznie filtruje tylko aktywne wycieczki (is_active = true)
-  // Szukamy po public_slug lub slug używając .or()
-  // Najpierw próbujemy znaleźć po slug, potem po public_slug
-  let trip: Trip | null = null;
-  let error: any = null;
+function formatDateRange(startDate: string | null, endDate: string | null): string {
+  if (!startDate || !endDate) return "Termin do ustalenia"
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  
+  const startDay = start.getDate().toString().padStart(2, "0")
+  const startMonth = (start.getMonth() + 1).toString().padStart(2, "0")
+  const endDay = end.getDate().toString().padStart(2, "0")
+  const endMonth = (end.getMonth() + 1).toString().padStart(2, "0")
+  const year = start.getFullYear()
+  
+  return `${startDay}-${endDay}.${startMonth}.${year}`
+}
 
-  // Próba 1: szukaj po slug - najpierw tylko podstawowe kolumny
-  const { data: tripBySlug, error: errorBySlug } = await supabase
-    .from("trips")
-    .select(
-      "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls",
-    )
-    .eq("slug", slug)
-    .maybeSingle<Trip>();
-
-  if (tripBySlug && !errorBySlug) {
-    // Spróbuj pobrać dodatkowe kolumny treści (jeśli istnieją)
-    // Używamy try-catch, aby zignorować błędy, jeśli kolumny nie istnieją
-    let tripContent: any = null;
-    try {
-      const { data, error: contentError } = await supabase
-        .from("trips")
-        .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text")
-        .eq("id", tripBySlug.id)
-        .maybeSingle();
-      if (!contentError) {
-        tripContent = data;
+function parseProgramDays(programHtml: string | null): Array<{ day: number; title: string; highlight: string }> {
+  if (!programHtml || typeof window === "undefined") return []
+  
+  try {
+    // Try to parse HTML and extract day information
+    // This is a simple parser - you might want to enhance it based on your HTML structure
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(programHtml, "text/html")
+    const items = doc.querySelectorAll("li, p, div")
+    
+    const days: Array<{ day: number; title: string; highlight: string }> = []
+    items.forEach((item, index) => {
+      const text = item.textContent?.trim() || ""
+      if (text && text.length > 0 && index < 6) {
+        // Simple extraction - split by common patterns
+        const parts = text.split(/[:\-–]/)
+        const title = parts[0]?.trim() || `Dzień ${index + 1}`
+        const highlight = parts.slice(1).join(" ").trim() || title
+        days.push({
+          day: index + 1,
+          title: title.substring(0, 30), // Limit length
+          highlight: highlight.substring(0, 40), // Limit length
+        })
       }
-    } catch (e) {
-      // Ignoruj błędy - kolumny mogą nie istnieć
+    })
+    
+    // If no days found, create default ones
+    if (days.length === 0) {
+      return [
+        { day: 1, title: "Przyjazd", highlight: "Transfer + zakwaterowanie" },
+        { day: 2, title: "Zwiedzanie", highlight: "Program wycieczki" },
+      ]
     }
     
-    trip = {
-      ...tripBySlug,
-      program_atrakcje: tripContent?.program_atrakcje ?? null,
-      dodatkowe_swiadczenia: tripContent?.dodatkowe_swiadczenia ?? null,
-      intro_text: tripContent?.intro_text ?? null,
-      section_poznaj_title: tripContent?.section_poznaj_title ?? null,
-      section_poznaj_description: tripContent?.section_poznaj_description ?? null,
-      reservation_info_text: tripContent?.reservation_info_text ?? null,
-    };
-  } else {
-    // Próba 2: szukaj po public_slug
-    const { data: tripByPublicSlug, error: errorByPublicSlug } = await supabase
-      .from("trips")
-      .select(
-        "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls",
-      )
-      .eq("public_slug", slug)
-      .maybeSingle<Trip>();
-
-    if (tripByPublicSlug && !errorByPublicSlug) {
-      // Spróbuj pobrać dodatkowe kolumny treści (jeśli istnieją)
-      let tripContent: any = null;
-      try {
-        const { data, error: contentError } = await supabase
-          .from("trips")
-          .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text")
-          .eq("id", tripByPublicSlug.id)
-          .maybeSingle();
-        if (!contentError) {
-          tripContent = data;
-        }
-      } catch (e) {
-        // Ignoruj błędy - kolumny mogą nie istnieć
-      }
-      
-      trip = {
-        ...tripByPublicSlug,
-        program_atrakcje: tripContent?.program_atrakcje ?? null,
-        dodatkowe_swiadczenia: tripContent?.dodatkowe_swiadczenia ?? null,
-        intro_text: tripContent?.intro_text ?? null,
-        section_poznaj_title: tripContent?.section_poznaj_title ?? null,
-        section_poznaj_description: tripContent?.section_poznaj_description ?? null,
-        reservation_info_text: tripContent?.reservation_info_text ?? null,
-      };
-    } else {
-      error = errorByPublicSlug || errorBySlug;
-    }
+    return days.slice(0, 6) // Limit to 6 days
+  } catch (e) {
+    // If parsing fails, return default
+    return [
+      { day: 1, title: "Przyjazd", highlight: "Transfer + zakwaterowanie" },
+      { day: 2, title: "Zwiedzanie", highlight: "Program wycieczki" },
+    ]
   }
+}
 
-  if (error) {
-    console.error("Error loading trip:", error);
-    console.error("Slug searched:", slug);
+export default function TripPage({ params }: { params: Promise<{ slug: string }> | { slug: string } }) {
+  const { slug } = use(params instanceof Promise ? params : Promise.resolve(params))
+  const [trip, setTrip] = useState<Trip | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<any>(null)
+  const [selectedImage, setSelectedImage] = useState<number | null>(null)
+
+  useEffect(() => {
+    async function loadTrip() {
+      try {
+        const supabase = createClient()
+        
+        // Try to find by slug first
+        let { data: tripData, error: tripError } = await supabase
+          .from("trips")
+          .select(
+            "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location,category"
+          )
+          .eq("slug", slug)
+          .maybeSingle<Trip>()
+
+        if (!tripData && !tripError) {
+          // Try public_slug
+          const { data: tripByPublicSlug, error: errorByPublicSlug } = await supabase
+            .from("trips")
+            .select(
+              "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location,category"
+            )
+            .eq("public_slug", slug)
+            .maybeSingle<Trip>()
+          
+          if (tripByPublicSlug) {
+            tripData = tripByPublicSlug
+          } else {
+            tripError = errorByPublicSlug
+          }
+        }
+
+        if (tripError) {
+          setError(tripError)
+          setLoading(false)
+          return
+        }
+
+        if (!tripData) {
+          setError(new Error("Trip not found"))
+          setLoading(false)
+          return
+        }
+
+        // Load additional content fields
+        try {
+          const { data: contentData } = await supabase
+            .from("trips")
+            .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text")
+            .eq("id", tripData.id)
+            .maybeSingle()
+          
+          if (contentData) {
+            tripData = {
+              ...tripData,
+              ...contentData,
+            }
+          }
+        } catch (e) {
+          // Ignore errors for optional fields
+        }
+
+        setTrip(tripData)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadTrip()
+  }, [slug])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">Ładowanie...</div>
+      </div>
+    )
   }
 
   if (error || !trip) {
     return (
-      <div className="container mx-auto max-w-3xl space-y-3 p-6">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/">Strona główna</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/trip">Wycieczki</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Nie znaleziono</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-        <Card>
-          <CardHeader>
-            <CardTitle>Wycieczka nie została znaleziona</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-muted-foreground">
-              Sprawdź poprawność linku lub skontaktuj się z naszym biurem podróży.
-            </p>
-            <Button asChild variant="secondary">
-              <Link href="/">Wróć na stronę główną</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background">
+        <nav className="bg-card border-b border-border">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-2">
+            <ol className="flex items-center gap-2 text-xs text-muted-foreground">
+              <li>
+                <Link href="/" className="hover:text-foreground transition-colors">
+                  Strona główna
+                </Link>
+              </li>
+              <li>/</li>
+              <li>
+                <Link href="/trip" className="hover:text-foreground transition-colors">
+                  Wycieczki
+                </Link>
+              </li>
+              <li>/</li>
+              <li className="text-foreground font-medium">Nie znaleziono</li>
+            </ol>
+          </div>
+        </nav>
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Card>
+            <CardContent className="p-6">
+              <h1 className="text-xl font-semibold mb-2">Wycieczka nie została znaleziona</h1>
+              <p className="text-muted-foreground mb-4">
+                Sprawdź poprawność linku lub skontaktuj się z naszym biurem podróży.
+              </p>
+              <Button asChild>
+                <Link href="/">Wróć na stronę główną</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    );
+    )
   }
 
-  const seatsLeft = Math.max(
-    0,
-    (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0),
-  );
-  const price = trip.price_cents ? (trip.price_cents / 100).toFixed(2) : "-";
+  const seatsLeft = Math.max(0, (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0))
+  const price = trip.price_cents ? (trip.price_cents / 100).toFixed(2) : "0"
+  const days = calculateDays(trip.start_date, trip.end_date)
+  const nights = Math.max(0, days - 1)
+  const dateRange = formatDateRange(trip.start_date, trip.end_date)
+  const galleryUrls = Array.isArray(trip.gallery_urls) ? trip.gallery_urls : []
+  const mainImage = galleryUrls[0] || "/placeholder.svg"
+  const galleryImages = galleryUrls.slice(1, 5) // Next 4 images for gallery grid
+  
+  const programDays = parseProgramDays(trip.program_atrakcje)
+  
+  // Default values for sections that might not be in database
+  const highlights = trip.program_atrakcje 
+    ? parseProgramDays(trip.program_atrakcje).map(d => d.highlight).slice(0, 4)
+    : [
+        "Zwiedzanie głównych atrakcji",
+        "Program kulturalny",
+        "Czas wolny",
+        "Transfery i opieka pilota",
+      ]
+  
+  const whatToBring = [
+    "Wygodne buty do zwiedzania",
+    "Strój odpowiedni do pogody",
+    "Dokumenty podróży",
+    "Aparat fotograficzny",
+  ]
+
+  const openImage = (index: number) => setSelectedImage(index)
+  const closeImage = () => setSelectedImage(null)
+  const nextImage = () => setSelectedImage((prev) => (prev !== null ? (prev + 1) % galleryUrls.length : null))
+  const prevImage = () =>
+    setSelectedImage((prev) => (prev !== null ? (prev - 1 + galleryUrls.length) % galleryUrls.length : null))
 
   return (
-    <div className="container mx-auto max-w-5xl space-y-8 p-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/">Strona główna</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/trip">Wycieczki</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{trip.title}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <main className="min-h-screen bg-background">
+      {/* Breadcrumb */}
+      <nav className="bg-card border-b border-border">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-2">
+          <ol className="flex items-center gap-2 text-xs text-muted-foreground">
+            <li>
+              <Link href="/" className="hover:text-foreground transition-colors">
+                Strona główna
+              </Link>
+            </li>
+            <li>/</li>
+            <li>
+              <Link href="/trip" className="hover:text-foreground transition-colors">
+                Wycieczki
+              </Link>
+            </li>
+            <li>/</li>
+            <li className="text-foreground font-medium">{trip.title}</li>
+          </ol>
+        </div>
+      </nav>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge variant={trip.is_active ? "default" : "secondary"}>
-              {trip.is_active ? "Aktywna" : "W przygotowaniu"}
-            </Badge>
-            <div className="text-muted-foreground text-sm">
-              {trip.start_date && new Date(trip.start_date).toLocaleDateString("pl-PL", {
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              })}
-              {" — "}
-              {trip.end_date && new Date(trip.end_date).toLocaleDateString("pl-PL", {
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              })}
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-stretch">
+          {/* Left Column - Bento Gallery + What to bring + Highlights */}
+          <div className="xl:col-span-4 flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-2">
+              {/* Main hero image - spans 2 columns */}
+              <div
+                className="col-span-2 relative rounded-xl overflow-hidden cursor-pointer group h-[140px]"
+                onClick={() => openImage(0)}
+              >
+                <Image
+                  src={mainImage}
+                  alt={trip.title}
+                  fill
+                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                  sizes="(max-width: 1280px) 100vw, 33vw"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                <div className="absolute bottom-2 left-2 right-2">
+                  <Badge className={`${trip.is_active ? "bg-green-500" : "bg-gray-500"} text-white text-[10px] mb-1`}>
+                    {trip.is_active ? "Aktywna" : "W przygotowaniu"}
+                  </Badge>
+                  <h1 className="font-sans text-lg font-bold text-white leading-tight">{trip.title}</h1>
+                </div>
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                  <Camera className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </div>
+
+              {/* 4 gallery images in 2x2 grid - smaller */}
+              {galleryImages.map((url, index) => (
+                <div
+                  key={index}
+                  className="relative rounded-lg overflow-hidden cursor-pointer group h-[80px]"
+                  onClick={() => openImage(index + 1)}
+                >
+                  <Image
+                    src={url}
+                    alt={`Zdjęcie ${index + 2}`}
+                    fill
+                    className="object-cover transition-transform duration-300 group-hover:scale-110"
+                    sizes="(max-width: 1280px) 50vw, 16vw"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              ))}
+              
+              {/* Fill empty slots if less than 4 images */}
+              {galleryImages.length < 4 && Array.from({ length: 4 - galleryImages.length }).map((_, index) => (
+                <div
+                  key={`empty-${index}`}
+                  className="relative rounded-lg overflow-hidden bg-muted h-[80px]"
+                />
+              ))}
+            </div>
+
+            {trip.intro_text && (
+              <p className="text-muted-foreground leading-relaxed text-sm">
+                {trip.intro_text}
+              </p>
+            )}
+
+            <div className="bg-primary/5 rounded-xl p-3 border border-primary/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h3 className="font-sans text-sm font-semibold text-foreground">Atrakcje wycieczki</h3>
+              </div>
+              <ul className="space-y-1.5">
+                {highlights.map((item, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="bg-secondary/50 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Briefcase className="w-4 h-4 text-primary" />
+                <h3 className="font-sans text-sm font-semibold text-foreground">Co zabrać ze sobą</h3>
+              </div>
+              <ul className="grid grid-cols-2 gap-1.5">
+                {whatToBring.map((item, i) => (
+                  <li key={i} className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                <Briefcase className="w-4 h-4 text-primary flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-xs text-muted-foreground">Bagaż</div>
+                  <div className="text-sm font-medium text-foreground">Zgodnie z przewoźnikiem</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                <Thermometer className="w-4 h-4 text-primary flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-xs text-muted-foreground">Pogoda</div>
+                  <div className="text-sm font-medium text-foreground">Sprawdź przed wyjazdem</div>
+                </div>
+              </div>
             </div>
           </div>
-          <h1 className="text-4xl font-semibold leading-tight tracking-tight">{trip.title}</h1>
-          <p className="text-muted-foreground max-w-2xl">
-            {trip.intro_text || "Odkryj wyjątkową podróż przygotowaną przez Magię Podróżowania. Poniżej znajdziesz szczegółowy opis, informacje o dostępnych miejscach oraz możliwość rezerwacji."}
-          </p>
-        </div>
 
-        <Card className="w-full max-w-sm self-stretch md:self-auto">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-lg font-medium">Informacje o rezerwacji</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border bg-muted/50 p-4">
-              <div className="text-xs uppercase text-muted-foreground">Cena za osobę</div>
-              <div className="text-3xl font-semibold">{price} PLN</div>
+          {/* Middle Column - Info + Program + Details */}
+          <div className="xl:col-span-5 flex flex-col gap-4">
+            {/* Quick Info Bar */}
+            <div className="flex flex-wrap gap-3 text-sm">
+              {trip.start_date && trip.end_date && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <span>{dateRange}</span>
+                </div>
+              )}
+              {days > 0 && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Clock className="w-4 h-4 text-primary" />
+                  <span>{days} dni / {nights} nocy</span>
+                </div>
+              )}
+              {trip.location && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  <span>{trip.location}</span>
+                </div>
+              )}
             </div>
-            <div className="grid gap-1 text-sm">
-              <span className="text-muted-foreground">Pozostało miejsc</span>
-              <span className="text-base font-medium">{seatsLeft}</span>
+
+            {trip.description && (
+              <div className="space-y-2">
+                <p className="text-muted-foreground leading-relaxed text-sm">
+                  {trip.description}
+                </p>
+              </div>
+            )}
+
+            {!trip.intro_text && !trip.description && (
+              <p className="text-muted-foreground leading-relaxed text-sm">
+                Odkryj wyjątkową podróż przygotowaną przez Magię Podróżowania. Relaks i zwiedzanie z programem obejmującym najpiękniejsze miejsca.
+              </p>
+            )}
+
+            {/* Program - Compact 2-column grid */}
+            {programDays.length > 0 && (
+              <div>
+                <h2 className="font-sans text-sm font-semibold text-foreground mb-2">Program wycieczki</h2>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {programDays.map((day) => (
+                    <div key={day.day} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">
+                        {day.day}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-foreground text-sm">{day.title}</div>
+                        <div className="text-xs text-muted-foreground truncate">{day.highlight}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Details Grid - 2x2 */}
+            <div>
+              <h2 className="font-sans text-sm font-semibold text-foreground mb-2">W cenie wycieczki</h2>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                  <Plane className="w-4 h-4 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">Transport</div>
+                    <div className="text-sm font-medium text-foreground truncate">Przelot + transfery</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                  <Hotel className="w-4 h-4 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">Zakwaterowanie</div>
+                    <div className="text-sm font-medium text-foreground truncate">Hotel {nights} nocy</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                  <Utensils className="w-4 h-4 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">Wyżywienie</div>
+                    <div className="text-sm font-medium text-foreground truncate">Zgodnie z programem</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                  <Shield className="w-4 h-4 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">Ubezpieczenie</div>
+                    <div className="text-sm font-medium text-foreground truncate">KL i NNW w cenie</div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <Separator />
-            <div className="grid gap-3 text-sm text-muted-foreground">
-              {trip.reservation_info_text ? (
-                <p className="whitespace-pre-line">{trip.reservation_info_text}</p>
-              ) : (
+
+            {/* Additional Services */}
+            {trip.dodatkowe_swiadczenia && (
+              <div>
+                <h2 className="font-sans text-sm font-semibold text-foreground mb-2">Dodatkowe świadczenia</h2>
+                <div 
+                  className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: trip.dodatkowe_swiadczenia }}
+                />
+              </div>
+            )}
+
+            <div>
+              <h2 className="font-sans text-sm font-semibold text-foreground mb-2">Cena nie obejmuje</h2>
+              <div className="grid grid-cols-2 gap-1.5 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                  <span>Bilety wstępu do atrakcji</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                  <span>Obiady i napoje</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                  <span>Wydatki osobiste</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                  <span>Napiwki dla pilota</span>
+                </div>
+              </div>
+            </div>
+
+            {trip.program_atrakcje && (
+              <div className="bg-card rounded-xl p-3 border border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <Hotel className="w-4 h-4 text-primary" />
+                  <h3 className="font-sans text-sm font-semibold text-foreground">Program i atrakcje</h3>
+                </div>
+                <div 
+                  className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: trip.program_atrakcje }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Right Column - Booking Card */}
+          <div className="xl:col-span-3 flex flex-col">
+            <Card className="border-border shadow-lg overflow-hidden flex-1 flex flex-col">
+              <div className="bg-primary text-primary-foreground p-3">
+                <div className="text-xs uppercase tracking-wide opacity-80 mb-0.5">Cena za osobę</div>
+                <div className="text-2xl font-bold font-sans">
+                  {parseFloat(price).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-normal">PLN</span>
+                </div>
+              </div>
+
+              <CardContent className="p-3 flex-1 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                    <Users className="w-4 h-4" />
+                    <span>Pozostało miejsc</span>
+                  </div>
+                  <Badge variant="secondary" className="font-semibold text-sm">
+                    {seatsLeft}
+                  </Badge>
+                </div>
+
+                <Separator />
+
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-foreground mb-1.5">W cenie:</div>
+                  <ul className="space-y-1">
+                    {[
+                      "Przelot w obie strony",
+                      `${nights} noclegów hotel`,
+                      "Wyżywienie zgodnie z programem",
+                      "Opieka pilota",
+                      "Ubezpieczenie KL i NNW",
+                      "Transfery lotnisko-hotel",
+                    ].map((item, i) => (
+                      <li key={i} className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-auto space-y-2">
+                  <Button 
+                    asChild 
+                    className="w-full py-3 text-sm font-semibold" 
+                    size="default"
+                    disabled={seatsLeft <= 0}
+                  >
+                    <Link href={`/trip/${trip.slug}/reserve`}>
+                      {seatsLeft > 0 ? "Przejdź do rezerwacji" : "Brak wolnych miejsc"}
+                    </Link>
+                  </Button>
+
+                  <p className="text-xs text-center text-muted-foreground leading-tight">
+                    {trip.reservation_info_text || "Do rezerwacji potrzebne będą dane kontaktowe oraz lista uczestników. Po złożeniu rezerwacji otrzymasz e-mail z potwierdzeniem i wzorem umowy."}
+                  </p>
+                </div>
+
+                <div className="bg-secondary/50 rounded-lg p-2 mt-1">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Headphones className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="text-sm">
+                      <div className="font-medium text-foreground">Masz pytania?</div>
+                      <div className="text-muted-foreground">Skontaktuj się z nami</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Lightbox Dialog */}
+      {galleryUrls.length > 0 && (
+        <Dialog open={selectedImage !== null} onOpenChange={() => closeImage()}>
+          <DialogContent className="max-w-4xl p-0 bg-black/95 border-none" showCloseButton={false}>
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-4 right-4 z-10 text-white hover:bg-white/20"
+                onClick={closeImage}
+              >
+                <X className="w-6 h-6" />
+              </Button>
+
+              {selectedImage !== null && galleryUrls[selectedImage] && (
+                <Image
+                  src={galleryUrls[selectedImage]}
+                  alt={`Zdjęcie ${selectedImage + 1}`}
+                  width={1200}
+                  height={800}
+                  className="w-full h-auto max-h-[80vh] object-contain"
+                />
+              )}
+
+              {galleryUrls.length > 1 && (
                 <>
-                  <p>Do rezerwacji potrzebne będą dane kontaktowe oraz lista uczestników.</p>
-                  <p>Po złożeniu rezerwacji otrzymasz e-mail z potwierdzeniem i wzorem umowy.</p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20"
+                    onClick={prevImage}
+                  >
+                    <ChevronLeft className="w-8 h-8" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20"
+                    onClick={nextImage}
+                  >
+                    <ChevronRight className="w-8 h-8" />
+                  </Button>
+
+                  {selectedImage !== null && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-sm">
+                      {selectedImage + 1} / {galleryUrls.length}
+                    </div>
+                  )}
                 </>
               )}
             </div>
-            <Button asChild disabled={seatsLeft <= 0} className="w-full">
-              <Link href={`/trip/${trip.slug}/reserve`}>
-                {seatsLeft > 0 ? "Przejdź do rezerwacji" : "Brak wolnych miejsc"}
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {Array.isArray(trip.gallery_urls) && trip.gallery_urls.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Galeria</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {trip.gallery_urls.slice(0, 8).map((url, index) => (
-              <div
-                key={url ?? index}
-                className="group relative aspect-square overflow-hidden rounded-xl bg-muted"
-              >
-                <Image
-                  src={url}
-                  alt={`Zdjęcie ${index + 1}`}
-                  fill
-                  sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, 20vw"
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              </div>
-            ))}
-          </div>
-        </section>
+          </DialogContent>
+        </Dialog>
       )}
-
-      <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <Tabs defaultValue="overview" className="w-full">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">
-                {trip.section_poznaj_title || "Poznaj wycieczkę"}
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                {trip.section_poznaj_description || "Szczegóły programu, świadczenia oraz ważne informacje organizacyjne."}
-              </p>
-            </div>
-            <TabsList className="grid w-full grid-cols-2 sm:w-auto">
-              <TabsTrigger value="overview">Opis</TabsTrigger>
-              <TabsTrigger value="details">Szczegóły</TabsTrigger>
-            </TabsList>
-          </div>
-          <TabsContent value="overview">
-            <Card>
-              <CardHeader>
-                <CardTitle>Program i atrakcje</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {trip.program_atrakcje ? (
-                  <div
-                    className="prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: trip.program_atrakcje }}
-                  />
-                ) : (
-                  <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
-                    {trip.description || "Brak opisu"}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="details">
-            <Card>
-              <CardHeader>
-                <CardTitle>Najważniejsze informacje</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 text-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-muted-foreground">Termin wyjazdu</span>
-                  <span className="font-medium">
-                    {trip.start_date
-                      ? new Date(trip.start_date).toLocaleDateString("pl-PL")
-                      : "Do ustalenia"}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-muted-foreground">Powrót</span>
-                  <span className="font-medium">
-                    {trip.end_date
-                      ? new Date(trip.end_date).toLocaleDateString("pl-PL")
-                      : "Do ustalenia"}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-muted-foreground">Miejsca łącznie</span>
-                  <span className="font-medium">{trip.seats_total ?? "Brak danych"}</span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-muted-foreground">Rezerwacje</span>
-                  <span className="font-medium">{trip.seats_reserved ?? 0}</span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-muted-foreground">Status</span>
-                  <span className="font-medium">
-                    {trip.is_active ? "Aktywna" : "W przygotowaniu / archiwalna"}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Dodatkowe świadczenia</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {trip.dodatkowe_swiadczenia ? (
-              <div
-                className="prose prose-sm max-w-none text-sm"
-                dangerouslySetInnerHTML={{ __html: trip.dodatkowe_swiadczenia }}
-              />
-            ) : (
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <p>• Bezpłatne konsultacje z koordynatorem przed wyjazdem.</p>
-                <p>• Pomoc w przygotowaniu dokumentów oraz formalności.</p>
-                <p>• Możliwość rozszerzenia ubezpieczenia podróżnego.</p>
-                <p>• Szczegółowy plan dnia w wersji elektronicznej.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-    </div>
-  );
+    </main>
+  )
 }
-
-

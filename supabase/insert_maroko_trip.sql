@@ -1,0 +1,70 @@
+-- Skrypt do dodania wycieczki do Grecji do bazy danych
+-- Wykonaj ten skrypt w Supabase Dashboard -> SQL Editor
+
+INSERT INTO public.trips (
+  title,
+  slug,
+  public_slug,
+  description,
+  start_date,
+  end_date,
+  price_cents,
+  seats_total,
+  seats_reserved,
+  is_active,
+  is_public,
+  gallery_urls,
+  category,
+  location,
+  program_atrakcje,
+  dodatkowe_swiadczenia,
+  intro_text,
+  section_poznaj_title,
+  section_poznaj_description,
+  reservation_info_text
+) VALUES (
+  'Grecja – Ateny, Meteory i Riwiera Olimpijska',
+  'grecja-atene-meteory',
+  'grecja-grupowa-historia',
+  'Historyczna i krajobrazowa podróż przez miejsca, gdzie rodziła się europejska cywilizacja.',
+  '2025-09-02',
+  '2025-09-09',
+  559000,
+  45,
+  0,
+  true,
+  true,
+  '[
+    "https://images.unsplash.com/photo-1548013146-530bca1bedbf",
+    "https://images.unsplash.com/photo-1502657877623-f66bf489d236",
+    "https://images.unsplash.com/photo-1472214103451-9374bd1c798e"
+  ]'::jsonb,
+  'kulturowe',
+  'Grecja',
+  'Ateny – Akropol, Plaka; Meteory – klasztory; Saloniki; rejs po Riwierze Olimpijskiej.',
+  'Hotel 3–4*, śniadania, transport autokarem, przewodnik polski, bilety.',
+  'Grecja to mieszanka słońca, historii i boskich widoków. Idealna na spokojny, inspirujący wyjazd.',
+  'Kolebka Europy',
+  'Ateny i Meteory tworzą jedną z najbardziej niezwykłych tras kulturowych na świecie.',
+  'Rezerwacja po wpłacie zaliczki. Liczba miejsc ograniczona.'
+)
+ON CONFLICT (slug) DO UPDATE SET
+  title = EXCLUDED.title,
+  public_slug = EXCLUDED.public_slug,
+  description = EXCLUDED.description,
+  start_date = EXCLUDED.start_date,
+  end_date = EXCLUDED.end_date,
+  price_cents = EXCLUDED.price_cents,
+  seats_total = EXCLUDED.seats_total,
+  is_active = EXCLUDED.is_active,
+  is_public = EXCLUDED.is_public,
+  gallery_urls = EXCLUDED.gallery_urls,
+  category = EXCLUDED.category,
+  location = EXCLUDED.location,
+  program_atrakcje = EXCLUDED.program_atrakcje,
+  dodatkowe_swiadczenia = EXCLUDED.dodatkowe_swiadczenia,
+  intro_text = EXCLUDED.intro_text,
+  section_poznaj_title = EXCLUDED.section_poznaj_title,
+  section_poznaj_description = EXCLUDED.section_poznaj_description,
+  reservation_info_text = EXCLUDED.reservation_info_text;
+

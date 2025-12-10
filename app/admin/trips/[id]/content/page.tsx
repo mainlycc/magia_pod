@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +10,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { TripContentEditor } from "@/components/trip-content-editor";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, X, Loader2, Edit2, Link as LinkIcon } from "lucide-react";
+import { ArrowLeft, Upload, X, Loader2, Edit2, Link as LinkIcon, Camera, Calendar, MapPin, Clock, Users, CheckCircle, Sparkles, Briefcase, Thermometer, Plane, Hotel, Utensils, Shield, AlertCircle, Headphones } from "lucide-react";
 import Image from "next/image";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+
+function calculateDays(startDate: string | null, endDate: string | null): number {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end.getTime() - start.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays + 1;
+}
+
+function formatDateRange(startDate: string | null, endDate: string | null): string {
+  if (!startDate || !endDate) return "Termin do ustalenia";
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  const startDay = start.getDate().toString().padStart(2, "0");
+  const startMonth = (start.getMonth() + 1).toString().padStart(2, "0");
+  const endDay = end.getDate().toString().padStart(2, "0");
+  const endMonth = (end.getMonth() + 1).toString().padStart(2, "0");
+  const year = start.getFullYear();
+  
+  return `${startDay}-${endDay}.${startMonth}.${year}`;
+}
 
 export default function TripContentPage() {
   const router = useRouter();
@@ -33,6 +57,18 @@ export default function TripContentPage() {
   const [sectionPoznajTitle, setSectionPoznajTitle] = useState("");
   const [sectionPoznajDescription, setSectionPoznajDescription] = useState("");
   const [reservationInfoText, setReservationInfoText] = useState("");
+  
+  // Additional trip data for display
+  const [tripData, setTripData] = useState<{
+    start_date: string | null;
+    end_date: string | null;
+    price_cents: number | null;
+    seats_total: number | null;
+    seats_reserved: number | null;
+    is_active: boolean | null;
+    location: string | null;
+    description: string | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -62,6 +98,16 @@ export default function TripContentPage() {
         if (tripRes.ok) {
           const trip = await tripRes.json();
           setTripTitle(trip.title || "");
+          setTripData({
+            start_date: trip.start_date || null,
+            end_date: trip.end_date || null,
+            price_cents: trip.price_cents || null,
+            seats_total: trip.seats_total || null,
+            seats_reserved: trip.seats_reserved || null,
+            is_active: trip.is_active ?? null,
+            location: trip.location || null,
+            description: trip.description || null,
+          });
         }
       } catch (err) {
         toast.error("Nie udało się wczytać treści");
@@ -217,236 +263,335 @@ export default function TripContentPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto max-w-5xl p-6">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  return (
-    <div className="container mx-auto max-w-5xl space-y-8 p-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Wróć
-        </Button>
-        <div>
-          <p className="text-sm text-muted-foreground">{tripTitle}</p>
-        </div>
-      </div>
+  const mainImage = galleryUrls[0] || "/placeholder.svg";
+  const galleryImages = galleryUrls.slice(1, 5);
+  const days = tripData ? calculateDays(tripData.start_date, tripData.end_date) : 0;
+  const nights = Math.max(0, days - 1);
+  const dateRange = tripData ? formatDateRange(tripData.start_date, tripData.end_date) : "Termin do ustalenia";
+  const price = tripData?.price_cents ? (tripData.price_cents / 100).toFixed(2) : "0";
+  const seatsLeft = tripData ? Math.max(0, (tripData.seats_total ?? 0) - (tripData.seats_reserved ?? 0)) : 0;
 
-      {/* Układ podobny do strony publicznej */}
-      <div className="space-y-8 border rounded-lg p-6 bg-background">
-        {/* Sekcja nagłówkowa */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-4 flex-1">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="default">Aktywna</Badge>
+  return (
+    <main className="min-h-screen bg-background">
+      {/* Breadcrumb */}
+      <nav className="bg-card border-b border-border">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-2">
+          <ol className="flex items-center gap-2 text-xs text-muted-foreground">
+            <li>
+              <Link href="/admin" className="hover:text-foreground transition-colors">
+                Panel administracyjny
+              </Link>
+            </li>
+            <li>/</li>
+            <li>
+              <Link href="/admin/trips" className="hover:text-foreground transition-colors">
+                Wycieczki
+              </Link>
+            </li>
+            <li>/</li>
+            <li className="text-foreground font-medium">Edycja treści</li>
+          </ol>
+        </div>
+      </nav>
+
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-stretch">
+          {/* Left Column - Bento Gallery + Intro + Highlights */}
+          <div className="xl:col-span-4 flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-2">
+              {/* Main hero image - spans 2 columns */}
+              <div className="col-span-2 relative rounded-xl overflow-hidden group h-[140px] border-2 border-dashed border-muted-foreground/20">
+                {mainImage && mainImage !== "/placeholder.svg" ? (
+                  <>
+                    <Image
+                      src={mainImage}
+                      alt={tripTitle}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 1280px) 100vw, 33vw"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    <div className="absolute bottom-2 left-2 right-2">
+                      <Badge className={`${tripData?.is_active ? "bg-green-500" : "bg-gray-500"} text-white text-[10px] mb-1`}>
+                        {tripData?.is_active ? "Aktywna" : "W przygotowaniu"}
+                      </Badge>
+                      <h1 className="font-sans text-lg font-bold text-white leading-tight">{tripTitle}</h1>
+                    </div>
+                    <div className="absolute top-2 right-2">
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleImageDelete(mainImage)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <Camera className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground">Główne zdjęcie</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 4 gallery images in 2x2 grid */}
+              {Array.from({ length: 4 }).map((_, index) => {
+                const url = galleryImages[index];
+                return (
+                  <div
+                    key={index}
+                    className="relative rounded-lg overflow-hidden border-2 border-dashed border-muted-foreground/20 h-[80px] group"
+                  >
+                    {url ? (
+                      <>
+                        <Image
+                          src={url}
+                          alt={`Zdjęcie ${index + 2}`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 1280px) 50vw, 16vw"
+                        />
+                        <div className="absolute top-1 right-1">
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => url && handleImageDelete(url)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Camera className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Tytuł wycieczki (edytuj w podstawowych danych)</Label>
-              <h1 className="text-4xl font-semibold leading-tight tracking-tight">{tripTitle}</h1>
+
+            {/* Gallery upload controls */}
+            <div className="space-y-2 p-3 border rounded-lg bg-card">
+              <Label className="text-xs font-semibold">Zarządzanie galerią</Label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="url"
+                    placeholder="https://example.com/image.jpg"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleAddImageFromUrl();
+                      }
+                    }}
+                    className="flex-1 text-xs"
+                    disabled={addingFromUrl}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddImageFromUrl}
+                    disabled={addingFromUrl || !imageUrl.trim()}
+                  >
+                    <LinkIcon className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Label htmlFor="image-upload" className="cursor-pointer">
+                  <Button variant="outline" size="sm" className="w-full" asChild disabled={uploading}>
+                    <span>
+                      <Upload className="h-3 w-3 mr-2" />
+                      {uploading ? "Dodawanie..." : "Dodaj z pliku"}
+                    </span>
+                  </Button>
+                </Label>
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  disabled={uploading}
+                />
+              </div>
             </div>
+
+            {/* Intro text editor */}
             <div className="space-y-2">
-              <Label htmlFor="intro-text" className="text-xs text-muted-foreground">
+              <Label htmlFor="intro-text" className="text-xs font-semibold">
                 Opis pod tytułem
               </Label>
               <Textarea
                 id="intro-text"
                 value={introText}
                 onChange={(e) => setIntroText(e.target.value)}
-                placeholder="Odkryj wyjątkową podróż przygotowaną przez Magię Podróżowania. Poniżej znajdziesz szczegółowy opis, informacje o dostępnych miejscach oraz możliwość rezerwacji."
-                className="min-h-[80px]"
+                placeholder="Odkryj wyjątkową podróż przygotowaną przez Magię Podróżowania..."
+                className="min-h-[80px] text-sm"
               />
+            </div>
+
+            {/* Highlights section - editable */}
+            <div className="bg-primary/5 rounded-xl p-3 border border-primary/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h3 className="font-sans text-sm font-semibold text-foreground">Atrakcje wycieczki</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                (Wygenerowane automatycznie z programu)
+              </p>
             </div>
           </div>
 
-          <Card className="w-full max-w-sm self-stretch md:self-auto">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-lg font-medium">Informacje o rezerwacji</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="reservation-info" className="text-xs text-muted-foreground">
-                  Tekst informacyjny o rezerwacji
-                </Label>
-                <Textarea
-                  id="reservation-info"
-                  value={reservationInfoText}
-                  onChange={(e) => setReservationInfoText(e.target.value)}
-                  placeholder="Do rezerwacji potrzebne będą dane kontaktowe oraz lista uczestników. Po złożeniu rezerwacji otrzymasz e-mail z potwierdzeniem i wzorem umowy."
-                  className="min-h-[100px] text-sm"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Galeria */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Galeria</h2>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2">
-                <Input
-                  type="url"
-                  placeholder="https://example.com/image.jpg"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleAddImageFromUrl();
-                    }
-                  }}
-                  className="w-64"
-                  disabled={addingFromUrl}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddImageFromUrl}
-                  disabled={addingFromUrl || !imageUrl.trim()}
-                >
-                  <LinkIcon className="h-4 w-4 mr-2" />
-                  {addingFromUrl ? "Dodawanie..." : "Dodaj z linku"}
-                </Button>
-              </div>
-              <Label htmlFor="image-upload" className="cursor-pointer">
-                <Button variant="outline" size="sm" asChild disabled={uploading}>
-                  <span>
-                    <Upload className="h-4 w-4 mr-2" />
-                    {uploading ? "Dodawanie..." : "Dodaj z pliku"}
-                  </span>
-                </Button>
-              </Label>
-              <input
-                id="image-upload"
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                disabled={uploading}
-              />
-            </div>
-          </div>
-          {galleryUrls.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {galleryUrls.map((url, index) => (
-                <div
-                  key={url ?? index}
-                  className="group relative aspect-square overflow-hidden rounded-xl bg-muted"
-                >
-                  <Image
-                    src={url}
-                    alt={`Zdjęcie ${index + 1}`}
-                    fill
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, 20vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <button
-                    onClick={() => handleImageDelete(url)}
-                    className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Usuń zdjęcie"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+          {/* Middle Column - Info + Program + Details */}
+          <div className="xl:col-span-5 flex flex-col gap-4">
+            {/* Quick Info Bar */}
+            <div className="flex flex-wrap gap-3 text-sm">
+              {tripData?.start_date && tripData?.end_date && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <span>{dateRange}</span>
                 </div>
-              ))}
+              )}
+              {days > 0 && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Clock className="w-4 h-4 text-primary" />
+                  <span>{days} dni / {nights} nocy</span>
+                </div>
+              )}
+              {tripData?.location && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  <span>{tripData.location}</span>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Brak zdjęć w galerii</p>
-          )}
-        </section>
 
-        {/* Sekcja "Poznaj wycieczkę" */}
-        <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <Tabs defaultValue="overview" className="w-full">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2">
-                <Label htmlFor="section-poznaj-title" className="text-xs text-muted-foreground">
-                  Nagłówek sekcji
-                </Label>
-                <Input
-                  id="section-poznaj-title"
-                  value={sectionPoznajTitle}
-                  onChange={(e) => setSectionPoznajTitle(e.target.value)}
-                  placeholder="Poznaj wycieczkę"
-                  className="text-xl font-semibold"
-                />
-                <Label htmlFor="section-poznaj-description" className="text-xs text-muted-foreground">
-                  Opis sekcji
-                </Label>
-                <Input
-                  id="section-poznaj-description"
-                  value={sectionPoznajDescription}
-                  onChange={(e) => setSectionPoznajDescription(e.target.value)}
-                  placeholder="Szczegóły programu, świadczenia oraz ważne informacje organizacyjne."
-                  className="text-sm text-muted-foreground"
-                />
+            {/* Program and attractions editor */}
+            <div className="bg-card rounded-xl p-3 border border-border">
+              <div className="flex items-center gap-2 mb-2">
+                <Hotel className="w-4 h-4 text-primary" />
+                <h3 className="font-sans text-sm font-semibold text-foreground">Program i atrakcje</h3>
               </div>
-              <TabsList className="grid w-full grid-cols-2 sm:w-auto">
-                <TabsTrigger value="overview">Opis</TabsTrigger>
-                <TabsTrigger value="details">Szczegóły</TabsTrigger>
-              </TabsList>
+              <TripContentEditor
+                content={programAtrakcje}
+                onChange={setProgramAtrakcje}
+                label="Program i atrakcje"
+              />
             </div>
-            <TabsContent value="overview">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Program i atrakcje</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TripContentEditor
-                    content={programAtrakcje}
-                    onChange={setProgramAtrakcje}
-                    label="Program i atrakcje"
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="details">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Najważniejsze informacje</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  <p>Te informacje są automatycznie generowane z danych wycieczki.</p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
 
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>Dodatkowe świadczenia</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Additional Services */}
+            <div>
+              <h2 className="font-sans text-sm font-semibold text-foreground mb-2">Dodatkowe świadczenia</h2>
               <TripContentEditor
                 content={dodatkoweSwiadczenia}
                 onChange={setDodatkoweSwiadczenia}
                 label="Dodatkowe świadczenia"
               />
-            </CardContent>
-          </Card>
-        </section>
-      </div>
+            </div>
+          </div>
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => router.back()}>
-          Anuluj
-        </Button>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Zapisywanie...
-            </>
-          ) : (
-            "Zapisz zmiany"
-          )}
-        </Button>
+          {/* Right Column - Booking Card */}
+          <div className="xl:col-span-3 flex flex-col">
+            <Card className="border-border shadow-lg overflow-hidden flex-1 flex flex-col">
+              <div className="bg-primary text-primary-foreground p-3">
+                <div className="text-xs uppercase tracking-wide opacity-80 mb-0.5">Cena za osobę</div>
+                <div className="text-2xl font-bold font-sans">
+                  {parseFloat(price).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-normal">PLN</span>
+                </div>
+              </div>
+
+              <CardContent className="p-3 flex-1 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                    <Users className="w-4 h-4" />
+                    <span>Pozostało miejsc</span>
+                  </div>
+                  <Badge variant="secondary" className="font-semibold text-sm">
+                    {seatsLeft}
+                  </Badge>
+                </div>
+
+                <Separator />
+
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-foreground mb-1.5">W cenie:</div>
+                  <ul className="space-y-1">
+                    {[
+                      "Przelot w obie strony",
+                      `${nights} noclegów hotel`,
+                      "Wyżywienie zgodnie z programem",
+                      "Opieka pilota",
+                      "Ubezpieczenie KL i NNW",
+                      "Transfery lotnisko-hotel",
+                    ].map((item, i) => (
+                      <li key={i} className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-auto space-y-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="reservation-info" className="text-xs font-semibold">
+                      Tekst informacyjny o rezerwacji
+                    </Label>
+                    <Textarea
+                      id="reservation-info"
+                      value={reservationInfoText}
+                      onChange={(e) => setReservationInfoText(e.target.value)}
+                      placeholder="Do rezerwacji potrzebne będą dane kontaktowe..."
+                      className="min-h-[80px] text-xs"
+                    />
+                  </div>
+
+                  <div className="bg-secondary/50 rounded-lg p-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                        <Headphones className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="text-sm">
+                        <div className="font-medium text-foreground">Masz pytania?</div>
+                        <div className="text-muted-foreground">Skontaktuj się z nami</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Save buttons */}
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => router.back()}>
+            Anuluj
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Zapisywanie...
+              </>
+            ) : (
+              "Zapisz zmiany"
+            )}
+          </Button>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
