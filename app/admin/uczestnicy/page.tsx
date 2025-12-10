@@ -108,6 +108,7 @@ export default function AdminParticipantsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [templates, setTemplates] = useState<Array<{ id: string; title: string; subject: string; body: string }>>([]);
+  const TEMPLATE_NONE_VALUE = "__none__";
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   useEffect(() => {
@@ -583,8 +584,15 @@ export default function AdminParticipantsPage() {
             <div className="grid gap-2">
               <Label htmlFor="message-template">Wybierz szablon (opcjonalnie)</Label>
               <Select
-                value={selectedTemplateId}
+                value={selectedTemplateId || undefined}
                 onValueChange={(value) => {
+                  if (value === TEMPLATE_NONE_VALUE) {
+                    setSelectedTemplateId("");
+                    setMessageSubject("");
+                    setMessageBody("");
+                    return;
+                  }
+
                   setSelectedTemplateId(value);
                   if (value) {
                     const template = templates.find((t) => t.id === value);
@@ -602,7 +610,7 @@ export default function AdminParticipantsPage() {
                   <SelectValue placeholder="Brak szablonu" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Brak szablonu</SelectItem>
+                  <SelectItem value={TEMPLATE_NONE_VALUE}>Brak szablonu</SelectItem>
                   {templates.map((template) => (
                     <SelectItem key={template.id} value={template.id}>
                       {template.title}
