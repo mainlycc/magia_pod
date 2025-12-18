@@ -18,17 +18,51 @@ async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): P
 }
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("trips")
-    .select(
-      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug",
-    )
-    .eq("id", id)
-    .single();
-  if (error || !data) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  return NextResponse.json(data);
+  try {
+    const { id } = await context.params;
+    console.log("GET /api/trips/[id] - Requested ID:", id);
+    
+    const supabase = await createClient();
+    
+    // Sprawdź czy użytkownik jest zalogowany
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    console.log("User:", user?.id, "Auth error:", authError);
+    
+    // Sprawdź czy użytkownik jest adminem - jeśli tak, może zobaczyć wszystkie wycieczki
+    const isAdmin = await checkAdmin(supabase);
+    console.log("Is admin:", isAdmin);
+    
+    let query = supabase
+      .from("trips")
+      .select(
+        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode",
+      )
+      .eq("id", id);
+    
+    // Jeśli nie jest adminem, filtruj tylko aktywne wycieczki (zgodnie z RLS)
+    if (!isAdmin) {
+      query = query.eq("is_active", true);
+    }
+    
+    const { data, error } = await query.single();
+    
+    console.log("Query result - data:", data, "error:", error);
+    
+    if (error) {
+      console.error("Supabase error:", error);
+      return NextResponse.json({ error: "not_found", details: error.message }, { status: 404 });
+    }
+    
+    if (!data) {
+      console.error("No data returned for trip ID:", id);
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error("Error in GET /api/trips/[id]:", err);
+    return NextResponse.json({ error: "internal_error", details: String(err) }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -46,6 +80,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       location: string;
       is_public: boolean;
       public_slug: string | null;
+      registration_mode: string | null;
     }> = {};
     if ("title" in body) payload.title = body.title;
     if ("description" in body) payload.description = body.description ?? null;
@@ -57,6 +92,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("location" in body) payload.location = body.location ?? null;
     if ("is_public" in body) payload.is_public = Boolean(body.is_public);
     if ("public_slug" in body) payload.public_slug = body.public_slug ?? null;
+    if ("registration_mode" in body)
+      payload.registration_mode = body.registration_mode ?? "both";
 
     const supabase = await createClient();
     

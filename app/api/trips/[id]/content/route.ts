@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
     const { data: trip, error } = await supabase
       .from("trips")
-      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, reservation_info_text")
+      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, reservation_info_text, trip_info_text, baggage_text, weather_text, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text")
       .eq("id", id)
       .single();
 
@@ -43,6 +43,13 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       section_poznaj_title: trip.section_poznaj_title || "",
       section_poznaj_description: trip.section_poznaj_description || "",
       reservation_info_text: trip.reservation_info_text || "",
+      trip_info_text: trip.trip_info_text || "",
+      baggage_text: trip.baggage_text || "",
+      weather_text: trip.weather_text || "",
+      show_seats_left: trip.show_seats_left ?? false,
+      included_in_price_text: trip.included_in_price_text || "",
+      additional_costs_text: trip.additional_costs_text || "",
+      additional_service_text: trip.additional_service_text || "",
     });
   } catch {
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
@@ -66,7 +73,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       intro_text,
       section_poznaj_title,
       section_poznaj_description,
-      reservation_info_text
+      reservation_info_text,
+      trip_info_text,
+      baggage_text,
+      weather_text,
+      show_seats_left,
+      included_in_price_text,
+      additional_costs_text,
+      additional_service_text
     } = body as {
       program_atrakcje?: string;
       dodatkowe_swiadczenia?: string;
@@ -75,6 +89,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       section_poznaj_title?: string;
       section_poznaj_description?: string;
       reservation_info_text?: string;
+      trip_info_text?: string;
+      baggage_text?: string;
+      weather_text?: string;
+      show_seats_left?: boolean;
+      included_in_price_text?: string;
+      additional_costs_text?: string;
+      additional_service_text?: string;
     };
 
     const updateData: {
@@ -85,6 +106,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       section_poznaj_title?: string | null;
       section_poznaj_description?: string | null;
       reservation_info_text?: string | null;
+      trip_info_text?: string | null;
+      baggage_text?: string | null;
+      weather_text?: string | null;
+      show_seats_left?: boolean;
+      included_in_price_text?: string | null;
+      additional_costs_text?: string | null;
+      additional_service_text?: string | null;
     } = {};
 
     if ("program_atrakcje" in body) {
@@ -111,6 +139,27 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
     if ("reservation_info_text" in body) {
       updateData.reservation_info_text = reservation_info_text ?? null;
+    }
+    if ("trip_info_text" in body) {
+      updateData.trip_info_text = trip_info_text ?? null;
+    }
+    if ("baggage_text" in body) {
+      updateData.baggage_text = baggage_text ?? null;
+    }
+    if ("weather_text" in body) {
+      updateData.weather_text = weather_text ?? null;
+    }
+    if ("show_seats_left" in body) {
+      updateData.show_seats_left = show_seats_left ?? false;
+    }
+    if ("included_in_price_text" in body) {
+      updateData.included_in_price_text = included_in_price_text ?? null;
+    }
+    if ("additional_costs_text" in body) {
+      updateData.additional_costs_text = additional_costs_text ?? null;
+    }
+    if ("additional_service_text" in body) {
+      updateData.additional_service_text = additional_service_text ?? null;
     }
 
     // Jeśli nie ma żadnych danych do aktualizacji, zwróć sukces

@@ -205,11 +205,7 @@ export function TripContentEditor({ content, onChange, label }: TripContentEdito
       <Textarea
         value={plainText}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="Wpisz treść... Formatowanie jest automatyczne:
-- Linie zaczynające się od '-' tworzą listy punktowane
-- Linie zaczynające się od '1.' tworzą listy numerowane
-- Linie zaczynające się od '##' tworzą nagłówki
-- Puste linie tworzą nowe paragrafy"
+        placeholder="Wpisz treść dodatkowych świadczeń..."
         className="min-h-[300px] font-mono text-sm"
       />
     </div>

@@ -15,6 +15,16 @@ const pageTitles: Record<string, string> = {
   "/admin/komunikacja-masowa": "Komunikacja masowa",
   "/admin/przyklad": "Przykład",
   "/coord": "Moje wyjazdy",
+  // Trip dashboard
+  "/trip-dashboard": "Dashboard wycieczki",
+  "/trip-dashboard/publiczny-wyglad": "Edycja publicznego wyglądu",
+  "/trip-dashboard/rezerwacje": "Rezerwacje i umowy",
+  "/trip-dashboard/platnosci": "Płatności",
+  "/trip-dashboard/faktury": "Faktury",
+  "/trip-dashboard/ubezpieczenia": "Ubezpieczenia",
+  "/trip-dashboard/uczestnicy": "Uczestnicy",
+  "/trip-dashboard/zaproszenia-koordynatorow": "Zaproszenia koordynatorów",
+  "/trip-dashboard/komunikacja-masowa": "Komunikacja masowa",
 }
 
 // Wzorce ścieżek z dynamicznymi segmentami
@@ -54,7 +64,10 @@ export function PageTitle() {
   if (pathname.startsWith("/coord")) {
     return <h1 className="text-2xl font-semibold">Panel koordynatora</h1>
   }
-  
+  if (pathname.startsWith("/trip-dashboard")) {
+    return <h1 className="text-2xl font-semibold">Dashboard wycieczki</h1>
+  }
+
   return <h1 className="text-2xl font-semibold">Panel administracyjny</h1>
 }
 

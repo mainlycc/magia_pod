@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       location,
       is_public,
       public_slug,
+      registration_mode,
     } = body ?? {};
     if (!title || !slug) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
         public_slug: public_slug ?? null,
         category: category ?? null,
         location: location ?? null,
+        registration_mode: registration_mode ?? "both",
       })
       .select("id")
       .single();

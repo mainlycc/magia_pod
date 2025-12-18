@@ -97,6 +97,14 @@ create table if not exists public.trips (
   section_poznaj_title text,
   section_poznaj_description text,
   reservation_info_text text,
+  trip_info_text text,
+  baggage_text text,
+  weather_text text,
+  show_seats_left boolean not null default false,
+  included_in_price_text text,
+  additional_costs_text text,
+  additional_service_text text,
+  registration_mode text default 'both' check (registration_mode in ('individual', 'company', 'both')),
   created_at timestamptz not null default now()
 );
 create index if not exists trips_slug_idx on public.trips(slug);
@@ -214,6 +222,118 @@ BEGIN
   ) THEN
     ALTER TABLE public.trips
       ADD COLUMN reservation_info_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'trip_info_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN trip_info_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'baggage_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN baggage_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'weather_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN weather_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'show_seats_left'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN show_seats_left boolean NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'included_in_price_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN included_in_price_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'additional_costs_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN additional_costs_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'additional_service_text'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN additional_service_text text;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'trips'
+      AND column_name = 'registration_mode'
+  ) THEN
+    ALTER TABLE public.trips
+      ADD COLUMN registration_mode text DEFAULT 'both' CHECK (registration_mode IN ('individual', 'company', 'both'));
   END IF;
 END $$;
 

@@ -10,21 +10,9 @@ export default async function Home() {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
-  // Jeśli użytkownik jest zalogowany, przekieruj go do odpowiedniego panelu
+  // Jeśli użytkownik jest zalogowany, przekieruj go do panelu trip-dashboard
   if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", (user as { sub: string }).sub)
-      .maybeSingle();
-
-    if (profile?.role === "admin") {
-      redirect("/admin");
-    }
-    if (profile?.role === "coordinator") {
-      redirect("/coord");
-    }
-    redirect("/protected");
+    redirect("/trip-dashboard");
   }
 
   return (

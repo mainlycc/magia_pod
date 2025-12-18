@@ -54,6 +54,10 @@ type Trip = {
   reservation_info_text: string | null
   location: string | null
   category: string | null
+  show_seats_left: boolean | null
+  included_in_price_text: string | null
+  additional_costs_text: string | null
+  additional_service_text: string | null
 }
 
 function calculateDays(startDate: string | null, endDate: string | null): number {
@@ -177,7 +181,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
         try {
           const { data: contentData } = await supabase
             .from("trips")
-            .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text")
+            .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,reservation_info_text,show_seats_left,included_in_price_text,additional_costs_text,additional_service_text")
             .eq("id", tripData.id)
             .maybeSingle()
           
@@ -260,16 +264,6 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
   
   const programDays = parseProgramDays(trip.program_atrakcje)
   
-  // Default values for sections that might not be in database
-  const highlights = trip.program_atrakcje 
-    ? parseProgramDays(trip.program_atrakcje).map(d => d.highlight).slice(0, 4)
-    : [
-        "Zwiedzanie głównych atrakcji",
-        "Program kulturalny",
-        "Czas wolny",
-        "Transfery i opieka pilota",
-      ]
-  
   const whatToBring = [
     "Wygodne buty do zwiedzania",
     "Strój odpowiedni do pogody",
@@ -308,7 +302,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
 
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-stretch">
-          {/* Left Column - Bento Gallery + What to bring + Highlights */}
+          {/* Left Column - Bento Gallery + What to bring */}
           <div className="xl:col-span-4 flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-2">
               {/* Main hero image - spans 2 columns */}
@@ -367,21 +361,6 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                 {trip.intro_text}
               </p>
             )}
-
-            <div className="bg-primary/5 rounded-xl p-3 border border-primary/20">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                <h3 className="font-sans text-sm font-semibold text-foreground">Atrakcje wycieczki</h3>
-              </div>
-              <ul className="space-y-1.5">
-                {highlights.map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
 
             <div className="bg-secondary/50 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-2">
@@ -454,6 +433,43 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
               </p>
             )}
 
+            {/* Informacje o wyjeździe */}
+            <div>
+              <h2 className="font-sans text-sm font-semibold text-foreground mb-2">
+                Informacje o wyjeździe
+              </h2>
+              <div className="grid grid-cols-2 gap-1.5 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-primary flex-shrink-0" />
+                  <span>
+                    {trip.start_date && trip.end_date
+                      ? dateRange
+                      : "Termin do ustalenia"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary flex-shrink-0" />
+                  <span>
+                    {days > 0
+                      ? `${days} dni / ${nights} nocy`
+                      : "Liczba dni w trakcie ustalania"}
+                  </span>
+                </div>
+                {trip.location && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary flex-shrink-0" />
+                    <span>{trip.location}</span>
+                  </div>
+                )}
+                {trip.category && (
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-primary flex-shrink-0" />
+                    <span>{trip.category}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Program - Compact 2-column grid */}
             {programDays.length > 0 && (
               <div>
@@ -520,27 +536,6 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
               </div>
             )}
 
-            <div>
-              <h2 className="font-sans text-sm font-semibold text-foreground mb-2">Cena nie obejmuje</h2>
-              <div className="grid grid-cols-2 gap-1.5 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                  <span>Bilety wstępu do atrakcji</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                  <span>Obiady i napoje</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                  <span>Wydatki osobiste</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                  <span>Napiwki dla pilota</span>
-                </div>
-              </div>
-            </div>
 
             {trip.program_atrakcje && (
               <div className="bg-card rounded-xl p-3 border border-border">
@@ -558,7 +553,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
 
           {/* Right Column - Booking Card */}
           <div className="xl:col-span-3 flex flex-col">
-            <Card className="border-border shadow-lg overflow-hidden flex-1 flex flex-col">
+            <Card className="border-border shadow-lg overflow-hidden flex flex-col self-start w-full">
               <div className="bg-primary text-primary-foreground p-3">
                 <div className="text-xs uppercase tracking-wide opacity-80 mb-0.5">Cena za osobę</div>
                 <div className="text-2xl font-bold font-sans">
@@ -566,39 +561,53 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                 </div>
               </div>
 
-              <CardContent className="p-3 flex-1 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
-                    <Users className="w-4 h-4" />
-                    <span>Pozostało miejsc</span>
+              <CardContent className="p-3 flex flex-col gap-3">
+                {trip.show_seats_left && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                        <Users className="w-4 h-4" />
+                        <span>Pozostało miejsc</span>
+                      </div>
+                      <Badge variant="secondary" className="font-semibold text-sm">
+                        {seatsLeft}
+                      </Badge>
+                    </div>
+                    <Separator />
+                  </>
+                )}
+
+                {trip.included_in_price_text && (
+                  <div>
+                    <div className="text-sm font-medium text-foreground mb-1.5">Świadczenia w cenie:</div>
+                    <div 
+                      className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{ __html: trip.included_in_price_text }}
+                    />
                   </div>
-                  <Badge variant="secondary" className="font-semibold text-sm">
-                    {seatsLeft}
-                  </Badge>
-                </div>
+                )}
 
-                <Separator />
+                {trip.additional_costs_text && (
+                  <div>
+                    <div className="text-sm font-medium text-foreground mb-1.5">Dodatkowe koszty:</div>
+                    <div 
+                      className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{ __html: trip.additional_costs_text }}
+                    />
+                  </div>
+                )}
 
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-foreground mb-1.5">W cenie:</div>
-                  <ul className="space-y-1">
-                    {[
-                      "Przelot w obie strony",
-                      `${nights} noclegów hotel`,
-                      "Wyżywienie zgodnie z programem",
-                      "Opieka pilota",
-                      "Ubezpieczenie KL i NNW",
-                      "Transfery lotnisko-hotel",
-                    ].map((item, i) => (
-                      <li key={i} className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                {trip.additional_service_text && (
+                  <div>
+                    <div className="text-sm font-medium text-foreground mb-1.5">Dodatkowe świadczenie:</div>
+                    <div 
+                      className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{ __html: trip.additional_service_text }}
+                    />
+                  </div>
+                )}
 
-                <div className="mt-auto space-y-2">
+                <div className="space-y-2">
                   <Button 
                     asChild 
                     className="w-full py-3 text-sm font-semibold" 
