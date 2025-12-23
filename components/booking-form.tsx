@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -45,40 +46,141 @@ const addressSchema = z.object({
 
 const companySchema = z.object({
   name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
-  nip: z.string().regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr").optional().or(z.literal("").transform(() => undefined)),
+  nip: z
+    .string()
+    .regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   address: addressSchema.optional(),
 });
 
 const participantSchema = z.object({
   first_name: z.string().min(2, "Podaj imię"),
   last_name: z.string().min(2, "Podaj nazwisko"),
-  pesel: z.string().regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr"),
+  pesel: z
+    .string()
+    .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
   document_number: z.string().min(3, "Podaj numer dokumentu").optional(),
+  document_issue_date: z
+    .string()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  document_expiry_date: z
+    .string()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  gender_code: z.enum(["F", "M"]).optional(),
 });
+
+const invoicePersonSchema = z.object({
+  first_name: z
+    .string()
+    .min(2, "Podaj imię")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  last_name: z
+    .string()
+    .min(2, "Podaj nazwisko")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  address: addressSchema.optional(),
+});
+
+const invoiceSchema = z
+  .object({
+    use_other_data: z.boolean().default(false),
+    type: z.enum(["individual", "company"]).optional(),
+    person: invoicePersonSchema.optional(),
+    company: companySchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.use_other_data) return;
+
+    if (!value.type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Wybierz typ danych do faktury",
+        path: ["type"],
+      });
+      return;
+    }
+
+    if (value.type === "company") {
+      if (!value.company?.name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj nazwę firmy do faktury",
+          path: ["company", "name"],
+        });
+      }
+      if (!value.company?.nip) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj NIP firmy do faktury",
+          path: ["company", "nip"],
+        });
+      }
+    }
+
+    if (value.type === "individual") {
+      if (!value.person?.first_name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj imię do faktury",
+          path: ["person", "first_name"],
+        });
+      }
+      if (!value.person?.last_name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj nazwisko do faktury",
+          path: ["person", "last_name"],
+        });
+      }
+    }
+  });
 
 const bookingFormSchema = z.object({
   contact: z.object({
-    first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
-    last_name: z.string().min(2, "Podaj nazwisko").optional().or(z.literal("").transform(() => undefined)),
+    first_name: z
+      .string()
+      .min(2, "Podaj imię")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    last_name: z
+      .string()
+      .min(2, "Podaj nazwisko")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
     email: z.string().email("Podaj poprawny e-mail"),
     phone: z.string().min(7, "Podaj telefon"),
     address: addressSchema,
   }),
   company: companySchema.optional(),
-  participants: z
-    .array(participantSchema)
-    .min(1, "Dodaj co najmniej jednego uczestnika"),
+  participants: z.array(participantSchema),
   consents: z.object({
     rodo: z.literal(true),
     terms: z.literal(true),
     conditions: z.literal(true),
   }),
+  // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
+  invoice: invoiceSchema,
 });
 
 type BookingFormValues = z.infer<typeof bookingFormSchema>;
+
+type RegistrationMode = "individual" | "company" | "both";
+
+type TripConfig = {
+  registration_mode: RegistrationMode | null;
+  require_pesel: boolean | null;
+  company_participants_info: string | null;
+};
 
 const steps = [
   {
@@ -125,8 +227,46 @@ export function BookingForm({ slug }: BookingFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
+  const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
+  const [applicantType, setApplicantType] = useState<"individual" | "company">("individual");
 
-  const form = useForm<BookingFormValues>({
+  useEffect(() => {
+    const loadTripConfig = async () => {
+      try {
+        const supabase = createClient();
+        let { data: trip, error: tripError } = await supabase
+          .from("trips")
+          .select("id,registration_mode,require_pesel,company_participants_info,slug,public_slug")
+          .or(`slug.eq.${slug},public_slug.eq.${slug}`)
+          .maybeSingle<TripConfig & { slug: string; public_slug: string | null }>();
+
+        if (tripError) {
+          console.error("Error loading trip config:", tripError);
+          return;
+        }
+
+        if (trip) {
+          setTripConfig({
+            registration_mode: (trip.registration_mode as RegistrationMode) ?? "both",
+            require_pesel: typeof trip.require_pesel === "boolean" ? trip.require_pesel : true,
+            company_participants_info: trip.company_participants_info,
+          });
+
+          if (trip.registration_mode === "company") {
+            setApplicantType("company");
+          } else {
+            setApplicantType("individual");
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load trip config", e);
+      }
+    };
+
+    loadTripConfig();
+  }, [slug]);
+
+  const form = useForm({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
       contact: {
@@ -149,22 +289,18 @@ export function BookingForm({ slug }: BookingFormProps) {
           zip: "",
         },
       },
-      participants: [
-        {
-          first_name: "",
-          last_name: "",
-          pesel: "",
-          email: undefined,
-          phone: undefined,
-          document_type: undefined,
-          document_number: undefined,
-        },
-      ],
+      participants: [],
       consents: {
         rodo: true,
         terms: true,
         conditions: true,
       },
+      invoice: {
+        use_other_data: false,
+        type: undefined,
+        person: undefined,
+        company: undefined,
+      } satisfies BookingFormValues["invoice"],
     },
     mode: "onBlur",
   });
@@ -184,6 +320,11 @@ export function BookingForm({ slug }: BookingFormProps) {
   const participantsWatch = useWatch({
     control,
     name: "participants",
+  });
+
+  const invoiceWatch = useWatch({
+    control,
+    name: "invoice",
   });
 
   const currentStep = steps[activeStepIndex];
@@ -222,40 +363,115 @@ export function BookingForm({ slug }: BookingFormProps) {
     setError(null);
     setIsSubmitting(true);
     try {
+      const base = {
+        slug: slug,
+        contact_first_name:
+          values.contact.first_name && values.contact.first_name.trim() !== ""
+            ? values.contact.first_name
+            : undefined,
+        contact_last_name:
+          values.contact.last_name && values.contact.last_name.trim() !== ""
+            ? values.contact.last_name
+            : undefined,
+        contact_email: values.contact.email,
+        contact_phone: values.contact.phone,
+        address: {
+          street: values.contact.address.street,
+          city: values.contact.address.city,
+          zip: values.contact.address.zip,
+        },
+        company_name:
+          values.company?.name && values.company.name.trim() !== ""
+            ? values.company.name
+            : undefined,
+        company_nip:
+          values.company?.nip && values.company.nip.trim() !== ""
+            ? values.company.nip
+            : undefined,
+        company_address: values.company?.address
+          ? {
+              street: values.company.address.street,
+              city: values.company.address.city,
+              zip: values.company.address.zip,
+            }
+          : undefined,
+        participants: values.participants.map((p) => ({
+          first_name: p.first_name,
+          last_name: p.last_name,
+          pesel: p.pesel && p.pesel.toString().trim() !== "" ? p.pesel : undefined,
+          email: p.email && p.email.trim() !== "" ? p.email : undefined,
+          phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
+          gender_code: p.gender_code || undefined,
+          document_type: p.document_type || undefined,
+          document_number:
+            p.document_number && p.document_number.trim() !== ""
+              ? p.document_number
+              : undefined,
+        })),
+        consents: values.consents,
+      };
+
+      let invoice_type: "contact" | "company" | "custom" | undefined;
+      let invoice_name: string | undefined;
+      let invoice_nip: string | undefined;
+      let invoice_address:
+        | {
+            street: string;
+            city: string;
+            zip: string;
+          }
+        | undefined;
+
+      const invoice = values.invoice;
+
+      if (invoice?.use_other_data) {
+        invoice_type = "custom";
+        if (invoice.type === "company" && invoice.company) {
+          invoice_name = invoice.company.name || undefined;
+          invoice_nip = invoice.company.nip || undefined;
+          if (invoice.company.address) {
+            invoice_address = {
+              street: invoice.company.address.street,
+              city: invoice.company.address.city,
+              zip: invoice.company.address.zip,
+            };
+          }
+        } else if (invoice.type === "individual" && invoice.person) {
+          const first = invoice.person.first_name || "";
+          const last = invoice.person.last_name || "";
+          const fullName = [first, last].filter(Boolean).join(" ");
+          invoice_name = fullName || undefined;
+          if (invoice.person.address) {
+            invoice_address = {
+              street: invoice.person.address.street,
+              city: invoice.person.address.city,
+              zip: invoice.person.address.zip,
+            };
+          }
+        }
+      } else {
+        if (applicantType === "company") {
+          invoice_type = "company";
+        } else {
+          invoice_type = "contact";
+        }
+      }
+
+      const payload = {
+        ...base,
+        applicant_type: applicantType,
+        invoice_type,
+        invoice_name,
+        invoice_nip,
+        invoice_address,
+      };
+
       const response = await fetch("/api/bookings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          slug: slug,
-          contact_first_name: values.contact.first_name && values.contact.first_name.trim() !== "" ? values.contact.first_name : undefined,
-          contact_last_name: values.contact.last_name && values.contact.last_name.trim() !== "" ? values.contact.last_name : undefined,
-          contact_email: values.contact.email,
-          contact_phone: values.contact.phone,
-          address: {
-            street: values.contact.address.street,
-            city: values.contact.address.city,
-            zip: values.contact.address.zip,
-          },
-          company_name: values.company?.name && values.company.name.trim() !== "" ? values.company.name : undefined,
-          company_nip: values.company?.nip && values.company.nip.trim() !== "" ? values.company.nip : undefined,
-          company_address: values.company?.address ? {
-            street: values.company.address.street,
-            city: values.company.address.city,
-            zip: values.company.address.zip,
-          } : undefined,
-          participants: values.participants.map((p) => ({
-            first_name: p.first_name,
-            last_name: p.last_name,
-            pesel: p.pesel,
-            email: p.email && p.email.trim() !== "" ? p.email : undefined,
-            phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
-            document_type: p.document_type || undefined,
-            document_number: p.document_number && p.document_number.trim() !== "" ? p.document_number : undefined,
-          })),
-          consents: values.consents,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -345,7 +561,7 @@ export function BookingForm({ slug }: BookingFormProps) {
     () =>
       (participantsWatch ?? []).map((participant, index) => ({
         ...participant,
-        key: `${participant.pesel || participant.email}-${index}`,
+        key: `${participant.pesel || participant.email || index}-${index}`,
       })),
     [participantsWatch],
   );
@@ -372,16 +588,42 @@ export function BookingForm({ slug }: BookingFormProps) {
             <TabsContent value="contact" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Dane kontaktowe</CardTitle>
+                  <CardTitle>Dane zgłaszającego</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {tripConfig?.registration_mode === "both" && (
+                    <div className="space-y-2">
+                      <h3 className="font-medium text-sm">Typ zgłaszającego</h3>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={applicantType === "individual" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setApplicantType("individual")}
+                        >
+                          1. Osoba fizyczna
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={applicantType === "company" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setApplicantType("company")}
+                        >
+                          2. Firma
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField
                       control={control}
                       name="contact.first_name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Imię osoby kontaktowej</FormLabel>
+                          <FormLabel>
+                            {applicantType === "company" ? "Imię osoby do kontaktu" : "Imię zgłaszającego"}
+                          </FormLabel>
                           <FormControl>
                             <Input placeholder="Jan" {...field} value={field.value || ""} />
                           </FormControl>
@@ -394,7 +636,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                       name="contact.last_name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nazwisko osoby kontaktowej</FormLabel>
+                          <FormLabel>
+                            {applicantType === "company" ? "Nazwisko osoby do kontaktu" : "Nazwisko zgłaszającego"}
+                          </FormLabel>
                           <FormControl>
                             <Input placeholder="Kowalski" {...field} value={field.value || ""} />
                           </FormControl>
@@ -479,77 +723,289 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   <Separator />
 
-                  <div className="space-y-4">
-                    <h3 className="font-medium text-sm">Dane firmy</h3>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        control={control}
-                        name="company.name"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Nazwa firmy</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Nazwa Sp. z o.o." {...field} value={field.value || ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={control}
-                        name="company.nip"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>NIP</FormLabel>
-                            <FormControl>
-                              <Input placeholder="1234567890" {...field} value={field.value || ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                  {applicantType === "company" && (
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-sm">Dane firmy</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Wypełnij dane firmy, w imieniu której składane jest zgłoszenie. Na te dane domyślnie
+                        wystawimy fakturę (chyba że zaznaczysz fakturę na inne dane).
+                      </p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={control}
+                          name="company.name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nazwa firmy</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nazwa Sp. z o.o." {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={control}
+                          name="company.nip"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>NIP</FormLabel>
+                              <FormControl>
+                                <Input placeholder="1234567890" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <FormField
+                          control={control}
+                          name="company.address.street"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Ulica i numer (firma)</FormLabel>
+                              <FormControl>
+                                <Input placeholder="ul. Słoneczna 12/5" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={control}
+                          name="company.address.city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Miasto (firma)</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Warszawa" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={control}
+                          name="company.address.zip"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Kod pocztowy (firma)</FormLabel>
+                              <FormControl>
+                                <Input placeholder="00-001" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <FormField
-                        control={control}
-                        name="company.address.street"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Ulica i numer (firma)</FormLabel>
-                            <FormControl>
-                              <Input placeholder="ul. Słoneczna 12/5" {...field} value={field.value || ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
+                  )}
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <h3 className="font-medium text-sm">Faktura</h3>
+                    <FormField
+                      control={control}
+                      name="invoice.use_other_data"
+                      render={({ field }) => (
+                        <FormItem className="flex items-start gap-2">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                            />
+                          </FormControl>
+                          <div className="space-y-1">
+                            <FormLabel className="text-sm font-medium leading-none">
+                              Proszę o wystawienie faktury na inne dane
+                            </FormLabel>
+                            <p className="text-xs text-muted-foreground">
+                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane zgłaszającego lub firmy
+                              (zgodnie z wybranym typem zgłoszenia).
+                            </p>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+
+                    {invoiceWatch?.use_other_data && (
+                      <div className="space-y-3 rounded-md border p-3">
+                        <FormField
+                          control={control}
+                          name="invoice.type"
+                          render={({ field }) => (
+                            <FormItem className="grid gap-1">
+                              <FormLabel className="text-xs">Typ danych do faktury</FormLabel>
+                              <Select
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="Wybierz typ" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="individual">Osoba fizyczna</SelectItem>
+                                  <SelectItem value="company">Firma</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {invoiceWatch?.type === "individual" && (
+                          <div className="space-y-2">
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <FormField
+                                control={control}
+                                name="invoice.person.first_name"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Imię</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="Jan" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={control}
+                                name="invoice.person.last_name"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Nazwisko</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="Kowalski" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-3">
+                              <FormField
+                                control={control}
+                                name="invoice.person.address.street"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Ulica i numer</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="ul. Słoneczna 12/5" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={control}
+                                name="invoice.person.address.city"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Miasto</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="Warszawa" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={control}
+                                name="invoice.person.address.zip"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Kod pocztowy</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="00-001" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          </div>
                         )}
-                      />
-                      <FormField
-                        control={control}
-                        name="company.address.city"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Miasto (firma)</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Warszawa" {...field} value={field.value || ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
+
+                        {invoiceWatch?.type === "company" && (
+                          <div className="space-y-2">
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <FormField
+                                control={control}
+                                name="invoice.company.name"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Nazwa firmy</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="Nazwa Sp. z o.o." {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={control}
+                                name="invoice.company.nip"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>NIP</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="1234567890" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-3">
+                              <FormField
+                                control={control}
+                                name="invoice.company.address.street"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Ulica i numer</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="ul. Słoneczna 12/5" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={control}
+                                name="invoice.company.address.city"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Miasto</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="Warszawa" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={control}
+                                name="invoice.company.address.zip"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Kod pocztowy</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="00-001" {...field} value={field.value || ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          </div>
                         )}
-                      />
-                      <FormField
-                        control={control}
-                        name="company.address.zip"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Kod pocztowy (firma)</FormLabel>
-                            <FormControl>
-                              <Input placeholder="00-001" {...field} value={field.value || ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter className="flex justify-end gap-3">
@@ -569,155 +1025,206 @@ export function BookingForm({ slug }: BookingFormProps) {
                   <CardTitle>Uczestnicy</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {fields.map((field, index) => (
-                    <div
-                      key={field.id}
-                      className="rounded-xl border p-4 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between pb-4">
-                        <div className="font-medium text-sm">
-                          Uczestnik {index + 1}
-                        </div>
-                        {fields.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => remove(index)}
-                          >
-                            Usuń
-                          </Button>
-                        )}
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.first_name`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Imię</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Jan" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.last_name`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nazwisko</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Kowalski" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-3 mt-6">
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.pesel`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>PESEL</FormLabel>
-                              <FormControl>
-                                <Input placeholder="88010112345" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.email`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>E-mail</FormLabel>
-                              <FormControl>
-                                <Input type="email" placeholder="jan@example.com" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.phone`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Telefon</FormLabel>
-                              <FormControl>
-                                <Input placeholder="+48 600 000 000" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.document_type`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Dokument</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Wybierz dokument" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="ID">Dowód osobisty</SelectItem>
-                                  <SelectItem value="PASSPORT">Paszport</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={control}
-                          name={`participants.${index}.document_number`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Numer dokumentu</FormLabel>
-                              <FormControl>
-                                <Input placeholder="ABC123456" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
+                  {applicantType === "company" ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        {tripConfig?.company_participants_info ||
+                          "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista powinna zawierać imię i nazwisko oraz datę urodzenia każdego uczestnika."}
+                      </p>
                     </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="default"
-                    onClick={() =>
-                      append({
-                        first_name: "",
-                        last_name: "",
-                        pesel: "",
-                        email: "",
-                        phone: "",
-                        document_type: "ID",
-                        document_number: "",
-                      })
-                    }
-                  >
-                    Dodaj kolejnego uczestnika
-                  </Button>
+                  ) : (
+                    <>
+                      {fields.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          Brak uczestników. Dodaj co najmniej jednego uczestnika, aby wysłać rezerwację.
+                        </p>
+                      )}
+                      {fields.map((field, index) => (
+                        <div
+                          key={field.id}
+                          className="rounded-xl border p-4 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between pb-4">
+                            <div className="font-medium text-sm">
+                              Uczestnik {index + 1}
+                            </div>
+                            {fields.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => remove(index)}
+                              >
+                                Usuń
+                              </Button>
+                            )}
+                          </div>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.first_name`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Imię</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="Jan" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.last_name`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Nazwisko</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="Kowalski" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-3 mt-6">
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.gender_code`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Płeć</FormLabel>
+                                  <Select
+                                    onValueChange={field.onChange}
+                                    defaultValue={field.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Wybierz płeć" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="F">Kobieta</SelectItem>
+                                      <SelectItem value="M">Mężczyzna</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.phone`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Telefon</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="+48 600 000 000" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.document_type`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Dokument</FormLabel>
+                                  <Select
+                                    onValueChange={field.onChange}
+                                    defaultValue={field.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Wybierz dokument" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="ID">Dowód osobisty</SelectItem>
+                                      <SelectItem value="PASSPORT">Paszport</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.document_number`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Seria i numer dokumentu</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="ABC123456" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-3 mt-4">
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.document_issue_date`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Data wydania</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="date"
+                                      {...field}
+                                      value={field.value || ""}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={control}
+                              name={`participants.${index}.document_expiry_date`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Data ważności</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="date"
+                                      {...field}
+                                      value={field.value || ""}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="default"
+                        onClick={() =>
+                          append({
+                            first_name: "",
+                            last_name: "",
+                            pesel: "",
+                            email: "",
+                            phone: "",
+                            document_type: "ID",
+                            document_number: "",
+                          })
+                        }
+                      >
+                        Dodaj kolejnego uczestnika
+                      </Button>
+                    </>
+                  )}
                 </CardContent>
                 <CardFooter className="flex justify-between gap-3">
                   <Button type="button" variant="outline" onClick={goToPrevStep}>
@@ -813,8 +1320,14 @@ export function BookingForm({ slug }: BookingFormProps) {
                               <span>{participant.document_type}</span>
                             </div>
                             <div className="grid gap-1 text-xs text-muted-foreground">
-                              <span>PESEL: {participant.pesel || "—"}</span>
-                              <span>E-mail: {participant.email || "—"}</span>
+                              <span>
+                                Płeć:{" "}
+                                {participant.gender_code === "F"
+                                  ? "Kobieta"
+                                  : participant.gender_code === "M"
+                                  ? "Mężczyzna"
+                                  : "—"}
+                              </span>
                               <span>Telefon: {participant.phone || "—"}</span>
                               <span>Dokument: {participant.document_number || "—"}</span>
                             </div>

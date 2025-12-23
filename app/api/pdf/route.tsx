@@ -28,6 +28,14 @@ export type PdfPayload = {
     city: string;
     zip: string;
   } | null;
+  invoice_type?: "contact" | "company" | "custom" | null;
+  invoice_name?: string | null;
+  invoice_nip?: string | null;
+  invoice_address?: {
+    street: string;
+    city: string;
+    zip: string;
+  } | null;
   participants: Array<{
     first_name: string;
     last_name: string;
@@ -133,11 +141,21 @@ export function generatePdf(data: PdfPayload): Buffer {
   doc.text("a", 20, y);
   y += 6;
 
-  const clientDisplayName = data.company_name || clientName;
-  const clientDisplayAddr = data.company_address 
-    ? `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`
-    : clientAddress;
-  const clientId = data.company_nip || (data.participants[0]?.pesel ? `PESEL: ${data.participants[0].pesel}` : "");
+  const clientDisplayName =
+    data.invoice_name || data.company_name || clientName;
+  const clientDisplayAddr = (() => {
+    if (data.invoice_address) {
+      return `${data.invoice_address.street}, ${data.invoice_address.zip} ${data.invoice_address.city}`;
+    }
+    if (data.company_address) {
+      return `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`;
+    }
+    return clientAddress;
+  })();
+  const clientId =
+    data.invoice_nip ||
+    data.company_nip ||
+    (data.participants[0]?.pesel ? `PESEL: ${data.participants[0].pesel}` : "");
 
   const clientNameLines = doc.splitTextToSize(clientDisplayName, textWidth);
   doc.text(clientNameLines, 25, y);

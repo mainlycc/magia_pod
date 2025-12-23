@@ -15,11 +15,26 @@ const addressSchema = z.object({
 const participantSchema = z.object({
   first_name: z.string().min(2, "Podaj imię"),
   last_name: z.string().min(2, "Podaj nazwisko"),
-  pesel: z.string().regex(/^\d{11}$/, "PESEL musi mieć 11 cyfr"),
+  pesel: z
+    .string()
+    .regex(/^$|^\d{11}$/, "PESEL musi mieć 11 cyfr")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   email: z.string().email("Niepoprawny adres e-mail").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
   document_number: z.string().min(3, "Podaj numer dokumentu").optional(),
+  document_issue_date: z
+    .string()
+    .regex(/^$|^\d{4}-\d{2}-\d{2}$/, "Data w formacie RRRR-MM-DD")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  document_expiry_date: z
+    .string()
+    .regex(/^$|^\d{4}-\d{2}-\d{2}$/, "Data w formacie RRRR-MM-DD")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  gender_code: z.enum(["F", "M"]).optional(),
 });
 
 const consentsSchema = z.object({
@@ -34,6 +49,29 @@ const companySchema = z.object({
   address: addressSchema.optional(),
 });
 
+const invoicePersonSchema = z.object({
+  first_name: z
+    .string()
+    .min(2, "Podaj imię")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  last_name: z
+    .string()
+    .min(2, "Podaj nazwisko")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  address: addressSchema.optional(),
+});
+
+const invoiceSchema = z
+  .object({
+    use_other_data: z.boolean().default(false),
+    type: z.enum(["individual", "company"]).optional(),
+    person: invoicePersonSchema.optional(),
+    company: companySchema.optional(),
+  })
+  .optional();
+
 const bookingPayloadSchema = z.object({
   slug: z.string().min(1, "Brak identyfikatora wycieczki"),
   contact_first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
@@ -46,6 +84,12 @@ const bookingPayloadSchema = z.object({
   company_address: addressSchema.optional(),
   participants: z.array(participantSchema).min(1, "Dodaj przynajmniej jednego uczestnika"),
   consents: consentsSchema,
+  applicant_type: z.enum(["individual", "company"]).optional(),
+  invoice_type: z.enum(["contact", "company", "custom"]).optional(),
+  invoice_name: z.string().optional().or(z.literal("").transform(() => undefined)),
+  invoice_nip: z.string().optional().or(z.literal("").transform(() => undefined)),
+  invoice_address: addressSchema.optional(),
+  invoice: invoiceSchema,
 });
 
 type BookingPayload = z.infer<typeof bookingPayloadSchema>;
@@ -187,6 +231,10 @@ export async function POST(req: Request) {
         if (payload.company_name) updateData.company_name = payload.company_name;
         if (payload.company_nip) updateData.company_nip = payload.company_nip;
         if (payload.company_address) updateData.company_address = payload.company_address;
+        if (payload.invoice_type) updateData.invoice_type = payload.invoice_type;
+        if (payload.invoice_name) updateData.invoice_name = payload.invoice_name;
+        if (payload.invoice_nip) updateData.invoice_nip = payload.invoice_nip;
+        if (payload.invoice_address) updateData.invoice_address = payload.invoice_address;
         
         if (Object.keys(updateData).length > 0) {
           const { error: updateError } = await adminSupabase
@@ -211,6 +259,25 @@ export async function POST(req: Request) {
           id: bookingResult.id,
           booking_ref: bookingResult.booking_ref,
         };
+
+        // Zaktualizuj dane fakturowe po wywołaniu RPC
+        const adminSupabase = createAdminClient();
+        const updateData: any = {};
+        if (payload.invoice_type) updateData.invoice_type = payload.invoice_type;
+        if (payload.invoice_name) updateData.invoice_name = payload.invoice_name;
+        if (payload.invoice_nip) updateData.invoice_nip = payload.invoice_nip;
+        if (payload.invoice_address) updateData.invoice_address = payload.invoice_address;
+
+        if (Object.keys(updateData).length > 0) {
+          const { error: updateError } = await adminSupabase
+            .from("bookings")
+            .update(updateData)
+            .eq("id", booking.id);
+
+          if (updateError) {
+            console.warn("Failed to update invoice fields on booking:", updateError);
+          }
+        }
       }
     } catch (err: any) {
       console.error("Error creating booking:", {
@@ -301,11 +368,18 @@ export async function POST(req: Request) {
       booking_id: booking.id,
       first_name: participant.first_name.trim(),
       last_name: participant.last_name.trim(),
-      pesel: participant.pesel,
+      pesel: participant.pesel || null,
       email: participant.email ?? null,
       phone: participant.phone ?? null,
       document_type: participant.document_type ?? null,
       document_number: participant.document_number ?? null,
+      document_issue_date: participant.document_issue_date
+        ? new Date(participant.document_issue_date)
+        : null,
+      document_expiry_date: participant.document_expiry_date
+        ? new Date(participant.document_expiry_date)
+        : null,
+      gender_code: participant.gender_code ?? null,
       address: payload.address ?? null,
     }));
 
@@ -361,6 +435,10 @@ export async function POST(req: Request) {
           company_name: payload.company_name || null,
           company_nip: payload.company_nip || null,
           company_address: payload.company_address || null,
+          invoice_type: payload.invoice_type || null,
+          invoice_name: payload.invoice_name || null,
+          invoice_nip: payload.invoice_nip || null,
+          invoice_address: payload.invoice_address || null,
           participants: payload.participants.map((p) => ({
             first_name: p.first_name,
             last_name: p.last_name,

@@ -35,7 +35,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     let query = supabase
       .from("trips")
       .select(
-        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode",
+        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode,require_pesel,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances",
       )
       .eq("id", id);
     
@@ -81,6 +81,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       is_public: boolean;
       public_slug: string | null;
       registration_mode: string | null;
+      require_pesel: boolean | null;
+      company_participants_info: string | null;
+      form_additional_attractions: unknown;
+      form_diets: unknown;
+      form_extra_insurances: unknown;
     }> = {};
     if ("title" in body) payload.title = body.title;
     if ("description" in body) payload.description = body.description ?? null;
@@ -94,6 +99,16 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("public_slug" in body) payload.public_slug = body.public_slug ?? null;
     if ("registration_mode" in body)
       payload.registration_mode = body.registration_mode ?? "both";
+    if ("require_pesel" in body)
+      payload.require_pesel = body.require_pesel;
+    if ("company_participants_info" in body)
+      payload.company_participants_info = body.company_participants_info ?? null;
+    if ("form_additional_attractions" in body)
+      payload.form_additional_attractions = body.form_additional_attractions ?? null;
+    if ("form_diets" in body)
+      payload.form_diets = body.form_diets ?? null;
+    if ("form_extra_insurances" in body)
+      payload.form_extra_insurances = body.form_extra_insurances ?? null;
 
     const supabase = await createClient();
     

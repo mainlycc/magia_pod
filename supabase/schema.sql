@@ -413,11 +413,13 @@ create table if not exists public.participants (
   booking_id uuid not null references public.bookings(id) on delete cascade,
   first_name text not null,
   last_name text not null,
-  pesel text not null,
+  pesel text,
   email text,
   phone text,
   document_type text,
   document_number text,
+  document_issue_date date,
+  document_expiry_date date,
   address jsonb,
   created_at timestamptz not null default now()
 );

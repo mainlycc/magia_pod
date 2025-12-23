@@ -33,6 +33,8 @@ export async function POST(req: Request) {
       is_public,
       public_slug,
       registration_mode,
+      require_pesel,
+      company_participants_info,
     } = body ?? {};
     if (!title || !slug) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
@@ -60,6 +62,8 @@ export async function POST(req: Request) {
         category: category ?? null,
         location: location ?? null,
         registration_mode: registration_mode ?? "both",
+        require_pesel: typeof require_pesel === "boolean" ? require_pesel : true,
+        company_participants_info: company_participants_info ?? null,
       })
       .select("id")
       .single();
