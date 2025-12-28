@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createPaynowPayment } from "@/lib/paynow";
 
 const initPaymentSchema = z.object({
@@ -32,11 +33,18 @@ export async function POST(request: NextRequest) {
         contact_email,
         trip_id,
         payment_status,
+        first_payment_status,
+        second_payment_status,
+        first_payment_amount_cents,
+        second_payment_amount_cents,
         trips:trips!inner(
           id,
           title,
           price_cents,
-          public_slug
+          public_slug,
+          payment_split_enabled,
+          payment_split_first_percent,
+          payment_split_second_percent
         )
       `
       );
@@ -98,6 +106,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Sprawdź czy wycieczka ma włączony podział płatności
+    const paymentSplitEnabled = trip.payment_split_enabled ?? true;
+    let paymentAmountCents = totalAmountCents;
+    let isFirstPayment = true;
+    let paymentDescription = `Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+
+    if (paymentSplitEnabled) {
+      const firstPercent = trip.payment_split_first_percent ?? 30;
+      const secondPercent = trip.payment_split_second_percent ?? 70;
+      
+      // Sprawdź status płatności
+      const firstPaymentStatus = booking.first_payment_status ?? "unpaid";
+      const secondPaymentStatus = booking.second_payment_status ?? "unpaid";
+
+      // Jeśli zaliczka nie została zapłacona, płacimy zaliczkę
+      if (firstPaymentStatus === "unpaid") {
+        isFirstPayment = true;
+        paymentAmountCents = Math.round((totalAmountCents * firstPercent) / 100);
+        paymentDescription = `Zaliczka (${firstPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+      } 
+      // Jeśli zaliczka została zapłacona, ale reszta nie, płacimy resztę
+      else if (firstPaymentStatus === "paid" && secondPaymentStatus === "unpaid") {
+        isFirstPayment = false;
+        paymentAmountCents = Math.round((totalAmountCents * secondPercent) / 100);
+        paymentDescription = `Reszta (${secondPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+      }
+      // Jeśli obie płatności zostały zapłacone, zwróć błąd
+      else if (firstPaymentStatus === "paid" && secondPaymentStatus === "paid") {
+        return NextResponse.json(
+          { error: "payment_already_completed" },
+          { status: 400 }
+        );
+      }
+
+      // Zapisz kwoty w booking jeśli jeszcze nie są zapisane
+      const adminClient = createAdminClient();
+      const updateData: {
+        first_payment_amount_cents?: number;
+        second_payment_amount_cents?: number;
+      } = {};
+
+      if (booking.first_payment_amount_cents === null || booking.first_payment_amount_cents === undefined) {
+        updateData.first_payment_amount_cents = Math.round((totalAmountCents * firstPercent) / 100);
+      }
+      if (booking.second_payment_amount_cents === null || booking.second_payment_amount_cents === undefined) {
+        updateData.second_payment_amount_cents = Math.round((totalAmountCents * secondPercent) / 100);
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await adminClient
+          .from("bookings")
+          .update(updateData)
+          .eq("id", booking.id);
+      }
+    }
+
     // Pobierz access_token jeśli istnieje
     let accessToken: string | null = null;
     try {
@@ -137,9 +201,9 @@ export async function POST(request: NextRequest) {
     // Utwórz płatność Paynow v3
     // Uwaga: notificationUrl nie jest obsługiwane w API Paynow v3 - webhooki konfiguruje się w panelu sklepu
     const payment = await createPaynowPayment({
-      amountCents: totalAmountCents,
+      amountCents: paymentAmountCents,
       externalId: booking.booking_ref,
-      description: `Rezerwacja ${booking.booking_ref} - ${trip.title}`,
+      description: paymentDescription,
       buyerEmail: booking.contact_email,
       continueUrl: returnUrl,
     });
@@ -154,7 +218,6 @@ export async function POST(request: NextRequest) {
     // Zapisz paymentId w payment_history jako pending payment - to pozwoli na sprawdzenie statusu bez webhooków
     // Sprawdź czy już istnieje wpis dla tej rezerwacji z tym paymentId
     // Używamy admin clienta, aby ominąć RLS i mieć pewność, że operacja się powiedzie
-    const { createAdminClient } = await import("@/lib/supabase/admin");
     const adminClient = createAdminClient();
     
     // NIE używamy .single() bo zwróci błąd gdy nie ma wpisu
@@ -173,7 +236,7 @@ export async function POST(request: NextRequest) {
       // Dodaj wpis w historii płatności z paymentId (status pending)
       // WAŻNE: To jest krytyczne dla działania bez webhooków - payment_id musi być zapisane
       console.log(`[Paynow Init] Inserting payment history entry for payment ${payment.paymentId} (PENDING)`);
-      console.log(`[Paynow Init] Insert data: booking_id=${booking.id}, amount_cents=${totalAmountCents}, payment_method=paynow`);
+      console.log(`[Paynow Init] Insert data: booking_id=${booking.id}, amount_cents=${paymentAmountCents}, payment_method=paynow, is_first_payment=${isFirstPayment}`);
       
       // Użyj retry logic, aby upewnić się, że payment_id jest zawsze zapisane
       let retries = 3;
@@ -184,9 +247,9 @@ export async function POST(request: NextRequest) {
           .from("payment_history")
           .insert({
             booking_id: booking.id,
-            amount_cents: totalAmountCents,
+            amount_cents: paymentAmountCents,
             payment_method: "paynow",
-            notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized)`,
+            notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized) - ${isFirstPayment ? "zaliczka" : "reszta"}`,
           })
           .select();
 
@@ -199,7 +262,8 @@ export async function POST(request: NextRequest) {
             errorHint: insertError.hint,
             bookingId: booking.id,
             paymentId: payment.paymentId,
-            amountCents: totalAmountCents,
+            amountCents: paymentAmountCents,
+            isFirstPayment,
           });
           
           retries--;

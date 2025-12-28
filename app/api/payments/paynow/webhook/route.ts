@@ -144,7 +144,23 @@ export async function POST(request: NextRequest) {
   // Najpierw spróbuj znaleźć po dokładnym booking_ref
   const { data: bookingData, error: bookingErr } = await supabase
     .from("bookings")
-    .select("id, trip_id, contact_email, payment_status, booking_ref")
+    .select(`
+      id, 
+      trip_id, 
+      contact_email, 
+      payment_status, 
+      booking_ref,
+      first_payment_status,
+      second_payment_status,
+      first_payment_amount_cents,
+      second_payment_amount_cents,
+      trips:trips!inner(
+        id,
+        payment_split_enabled,
+        payment_split_first_percent,
+        payment_split_second_percent
+      )
+    `)
     .eq("booking_ref", payload.externalId)
     .single();
 
@@ -153,7 +169,23 @@ export async function POST(request: NextRequest) {
     console.warn(`[Paynow Webhook] Booking not found with exact match for externalId: ${payload.externalId}, trying partial match...`);
     const { data: partialBooking, error: partialError } = await supabase
       .from("bookings")
-      .select("id, trip_id, contact_email, payment_status, booking_ref")
+      .select(`
+        id, 
+        trip_id, 
+        contact_email, 
+        payment_status, 
+        booking_ref,
+        first_payment_status,
+        second_payment_status,
+        first_payment_amount_cents,
+        second_payment_amount_cents,
+        trips:trips!inner(
+          id,
+          payment_split_enabled,
+          payment_split_first_percent,
+          payment_split_second_percent
+        )
+      `)
       .ilike("booking_ref", `%${payload.externalId}%`)
       .limit(1)
       .single();
@@ -313,8 +345,55 @@ export async function POST(request: NextRequest) {
   console.log(`[Paynow Webhook] Updating booking ${booking.id} (${payload.externalId}) payment status from ${booking.payment_status} to ${newPaymentStatus}`);
   console.log(`[Paynow Webhook] Payment details: paymentId=${payload.paymentId}, status=${status}, amount=${amountCents} cents, paymentHistoryInserted=${paymentHistoryInserted}`);
   
-  // Przygotuj obiekt aktualizacji - jeśli płatność jest potwierdzona, ustaw również status rezerwacji na "confirmed"
-  const updateData: { payment_status: string; status?: string } = { payment_status: newPaymentStatus };
+  // Sprawdź czy wycieczka ma włączony podział płatności
+  const trip = Array.isArray(booking.trips) ? booking.trips[0] : booking.trips;
+  const paymentSplitEnabled = trip?.payment_split_enabled ?? true;
+  
+  // Przygotuj obiekt aktualizacji
+  const updateData: { 
+    payment_status: string; 
+    status?: string;
+    first_payment_status?: string;
+    second_payment_status?: string;
+  } = { payment_status: newPaymentStatus };
+  
+  // Jeśli płatność jest potwierdzona i podział jest włączony, zaktualizuj odpowiedni status
+  if (status === "CONFIRMED" && paymentSplitEnabled) {
+    const firstAmount = booking.first_payment_amount_cents ?? 0;
+    const secondAmount = booking.second_payment_amount_cents ?? 0;
+    const tolerance = 1; // Tolerancja 1 grosz dla zaokrągleń
+    
+    // Sprawdź czy to zaliczka czy reszta na podstawie kwoty
+    if (Math.abs(amountCents - firstAmount) <= tolerance && booking.first_payment_status !== "paid") {
+      updateData.first_payment_status = "paid";
+      console.log(`[Paynow Webhook] Marking first payment (deposit) as paid: ${amountCents} cents`);
+    } else if (Math.abs(amountCents - secondAmount) <= tolerance && booking.second_payment_status !== "paid") {
+      updateData.second_payment_status = "paid";
+      console.log(`[Paynow Webhook] Marking second payment (remaining) as paid: ${amountCents} cents`);
+    } else if (Math.abs(amountCents - firstAmount) <= tolerance) {
+      // Zaliczka już zapłacona, ale webhook przyszedł ponownie
+      console.log(`[Paynow Webhook] First payment already marked as paid, amount matches: ${amountCents} cents`);
+    } else if (Math.abs(amountCents - secondAmount) <= tolerance) {
+      // Reszta już zapłacona, ale webhook przyszedł ponownie
+      console.log(`[Paynow Webhook] Second payment already marked as paid, amount matches: ${amountCents} cents`);
+    }
+    
+    // Określ payment_status na podstawie statusów first i second
+    const firstStatus = updateData.first_payment_status ?? booking.first_payment_status ?? "unpaid";
+    const secondStatus = updateData.second_payment_status ?? booking.second_payment_status ?? "unpaid";
+    
+    if (firstStatus === "paid" && secondStatus === "paid") {
+      updateData.payment_status = "paid";
+    } else if (firstStatus === "paid" || secondStatus === "paid") {
+      updateData.payment_status = "partial";
+    } else {
+      updateData.payment_status = "unpaid";
+    }
+    
+    newPaymentStatus = updateData.payment_status as any;
+    console.log(`[Paynow Webhook] Payment split status: first=${firstStatus}, second=${secondStatus}, overall=${newPaymentStatus}`);
+  }
+  
   if (status === "CONFIRMED") {
     // Aktualizuj status rezerwacji na "confirmed" gdy płatność jest potwierdzona
     updateData.status = "confirmed";

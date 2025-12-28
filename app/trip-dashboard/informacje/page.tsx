@@ -30,12 +30,7 @@ const generateId = () =>
   `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 export default function TripGeneralInfoPage() {
-  const { selectedTrip } = useTrip()
-
-  // Debug: loguj selectedTrip
-  useEffect(() => {
-    console.log("SelectedTrip changed:", selectedTrip)
-  }, [selectedTrip])
+  const { selectedTrip, tripFullData, isLoadingTripData, invalidateTripCache } = useTrip()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -48,6 +43,11 @@ export default function TripGeneralInfoPage() {
   const [seatsTotal, setSeatsTotal] = useState("")
   const [category, setCategory] = useState("")
   const [location, setLocation] = useState("")
+  const [paymentSplitEnabled, setPaymentSplitEnabled] = useState(true)
+  const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState("30")
+  const [paymentSplitSecondPercent, setPaymentSplitSecondPercent] = useState("70")
+  const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
+  const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
   const [isPublic, setIsPublic] = useState(false)
   const [publicSlug, setPublicSlug] = useState("")
   const [registrationMode, setRegistrationMode] = useState<
@@ -72,128 +72,131 @@ export default function TripGeneralInfoPage() {
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("")
   const [loadingCoordinators, setLoadingCoordinators] = useState(true)
 
+  // Użyj cache'owanych danych z kontekstu
   useEffect(() => {
     if (!selectedTrip) {
-      console.log("No selectedTrip, setting loading to false")
       setLoading(false)
       return
     }
 
     if (!selectedTrip.id) {
-      console.error("SelectedTrip has no id:", selectedTrip)
       setLoading(false)
       toast.error("Brak ID wybranej wycieczki")
       return
     }
 
-    console.log("Loading trip data for ID:", selectedTrip.id)
+    // Jeśli dane są już załadowane w cache, użyj ich
+    if (tripFullData && tripFullData.id === selectedTrip.id) {
+      const trip = tripFullData
+      setTitle(trip.title || "")
+      setDescription(trip.description || "")
+      setStartDate(
+        trip.start_date
+          ? new Date(trip.start_date).toISOString().split("T")[0]
+          : ""
+      )
+      setEndDate(
+        trip.end_date
+          ? new Date(trip.end_date).toISOString().split("T")[0]
+          : ""
+      )
+      setPrice(
+        typeof trip.price_cents === "number"
+          ? (trip.price_cents / 100).toFixed(2)
+          : ""
+      )
+      setSeatsTotal(
+        typeof trip.seats_total === "number" ? String(trip.seats_total) : ""
+      )
+      setCategory(trip.category || "")
+      setLocation(trip.location || "")
+      setIsPublic(Boolean(trip.is_public))
+      setPublicSlug(trip.public_slug || "")
+      setRegistrationMode(
+        trip.registration_mode === "individual" ||
+          trip.registration_mode === "company"
+          ? trip.registration_mode
+          : "both"
+      )
+      setRequirePesel(
+        typeof trip.require_pesel === "boolean" ? trip.require_pesel : true
+      )
+      setCompanyParticipantsInfo(
+        trip.company_participants_info ||
+          "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista zawierająca imię i nazwisko oraz datę urodzenia każdego uczestnika."
+      )
+      setAdditionalAttractions(
+        Array.isArray(trip.form_additional_attractions)
+          ? trip.form_additional_attractions
+          : []
+      )
+      setDiets(
+        Array.isArray(trip.form_diets) ? trip.form_diets : []
+      )
+      setExtraInsurances(
+        Array.isArray(trip.form_extra_insurances)
+          ? trip.form_extra_insurances
+          : []
+      )
+      setPaymentSplitEnabled(
+        typeof trip.payment_split_enabled === "boolean"
+          ? trip.payment_split_enabled
+          : true
+      )
+      setPaymentSplitFirstPercent(
+        typeof trip.payment_split_first_percent === "number"
+          ? String(trip.payment_split_first_percent)
+          : "30"
+      )
+      setPaymentSplitSecondPercent(
+        typeof trip.payment_split_second_percent === "number"
+          ? String(trip.payment_split_second_percent)
+          : "70"
+      )
+      setPaymentReminderEnabled(
+        typeof trip.payment_reminder_enabled === "boolean"
+          ? trip.payment_reminder_enabled
+          : false
+      )
+      setPaymentReminderDaysBefore(
+        typeof trip.payment_reminder_days_before === "number"
+          ? String(trip.payment_reminder_days_before)
+          : ""
+      )
+      setLoading(false)
+    } else if (isLoadingTripData) {
+      // Czekaj na załadowanie danych
+      setLoading(true)
+      return
+    }
 
-    const load = async () => {
+    // Wczytaj koordynatorów (to nie jest cache'owane, więc zawsze fetch)
+    const loadCoordinators = async () => {
       try {
-        setLoading(true)
-        const url = `/api/trips/${selectedTrip.id}`
-        console.log("Fetching from:", url)
-        const res = await fetch(url)
-        
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}))
-          console.error("Error loading trip:", res.status, errorData)
-          toast.error(`Nie udało się wczytać informacji o wycieczce (${res.status})`)
-          setLoading(false)
-          return
+        setLoadingCoordinators(true)
+        const [assignedRes, allRes] = await Promise.all([
+          fetch(`/api/trips/${selectedTrip.id}/coordinators`),
+          fetch(`/api/coordinators`),
+        ])
+
+        if (assignedRes.ok) {
+          const assigned = await assignedRes.json()
+          setCoordinators(assigned)
         }
 
-        const trip = await res.json()
-        console.log("Loaded trip data:", trip)
-        
-        if (!trip || !trip.id) {
-          console.error("Invalid trip data received:", trip)
-          toast.error("Otrzymano nieprawidłowe dane wycieczki")
-          setLoading(false)
-          return
+        if (allRes.ok) {
+          const all = await allRes.json()
+          setAvailableCoordinators(all)
         }
-        setTitle(trip.title || "")
-        setDescription(trip.description || "")
-        // Formatuj daty dla input type="date" (wymaga formatu YYYY-MM-DD)
-        setStartDate(
-          trip.start_date
-            ? new Date(trip.start_date).toISOString().split("T")[0]
-            : ""
-        )
-        setEndDate(
-          trip.end_date
-            ? new Date(trip.end_date).toISOString().split("T")[0]
-            : ""
-        )
-        setPrice(
-          typeof trip.price_cents === "number"
-            ? (trip.price_cents / 100).toFixed(2)
-            : ""
-        )
-        setSeatsTotal(
-          typeof trip.seats_total === "number" ? String(trip.seats_total) : ""
-        )
-        setCategory(trip.category || "")
-        setLocation(trip.location || "")
-        setIsPublic(Boolean(trip.is_public))
-        setPublicSlug(trip.public_slug || "")
-        setRegistrationMode(
-          trip.registration_mode === "individual" ||
-            trip.registration_mode === "company"
-            ? trip.registration_mode
-            : "both"
-        )
-        setRequirePesel(
-          typeof trip.require_pesel === "boolean" ? trip.require_pesel : true
-        )
-        setCompanyParticipantsInfo(
-          trip.company_participants_info ||
-            "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista zawierająca imię i nazwisko oraz datę urodzenia każdego uczestnika."
-        )
-        setAdditionalAttractions(
-          Array.isArray(trip.form_additional_attractions)
-            ? trip.form_additional_attractions
-            : []
-        )
-        setDiets(
-          Array.isArray(trip.form_diets) ? trip.form_diets : []
-        )
-        setExtraInsurances(
-          Array.isArray(trip.form_extra_insurances)
-            ? trip.form_extra_insurances
-            : []
-        )
-
-        // Wczytaj koordynatorów
-        try {
-          const [assignedRes, allRes] = await Promise.all([
-            fetch(`/api/trips/${selectedTrip.id}/coordinators`),
-            fetch(`/api/coordinators`),
-          ])
-
-          if (assignedRes.ok) {
-            const assigned = await assignedRes.json()
-            setCoordinators(assigned)
-          }
-
-          if (allRes.ok) {
-            const all = await allRes.json()
-            setAvailableCoordinators(all)
-          }
-        } catch {
-          toast.error("Nie udało się wczytać koordynatorów")
-        } finally {
-          setLoadingCoordinators(false)
-        }
-      } catch (err) {
-        toast.error("Nie udało się wczytać informacji o wycieczce")
+      } catch {
+        toast.error("Nie udało się wczytać koordynatorów")
       } finally {
-        setLoading(false)
+        setLoadingCoordinators(false)
       }
     }
 
-    load()
-  }, [selectedTrip])
+    void loadCoordinators()
+  }, [selectedTrip, tripFullData, isLoadingTripData])
 
   const handleSave = async () => {
     if (!selectedTrip) return
@@ -204,6 +207,16 @@ export default function TripGeneralInfoPage() {
         price.trim() === "" ? null : Math.round(parseFloat(price) * 100)
       const seatsNumber =
         seatsTotal.trim() === "" ? null : parseInt(seatsTotal, 10)
+
+      // Walidacja sumy procentów
+      if (paymentSplitEnabled) {
+        const firstPercent = parseInt(paymentSplitFirstPercent, 10)
+        const secondPercent = parseInt(paymentSplitSecondPercent, 10)
+        if (firstPercent + secondPercent !== 100) {
+          toast.error("Suma procentów musi równać się 100%")
+          return
+        }
+      }
 
       const res = await fetch(`/api/trips/${selectedTrip.id}`, {
         method: "PATCH",
@@ -225,6 +238,19 @@ export default function TripGeneralInfoPage() {
           form_additional_attractions: additionalAttractions,
           form_diets: diets,
           form_extra_insurances: extraInsurances,
+          payment_split_enabled: paymentSplitEnabled,
+          payment_split_first_percent: paymentSplitEnabled
+            ? parseInt(paymentSplitFirstPercent, 10)
+            : null,
+          payment_split_second_percent: paymentSplitEnabled
+            ? parseInt(paymentSplitSecondPercent, 10)
+            : null,
+          payment_reminder_enabled: paymentReminderEnabled,
+          payment_reminder_days_before: paymentReminderEnabled
+            ? (paymentReminderDaysBefore.trim()
+                ? parseInt(paymentReminderDaysBefore, 10)
+                : null)
+            : null,
         }),
       })
 
@@ -233,6 +259,8 @@ export default function TripGeneralInfoPage() {
         return
       }
 
+      // Invaliduj cache, żeby dane zostały przeładowane
+      invalidateTripCache()
       toast.success("Informacje zostały zapisane")
     } catch (err) {
       toast.error("Nie udało się zapisać zmian")
@@ -428,6 +456,110 @@ export default function TripGeneralInfoPage() {
                     placeholder="0"
                     className="h-8 text-xs"
                   />
+                </div>
+
+                {/* Podział płatności */}
+                <div className="col-span-2 grid gap-2 border rounded-md p-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="payment-split-enabled"
+                      checked={paymentSplitEnabled}
+                      onCheckedChange={(checked) =>
+                        setPaymentSplitEnabled(Boolean(checked))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <Label
+                      htmlFor="payment-split-enabled"
+                      className="text-xs cursor-pointer font-semibold"
+                    >
+                      Płatność podzielona
+                    </Label>
+                  </div>
+                  {paymentSplitEnabled && (
+                    <div className="grid grid-cols-2 gap-2 pl-6">
+                      <div className="grid gap-1">
+                        <Label className="text-xs">
+                          Pierwsza płatność (zaliczka) %
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={paymentSplitFirstPercent}
+                          onChange={(e) => {
+                            setPaymentSplitFirstPercent(e.target.value)
+                            // Automatycznie oblicz drugi procent
+                            const first = parseInt(e.target.value, 10) || 0
+                            if (first >= 0 && first <= 100) {
+                              setPaymentSplitSecondPercent(String(100 - first))
+                            }
+                          }}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <Label className="text-xs">
+                          Druga płatność (reszta) %
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={paymentSplitSecondPercent}
+                          onChange={(e) => {
+                            setPaymentSplitSecondPercent(e.target.value)
+                            // Automatycznie oblicz pierwszy procent
+                            const second = parseInt(e.target.value, 10) || 0
+                            if (second >= 0 && second <= 100) {
+                              setPaymentSplitFirstPercent(String(100 - second))
+                            }
+                          }}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      {parseInt(paymentSplitFirstPercent, 10) +
+                        parseInt(paymentSplitSecondPercent, 10) !==
+                        100 && (
+                        <p className="col-span-2 text-[10px] text-destructive">
+                          Suma procentów musi równać się 100%
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 pl-6">
+                    <Checkbox
+                      id="payment-reminder-enabled"
+                      checked={paymentReminderEnabled}
+                      onCheckedChange={(checked) =>
+                        setPaymentReminderEnabled(Boolean(checked))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <Label
+                      htmlFor="payment-reminder-enabled"
+                      className="text-xs cursor-pointer"
+                    >
+                      Automatyczne przypomnienia o płatności
+                    </Label>
+                  </div>
+                  {paymentReminderEnabled && (
+                    <div className="grid gap-1 pl-12">
+                      <Label className="text-xs">
+                        Dni przed wycieczką (wysyłka maila)
+                      </Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={paymentReminderDaysBefore}
+                        onChange={(e) =>
+                          setPaymentReminderDaysBefore(e.target.value)
+                        }
+                        placeholder="np. 7"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid gap-1">

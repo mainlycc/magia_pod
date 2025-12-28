@@ -11,11 +11,66 @@ type Trip = {
   end_date: string | null
 }
 
+// Pełne dane wycieczki z API
+type TripFullData = {
+  id: string
+  title: string
+  slug: string
+  description: string | null
+  start_date: string | null
+  end_date: string | null
+  price_cents: number | null
+  seats_total: number | null
+  seats_reserved: number | null
+  is_active: boolean | null
+  category: string | null
+  location: string | null
+  is_public: boolean | null
+  public_slug: string | null
+  registration_mode: string | null
+  require_pesel: boolean | null
+  company_participants_info: string | null
+  form_additional_attractions: unknown
+  form_diets: unknown
+  form_extra_insurances: unknown
+  payment_split_enabled: boolean | null
+  payment_split_first_percent: number | null
+  payment_split_second_percent: number | null
+  payment_reminder_enabled: boolean | null
+  payment_reminder_days_before: number | null
+}
+
+// Dane content wycieczki
+type TripContentData = {
+  program_atrakcje: string
+  dodatkowe_swiadczenia: string
+  gallery_urls: string[]
+  intro_text: string
+  section_poznaj_title: string
+  section_poznaj_description: string
+  reservation_info_text: string
+  trip_info_text: string
+  baggage_text: string
+  weather_text: string
+  show_seats_left: boolean
+  included_in_price_text: string
+  additional_costs_text: string
+  additional_service_text: string
+  reservation_number: string
+  duration_text: string
+}
+
 type TripContextType = {
   selectedTrip: Trip | null
   setSelectedTrip: (trip: Trip | null) => void
   trips: Trip[]
   setTrips: (trips: Trip[]) => void
+  // Cache pełnych danych
+  tripFullData: TripFullData | null
+  tripContentData: TripContentData | null
+  isLoadingTripData: boolean
+  // Funkcja do invalidacji cache
+  invalidateTripCache: () => void
 }
 
 const TripContext = React.createContext<TripContextType | undefined>(undefined)
@@ -37,26 +92,99 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   })
   const [trips, setTrips] = React.useState<Trip[]>([])
   const selectedTripRef = React.useRef<Trip | null>(selectedTrip)
+  
+  // Cache pełnych danych wycieczki
+  const [tripFullData, setTripFullData] = React.useState<TripFullData | null>(null)
+  const [tripContentData, setTripContentData] = React.useState<TripContentData | null>(null)
+  const [isLoadingTripData, setIsLoadingTripData] = React.useState(false)
+  const [cachedTripId, setCachedTripId] = React.useState<string | null>(null)
 
   // Aktualizuj ref przy każdej zmianie selectedTrip
   React.useEffect(() => {
     selectedTripRef.current = selectedTrip
   }, [selectedTrip])
 
-  // Zapisz wybraną wycieczkę w localStorage
+  // Funkcja do preloadowania wszystkich danych wycieczki
+  const loadTripData = React.useCallback(async (tripId: string) => {
+    // Jeśli dane są już załadowane dla tej wycieczki, nie ładuj ponownie
+    if (cachedTripId === tripId && tripFullData && tripContentData) {
+      return
+    }
+
+    setIsLoadingTripData(true)
+    try {
+      // Ładuj oba endpointy równolegle
+      const [tripRes, contentRes] = await Promise.all([
+        fetch(`/api/trips/${tripId}`),
+        fetch(`/api/trips/${tripId}/content`),
+      ])
+
+      if (tripRes.ok) {
+        const tripData = await tripRes.json()
+        setTripFullData(tripData as TripFullData)
+      } else {
+        console.error("Failed to load trip data:", tripRes.status)
+        setTripFullData(null)
+      }
+
+      if (contentRes.ok) {
+        const contentData = await contentRes.json()
+        setTripContentData(contentData as TripContentData)
+      } else {
+        console.error("Failed to load trip content:", contentRes.status)
+        setTripContentData(null)
+      }
+
+      setCachedTripId(tripId)
+    } catch (error) {
+      console.error("Error loading trip data:", error)
+      setTripFullData(null)
+      setTripContentData(null)
+    } finally {
+      setIsLoadingTripData(false)
+    }
+  }, [cachedTripId, tripFullData, tripContentData])
+
+  // Funkcja do invalidacji cache
+  const invalidateTripCache = React.useCallback(() => {
+    setTripFullData(null)
+    setTripContentData(null)
+    setCachedTripId(null)
+    // Jeśli mamy wybraną wycieczkę, przeładuj dane
+    const currentTripId = selectedTripRef.current?.id
+    if (currentTripId) {
+      void loadTripData(currentTripId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Zapisz wybraną wycieczkę w localStorage i załaduj dane
   const setSelectedTrip = React.useCallback((trip: Trip | null) => {
     setSelectedTripState(trip)
     selectedTripRef.current = trip
+    
+    // Wyczyść cache jeśli zmieniamy wycieczkę
+    if (trip?.id !== cachedTripId) {
+      setTripFullData(null)
+      setTripContentData(null)
+      setCachedTripId(null)
+    }
+    
     if (typeof window !== "undefined") {
       if (trip) {
         localStorage.setItem("selectedTripId", trip.id)
         localStorage.setItem("selectedTrip", JSON.stringify(trip))
+        // Preloaduj dane dla nowej wycieczki
+        void loadTripData(trip.id)
       } else {
         localStorage.removeItem("selectedTripId")
         localStorage.removeItem("selectedTrip")
+        setTripFullData(null)
+        setTripContentData(null)
+        setCachedTripId(null)
       }
     }
-  }, [])
+  }, [cachedTripId, loadTripData])
 
   // Wczytaj listę wycieczek (raz, współdzielone między podstronami)
   React.useEffect(() => {
@@ -115,6 +243,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     void loadTrips()
   }, [setSelectedTrip])
 
+  // Załaduj dane wycieczki jeśli selectedTrip istnieje, ale cache nie jest jeszcze załadowany
+  React.useEffect(() => {
+    if (selectedTrip?.id && cachedTripId !== selectedTrip.id && !isLoadingTripData) {
+      void loadTripData(selectedTrip.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrip?.id, cachedTripId, isLoadingTripData])
+
   return (
     <TripContext.Provider
       value={{
@@ -122,6 +258,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         setSelectedTrip,
         trips,
         setTrips,
+        tripFullData,
+        tripContentData,
+        isLoadingTripData,
+        invalidateTripCache,
       }}
     >
       {children}

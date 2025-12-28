@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge"
 
 export default function PublicznyWygladPage() {
   const router = useRouter()
-  const { selectedTrip } = useTrip()
+  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData, invalidateTripCache } = useTrip()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -31,17 +31,20 @@ export default function PublicznyWygladPage() {
   const [introText, setIntroText] = useState("")
   const [sectionPoznajTitle, setSectionPoznajTitle] = useState("")
   const [sectionPoznajDescription, setSectionPoznajDescription] = useState("")
-  const [reservationInfoText, setReservationInfoText] = useState("")
   const [tripInfoText, setTripInfoText] = useState("")
+  const [includedInPriceLeftText, setIncludedInPriceLeftText] = useState("")
   const [baggageText, setBaggageText] = useState("")
   const [weatherText, setWeatherText] = useState("")
   const [showTripInfoConfigCard, setShowTripInfoConfigCard] = useState(true)
+  const [showIncludedInPriceLeftCard, setShowIncludedInPriceLeftCard] = useState(true)
   const [showBaggageCard, setShowBaggageCard] = useState(true)
   const [showWeatherCard, setShowWeatherCard] = useState(true)
   const [showSeatsLeft, setShowSeatsLeft] = useState(false)
   const [includedInPriceText, setIncludedInPriceText] = useState("")
   const [additionalCostsText, setAdditionalCostsText] = useState("")
   const [additionalServiceText, setAdditionalServiceText] = useState("")
+  const [reservationNumber, setReservationNumber] = useState("")
+  const [durationText, setDurationText] = useState("")
   // Lewa kolumna – pola konfigurowalne
   const [whatToBring, setWhatToBring] = useState<string[]>([])
   const [includedInPrice, setIncludedInPrice] = useState<
@@ -49,7 +52,7 @@ export default function PublicznyWygladPage() {
   >([])
   // Drag & drop i widoczność sekcji w edytorze
   type MiddleSectionId = "program"
-  type RightSectionId = "bookingPreview" | "reservationInfo" | "includedInPrice" | "additionalCosts" | "additionalService"
+  type RightSectionId = "bookingPreview" | "includedInPrice" | "additionalCosts" | "additionalService"
 
   const [middleSections, setMiddleSections] = useState<MiddleSectionId[]>([
     "program",
@@ -59,7 +62,6 @@ export default function PublicznyWygladPage() {
     "includedInPrice",
     "additionalCosts",
     "additionalService",
-    "reservationInfo",
   ])
   const [hiddenMiddleSections, setHiddenMiddleSections] = useState<MiddleSectionId[]>([])
   const [hiddenRightSections, setHiddenRightSections] = useState<RightSectionId[]>([])
@@ -77,63 +79,57 @@ export default function PublicznyWygladPage() {
     category?: string | null
   } | null>(null)
 
+  // Użyj cache'owanych danych z kontekstu
   useEffect(() => {
     if (!selectedTrip) {
       setLoading(false)
       return
     }
 
-    const loadContent = async () => {
-      try {
-        setLoading(true)
-        const [contentRes, tripRes] = await Promise.all([
-          fetch(`/api/trips/${selectedTrip.id}/content`),
-          fetch(`/api/trips/${selectedTrip.id}`),
-        ])
-
-        if (contentRes.ok) {
-          const content = await contentRes.json()
-          setProgramAtrakcje(content.program_atrakcje || "")
-          setDodatkoweSwiadczenia(content.dodatkowe_swiadczenia || "")
-          // Limit maksymalnie do 3 zdjęć
-          setGalleryUrls((content.gallery_urls || []).slice(0, 3))
-          setIntroText(content.intro_text || "")
-          setSectionPoznajTitle(content.section_poznaj_title || "")
-          setSectionPoznajDescription(content.section_poznaj_description || "")
-          setReservationInfoText(content.reservation_info_text || "")
-          setTripInfoText(content.trip_info_text || "")
-          setBaggageText(content.baggage_text || "")
-          setWeatherText(content.weather_text || "")
-          setShowSeatsLeft(content.show_seats_left ?? false)
-          setIncludedInPriceText(content.included_in_price_text || "")
-          setAdditionalCostsText(content.additional_costs_text || "")
-          setAdditionalServiceText(content.additional_service_text || "")
-        }
-
-        if (tripRes.ok) {
-          const trip = await tripRes.json()
-          setTripTitle(trip.title || "")
-          setTripData({
-            start_date: trip.start_date || null,
-            end_date: trip.end_date || null,
-            price_cents: trip.price_cents || null,
-            seats_total: trip.seats_total || null,
-            seats_reserved: trip.seats_reserved || null,
-            is_active: trip.is_active ?? null,
-            location: trip.location || null,
-            description: trip.description || null,
-            category: trip.category || null,
-          })
-        }
-      } catch (err) {
-        toast.error("Nie udało się wczytać treści")
-      } finally {
-        setLoading(false)
-      }
+    // Jeśli dane są już załadowane w cache, użyj ich
+    if (tripFullData && tripContentData && tripFullData.id === selectedTrip.id) {
+      const content = tripContentData
+      const trip = tripFullData
+      
+      setProgramAtrakcje(content.program_atrakcje || "")
+      setDodatkoweSwiadczenia(content.dodatkowe_swiadczenia || "")
+      // Limit maksymalnie do 3 zdjęć
+      setGalleryUrls((content.gallery_urls || []).slice(0, 3))
+      setIntroText(content.intro_text || "")
+      setSectionPoznajTitle(content.section_poznaj_title || "")
+      setSectionPoznajDescription(content.section_poznaj_description || "")
+      setTripInfoText(content.trip_info_text || "")
+      setIncludedInPriceLeftText(content.included_in_price_text || "")
+      setBaggageText(content.baggage_text || "")
+      setWeatherText(content.weather_text || "")
+      setShowSeatsLeft(content.show_seats_left ?? false)
+      setIncludedInPriceText(content.included_in_price_text || "")
+      setAdditionalCostsText(content.additional_costs_text || "")
+      setAdditionalServiceText(content.additional_service_text || "")
+      setReservationNumber(content.reservation_number || "")
+      setDurationText(content.duration_text || "")
+      
+      setTripTitle(trip.title || "")
+      setTripData({
+        start_date: trip.start_date || null,
+        end_date: trip.end_date || null,
+        price_cents: trip.price_cents || null,
+        seats_total: trip.seats_total || null,
+        seats_reserved: trip.seats_reserved || null,
+        is_active: trip.is_active ?? null,
+        location: trip.location || null,
+        description: trip.description || null,
+        category: trip.category || null,
+      })
+      setLoading(false)
+    } else if (isLoadingTripData) {
+      // Czekaj na załadowanie danych
+      setLoading(true)
+    } else {
+      // Jeśli nie ma danych w cache, ustaw loading na false (dane będą załadowane przez kontekst)
+      setLoading(false)
     }
-
-    loadContent()
-  }, [selectedTrip])
+  }, [selectedTrip, tripFullData, tripContentData, isLoadingTripData])
 
   const handleSave = async () => {
     if (!selectedTrip) return
@@ -150,18 +146,21 @@ export default function PublicznyWygladPage() {
           intro_text: introText,
           section_poznaj_title: sectionPoznajTitle,
           section_poznaj_description: sectionPoznajDescription,
-          reservation_info_text: reservationInfoText,
           trip_info_text: tripInfoText,
           baggage_text: baggageText,
           weather_text: weatherText,
           show_seats_left: showSeatsLeft,
-          included_in_price_text: includedInPriceText,
+          included_in_price_text: includedInPriceLeftText,
           additional_costs_text: additionalCostsText,
           additional_service_text: additionalServiceText,
+          reservation_number: reservationNumber,
+          duration_text: durationText,
         }),
       })
 
       if (res.ok) {
+        // Invaliduj cache, żeby dane zostały przeładowane
+        invalidateTripCache()
         toast.success("Treść została zapisana")
       } else {
         toast.error("Nie udało się zapisać treści")
@@ -334,32 +333,6 @@ export default function PublicznyWygladPage() {
 
   return (
     <div className="space-y-6">
-      <div className="text-sm text-muted-foreground">
-        Wycieczka: <span className="font-medium">{tripTitle}</span>
-      </div>
-
-      {/* Pasek z datą i liczbą nocy – tylko podgląd, nieedytowalny */}
-      {tripData && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-foreground">Termin:</span>
-            <span>
-              {tripData.start_date && tripData.end_date
-                ? `${new Date(tripData.start_date).toLocaleDateString(
-                    "pl-PL"
-                  )} – ${new Date(tripData.end_date).toLocaleDateString("pl-PL")}`
-                : "Do ustalenia"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-foreground">Dni / noce:</span>
-            <span>
-              {days > 0 ? `${days} dni / ${nights} nocy` : "W trakcie ustalania"}
-            </span>
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-start">
         {/* Lewa kolumna – galeria + informacje o wyjeździe */}
         <div className="xl:col-span-4 flex flex-col gap-4">
@@ -490,7 +463,7 @@ export default function PublicznyWygladPage() {
             </CardContent>
           </Card>
 
-          {/* Co zabrać + w cenie wycieczki */}
+          {/* Informacje o wyjeździe */}
           {showTripInfoConfigCard && (
             <Card>
               <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
@@ -505,103 +478,37 @@ export default function PublicznyWygladPage() {
                   <X className="h-3 w-3" />
                 </button>
               </CardHeader>
-              <CardContent className="space-y-4 pt-2">
-                {/* Co zabrać ze sobą */}
-                <div className="space-y-2">
-                  <div className="space-y-2">
-                    {whatToBring.map((item, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input
-                          value={item}
-                          onChange={(e) => {
-                            const next = [...whatToBring]
-                            next[index] = e.target.value
-                            setWhatToBring(next)
-                          }}
-                          placeholder="Np. Paszport, EKUZ, wydatki własne..."
-                          className="text-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setWhatToBring((prev) => prev.filter((_, i) => i !== index))
-                          }
-                          className="h-6 w-6 rounded-sm border text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center text-xs"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setWhatToBring((prev) => [...prev, ""])}
-                    >
-                      Dodaj pozycję
-                    </Button>
-                  </div>
-                </div>
+              <CardContent className="space-y-2 pt-2">
+                <Textarea
+                  value={tripInfoText}
+                  onChange={(e) => setTripInfoText(e.target.value)}
+                  placeholder="Wpisz informacje o wyjeździe..."
+                  className="min-h-[120px] text-xs"
+                />
+              </CardContent>
+            </Card>
+          )}
 
-                {/* Świadczenia w cenie – repeater */}
-                <div className="space-y-3">
-                  {includedInPrice.map((item, index) => (
-                    <div key={item.id} className="rounded-md border p-2 space-y-1.5">
-                      <div className="flex gap-2">
-                        <Input
-                          value={item.title}
-                          onChange={(e) => {
-                            const next = [...includedInPrice]
-                            next[index] = { ...next[index], title: e.target.value }
-                            setIncludedInPrice(next)
-                          }}
-                          placeholder="Tytuł (np. Zakwaterowanie)"
-                          className="text-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setIncludedInPrice((prev) =>
-                              prev.filter((p) => p.id !== item.id)
-                            )
-                          }
-                          className="h-6 w-6 rounded-sm border text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center text-xs"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <Textarea
-                        value={item.content}
-                        onChange={(e) => {
-                          const next = [...includedInPrice]
-                          next[index] = { ...next[index], content: e.target.value }
-                          setIncludedInPrice(next)
-                        }}
-                        placeholder="Opis (np. 3 noclegi w hotelu *** ze śniadaniami)"
-                        className="min-h-[60px] text-xs"
-                      />
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                    onClick={() =>
-                      setIncludedInPrice((prev) => [
-                        ...prev,
-                        {
-                          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                          title: "",
-                          content: "",
-                        },
-                      ])
-                    }
-                  >
-                    Dodaj blok
-                  </Button>
-                </div>
+          {/* W cenie wycieczki – osobna karta */}
+          {showIncludedInPriceLeftCard && (
+            <Card>
+              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
+                <CardTitle className="text-sm font-semibold">W cenie wycieczki</CardTitle>
+                <button
+                  type="button"
+                  onClick={() => setShowIncludedInPriceLeftCard(false)}
+                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-2">
+                <Textarea
+                  value={includedInPriceLeftText}
+                  onChange={(e) => setIncludedInPriceLeftText(e.target.value)}
+                  placeholder="Wpisz co jest w cenie wycieczki..."
+                  className="min-h-[80px] text-xs"
+                />
               </CardContent>
             </Card>
           )}
@@ -655,8 +562,56 @@ export default function PublicznyWygladPage() {
           )}
         </div>
 
-        {/* Środkowa kolumna – opis, informacje o wyjeździe, program, dodatkowe świadczenia, sekcja „Poznaj” (drag & drop) */}
+        {/* Środkowa kolumna – opis, informacje o wyjeździe, program, dodatkowe świadczenia, sekcja „Poznaj" (drag & drop) */}
         <div className="xl:col-span-5 flex flex-col gap-4">
+          {/* Tytuł wyjazdu, numer rezerwacji, data, czas trwania, kraj */}
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              {/* Tytuł wyjazdu - duży nagłówek */}
+              <h1 className="text-2xl font-bold text-foreground">{tripTitle}</h1>
+              
+              {/* Numer rezerwacji */}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Numer rezerwacji:</Label>
+                <Input
+                  value={reservationNumber}
+                  onChange={(e) => setReservationNumber(e.target.value)}
+                  placeholder="Wpisz numer rezerwacji..."
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Data wyjazdu, czas trwania, kraj - większy rozmiar czcionki */}
+              <div className="space-y-3 text-base">
+                {tripData && tripData.start_date && tripData.end_date && (
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">Data wyjazdu:</span>
+                    <span className="text-foreground">
+                      {new Date(tripData.start_date).toLocaleDateString("pl-PL")} – {new Date(tripData.end_date).toLocaleDateString("pl-PL")}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label className="text-base font-semibold">Czas trwania:</Label>
+                  <Input
+                    value={durationText}
+                    onChange={(e) => setDurationText(e.target.value)}
+                    placeholder="Np. 8 dni / 7 nocy"
+                    className="text-base"
+                  />
+                </div>
+
+                {tripData && tripData.location && (
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">Kraj:</span>
+                    <span className="text-foreground">{tripData.location}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {middleSections.map((sectionId) => {
             if (hiddenMiddleSections.includes(sectionId)) return null
 
@@ -890,34 +845,7 @@ export default function PublicznyWygladPage() {
               )
             }
 
-            // reservationInfo
-            return (
-              <Card key={sectionId}>
-                <CardHeader {...dragHandlers} {...commonHeaderProps}>
-                  <div className="flex items-center gap-2 pr-5">
-                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                    <CardTitle className="text-sm font-semibold">
-                      Tekst informacyjny o rezerwacji
-                    </CardTitle>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={removeSection}
-                    className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    value={reservationInfoText}
-                    onChange={(e) => setReservationInfoText(e.target.value)}
-                    placeholder="Do rezerwacji potrzebne będą dane kontaktowe..."
-                    className="min-h-[120px]"
-                  />
-                </CardContent>
-              </Card>
-            )
+            return null
           })}
         </div>
       </div>
