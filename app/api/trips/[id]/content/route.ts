@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
     const { data: trip, error } = await supabase
       .from("trips")
-      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, trip_info_text, baggage_text, weather_text, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text")
+      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, trip_info_text, baggage_text, weather_text, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text, additional_fields")
       .eq("id", id)
       .single();
 
@@ -51,6 +51,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       additional_service_text: trip.additional_service_text || "",
       reservation_number: trip.reservation_number || "",
       duration_text: trip.duration_text || "",
+      additional_fields: trip.additional_fields || [],
     });
   } catch {
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
@@ -82,7 +83,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       additional_costs_text,
       additional_service_text,
       reservation_number,
-      duration_text
+      duration_text,
+      additional_fields
     } = body as {
       program_atrakcje?: string;
       dodatkowe_swiadczenia?: string;
@@ -99,6 +101,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       additional_service_text?: string;
       reservation_number?: string;
       duration_text?: string;
+      additional_fields?: Array<{ 
+        id: string;
+        sectionTitle: string;
+        fields: Array<{ title: string; value: string }>;
+      }>;
     };
 
     const updateData: {
@@ -117,6 +124,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       additional_service_text?: string | null;
       reservation_number?: string | null;
       duration_text?: string | null;
+      additional_fields?: Array<{ 
+        id: string;
+        sectionTitle: string;
+        fields: Array<{ title: string; value: string }>;
+      }> | null;
     } = {};
 
     if ("program_atrakcje" in body) {
@@ -167,6 +179,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
     if ("duration_text" in body) {
       updateData.duration_text = duration_text ?? null;
+    }
+    if ("additional_fields" in body) {
+      if (Array.isArray(additional_fields)) {
+        updateData.additional_fields = additional_fields;
+      } else if (additional_fields === null || additional_fields === undefined) {
+        updateData.additional_fields = [];
+      }
     }
 
     // Jeśli nie ma żadnych danych do aktualizacji, zwróć sukces

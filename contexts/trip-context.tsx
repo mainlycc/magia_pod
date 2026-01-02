@@ -58,6 +58,11 @@ type TripContentData = {
   additional_service_text: string
   reservation_number: string
   duration_text: string
+  additional_fields: Array<{ 
+    id: string
+    sectionTitle: string
+    fields: Array<{ title: string; value: string }>
+  }>
 }
 
 type TripContextType = {

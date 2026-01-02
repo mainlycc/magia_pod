@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { ExternalLink } from "lucide-react";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -44,15 +45,43 @@ const addressSchema = z.object({
   zip: z.string().min(4, "Podaj kod pocztowy"),
 });
 
-const companySchema = z.object({
-  name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
-  nip: z
-    .string()
-    .regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  address: addressSchema.optional(),
-});
+const companySchema = z
+  .object({
+    name: z.string().optional().or(z.literal("").transform(() => undefined)),
+    nip: z.string().optional().or(z.literal("").transform(() => undefined)),
+    address: z
+      .object({
+        street: z.string().optional(),
+        city: z.string().optional(),
+        zip: z.string().optional(),
+      })
+      .optional(),
+  })
+  .transform((val) => {
+    // Jeśli address istnieje, ale wszystkie pola są puste, usuń address
+    if (val?.address) {
+      const hasStreet = val.address.street && val.address.street.trim() !== "";
+      const hasCity = val.address.city && val.address.city.trim() !== "";
+      const hasZip = val.address.zip && val.address.zip.trim() !== "";
+      
+      if (!hasStreet && !hasCity && !hasZip) {
+        const { address, ...rest } = val;
+        return rest;
+      }
+    }
+    return val;
+  })
+  .pipe(
+    z.object({
+      name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
+      nip: z
+        .string()
+        .regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr")
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
+      address: addressSchema.optional(),
+    })
+  );
 
 const participantSchema = z.object({
   first_name: z.string().min(2, "Podaj imię"),
@@ -145,32 +174,93 @@ const invoiceSchema = z
     }
   });
 
-const bookingFormSchema = z.object({
-  contact: z.object({
-    first_name: z
-      .string()
-      .min(2, "Podaj imię")
-      .optional()
-      .or(z.literal("").transform(() => undefined)),
-    last_name: z
-      .string()
-      .min(2, "Podaj nazwisko")
-      .optional()
-      .or(z.literal("").transform(() => undefined)),
-    email: z.string().email("Podaj poprawny e-mail"),
-    phone: z.string().min(7, "Podaj telefon"),
-    address: addressSchema,
-  }),
-  company: companySchema.optional(),
-  participants: z.array(participantSchema),
-  consents: z.object({
-    rodo: z.literal(true),
-    terms: z.literal(true),
-    conditions: z.literal(true),
-  }),
-  // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
-  invoice: invoiceSchema,
-});
+const bookingFormSchema = z
+  .object({
+    applicant_type: z.enum(["individual", "company"]).optional(),
+    contact: z.object({
+      first_name: z
+        .string()
+        .min(2, "Podaj imię")
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
+      last_name: z
+        .string()
+        .min(2, "Podaj nazwisko")
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
+      email: z.string().email("Podaj poprawny e-mail"),
+      phone: z.string().min(7, "Podaj telefon"),
+      address: addressSchema,
+    }),
+    company: companySchema.optional(),
+    participants: z.array(participantSchema),
+    consents: z.object({
+      rodo: z.literal(true),
+      terms: z.literal(true),
+      conditions: z.literal(true),
+    }),
+    // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
+    invoice: invoiceSchema,
+  })
+  .superRefine((value, ctx) => {
+    // Dla osoby fizycznej wymagaj first_name i last_name i IGNORUJ company
+    if (value.applicant_type === "individual") {
+      if (!value.contact.first_name || value.contact.first_name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj imię",
+          path: ["contact", "first_name"],
+        });
+      }
+      if (!value.contact.last_name || value.contact.last_name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj nazwisko",
+          path: ["contact", "last_name"],
+        });
+      }
+      // Dla osoby fizycznej nie waliduj company - zakończ tutaj
+      return;
+    }
+    // Dla firmy wymagaj danych firmy
+    if (value.applicant_type === "company") {
+      if (!value.company?.name || value.company.name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj nazwę firmy",
+          path: ["company", "name"],
+        });
+      }
+      if (!value.company?.nip || value.company.nip.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj NIP",
+          path: ["company", "nip"],
+        });
+      }
+      if (!value.company?.address?.street || value.company.address.street.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj ulicę",
+          path: ["company", "address", "street"],
+        });
+      }
+      if (!value.company?.address?.city || value.company.address.city.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj miasto",
+          path: ["company", "address", "city"],
+        });
+      }
+      if (!value.company?.address?.zip || value.company.address.zip.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj kod pocztowy",
+          path: ["company", "address", "zip"],
+        });
+      }
+    }
+  });
 
 type BookingFormValues = z.infer<typeof bookingFormSchema>;
 
@@ -211,7 +301,9 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
     "contact.address.zip",
     "company.name",
     "company.nip",
-    "company.address",
+    "company.address.street",
+    "company.address.city",
+    "company.address.zip",
   ],
   participants: ["participants"],
   summary: ["consents.rodo", "consents.terms", "consents.conditions"],
@@ -229,6 +321,14 @@ export function BookingForm({ slug }: BookingFormProps) {
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
   const [applicantType, setApplicantType] = useState<"individual" | "company">("individual");
+  const [tripPrice, setTripPrice] = useState<number | null>(null);
+  const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState<number>(30);
+  const [tripId, setTripId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<{
+    rodo?: { file_name: string; url?: string };
+    terms?: { file_name: string; url?: string };
+    conditions?: { file_name: string; url?: string };
+  }>({});
 
   useEffect(() => {
     const loadTripConfig = async () => {
@@ -236,9 +336,9 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,company_participants_info,slug,public_slug")
+          .select("id,registration_mode,require_pesel,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
-          .maybeSingle<TripConfig & { slug: string; public_slug: string | null }>();
+          .maybeSingle<TripConfig & { slug: string; public_slug: string | null; price_cents: number | null; payment_split_enabled: boolean | null; payment_split_first_percent: number | null; id: string }>();
 
         if (tripError) {
           console.error("Error loading trip config:", tripError);
@@ -246,6 +346,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         }
 
         if (trip) {
+          setTripId(trip.id);
           setTripConfig({
             registration_mode: (trip.registration_mode as RegistrationMode) ?? "both",
             require_pesel: typeof trip.require_pesel === "boolean" ? trip.require_pesel : true,
@@ -256,6 +357,34 @@ export function BookingForm({ slug }: BookingFormProps) {
             setApplicantType("company");
           } else {
             setApplicantType("individual");
+          }
+
+          // Zapisz cenę i procent zaliczki
+          setTripPrice(trip.price_cents);
+          const splitEnabled = trip.payment_split_enabled ?? true;
+          if (splitEnabled) {
+            setPaymentSplitFirstPercent(trip.payment_split_first_percent ?? 30);
+          }
+
+          // Pobierz dokumenty dla wycieczki
+          try {
+            const docsRes = await fetch(`/api/documents/trip/${trip.id}`);
+            if (docsRes.ok) {
+              const docsData = await docsRes.json();
+              const docsMap: typeof documents = {};
+              docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
+                if (doc.document_type === "rodo" || doc.document_type === "terms" || doc.document_type === "conditions") {
+                  docsMap[doc.document_type] = {
+                    file_name: doc.file_name,
+                    url: doc.url,
+                  };
+                }
+              });
+              setDocuments(docsMap);
+            }
+          } catch (docsErr) {
+            console.error("Error loading documents:", docsErr);
+            // Nie przerywamy - dokumenty są opcjonalne
           }
         }
       } catch (e) {
@@ -269,6 +398,7 @@ export function BookingForm({ slug }: BookingFormProps) {
   const form = useForm({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
+      applicant_type: "individual" as const,
       contact: {
         first_name: "",
         last_name: "",
@@ -305,7 +435,12 @@ export function BookingForm({ slug }: BookingFormProps) {
     mode: "onBlur",
   });
 
-  const { control, handleSubmit, trigger } = form;
+  const { control, handleSubmit, trigger, setValue } = form;
+
+  // Synchronizuj applicant_type w formularzu ze stanem applicantType
+  useEffect(() => {
+    setValue("applicant_type", applicantType);
+  }, [applicantType, setValue]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -331,12 +466,51 @@ export function BookingForm({ slug }: BookingFormProps) {
 
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
+  const getFieldsToValidate = (stepId: string): FieldPath<BookingFormValues>[] => {
+    const baseFields = stepFieldGroups[stepId] || [];
+    
+    if (stepId === "contact") {
+      // Dla kroku kontaktowego, dostosuj pola do walidacji w zależności od typu zgłaszającego
+      if (applicantType === "individual") {
+        // Dla osoby fizycznej: wymagaj first_name i last_name, nie waliduj pól firmy
+        return [
+          "applicant_type",
+          "contact.first_name",
+          "contact.last_name",
+          "contact.email",
+          "contact.phone",
+          "contact.address.street",
+          "contact.address.city",
+          "contact.address.zip",
+        ];
+      } else if (applicantType === "company") {
+        // Dla firmy: first_name i last_name są opcjonalne, ale wymagaj pól firmy
+        return [
+          "applicant_type",
+          "contact.email",
+          "contact.phone",
+          "contact.address.street",
+          "contact.address.city",
+          "contact.address.zip",
+          "company.name",
+          "company.nip",
+          "company.address.street",
+          "company.address.city",
+          "company.address.zip",
+        ];
+      }
+    }
+    
+    return baseFields;
+  };
+
   const handleTabsChange = async (value: string) => {
     const nextIndex = steps.findIndex((step) => step.id === value);
     if (nextIndex === -1) return;
 
     if (nextIndex > activeStepIndex) {
-      const isValid = await trigger(stepFieldGroups[currentStep.id]);
+      const fieldsToValidate = getFieldsToValidate(currentStep.id);
+      const isValid = await trigger(fieldsToValidate);
       if (!isValid) return;
     }
 
@@ -347,7 +521,8 @@ export function BookingForm({ slug }: BookingFormProps) {
   };
 
   const goToNextStep = async () => {
-    const isValid = await trigger(stepFieldGroups[currentStep.id]);
+    const fieldsToValidate = getFieldsToValidate(currentStep.id);
+    const isValid = await trigger(fieldsToValidate);
     if (!isValid) return;
     const nextIndex = Math.min(activeStepIndex + 1, steps.length - 1);
     setActiveStepIndex(nextIndex);
@@ -360,6 +535,9 @@ export function BookingForm({ slug }: BookingFormProps) {
   };
 
   const onSubmit = async (values: BookingFormValues) => {
+    console.log("onSubmit called", values);
+    console.log("onSubmit applicant_type:", values.applicant_type);
+    console.log("onSubmit applicantType state:", applicantType);
     setError(null);
     setIsSubmitting(true);
     try {
@@ -501,26 +679,43 @@ export function BookingForm({ slug }: BookingFormProps) {
 
       const data = await response.json().catch(() => null);
       
+      // Debug: loguj odpowiedź z API
+      console.log("Booking API response:", data);
+      console.log("redirect_url:", data?.redirect_url);
+      console.log("booking_url:", data?.booking_url);
+      
       // Wyświetl komunikat sukcesu
       toast.success("Rezerwacja została potwierdzona!", {
         description: `Kod rezerwacji: ${data?.booking_ref || ""}. Przekierowywanie do płatności...`,
-        duration: 3000,
+        duration: 2000,
       });
 
       // PRIORYTET 1: Jeśli jest redirect_url (Paynow), przekieruj od razu do płatności
-      if (data?.redirect_url) {
-        window.location.href = data.redirect_url as string;
+      if (data?.redirect_url && typeof data.redirect_url === "string" && data.redirect_url.trim() !== "") {
+        console.log("Redirecting to Paynow:", data.redirect_url);
+        // Użyj setTimeout, aby dać czas na wyświetlenie toast
+        setTimeout(() => {
+          window.location.replace(data.redirect_url as string);
+        }, 500);
         return;
       }
 
       // PRIORYTET 2: Jeśli nie ma Paynow, przekieruj do strony rezerwacji (gdzie można załączyć umowę i zapłacić)
-      if (data?.booking_url) {
-        window.location.href = data.booking_url as string;
+      if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
+        console.log("Redirecting to booking page:", data.booking_url);
+        // Użyj setTimeout, aby dać czas na wyświetlenie toast
+        setTimeout(() => {
+          window.location.replace(data.booking_url as string);
+        }, 500);
         return;
       }
 
       // Ostatni fallback: strona wycieczki
-      router.push(`/trip/${slug}`);
+      console.warn("No redirect_url or booking_url, falling back to trip page");
+      console.warn("Response data:", JSON.stringify(data, null, 2));
+      setTimeout(() => {
+        router.push(`/trip/${slug}`);
+      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Błąd rezerwacji");
     } finally {
@@ -584,7 +779,86 @@ export function BookingForm({ slug }: BookingFormProps) {
         </TabsList>
 
         <Form {...form}>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form 
+            onSubmit={handleSubmit(
+              (data) => {
+                console.log("Form validation passed, calling onSubmit");
+                console.log("Form data applicant_type:", data.applicant_type);
+                onSubmit(data);
+              },
+              (errors) => {
+                console.log("Form validation failed:", errors);
+                console.log("Form errors details:", JSON.stringify(errors, null, 2));
+                
+                // Zbierz wszystkie błędy walidacji i znajdź krok z błędami
+                const errorMessages: string[] = [];
+                const errorFields: string[] = [];
+                const collectErrors = (obj: any, path: string = "") => {
+                  Object.keys(obj).forEach((key) => {
+                    const currentPath = path ? `${path}.${key}` : key;
+                    if (obj[key]?.message) {
+                      // Przekształć ścieżkę na czytelny komunikat
+                      const readablePath = currentPath
+                        .replace("company.address.street", "Ulica firmy")
+                        .replace("company.address.city", "Miasto firmy")
+                        .replace("company.address.zip", "Kod pocztowy firmy")
+                        .replace("company.name", "Nazwa firmy")
+                        .replace("company.nip", "NIP firmy")
+                        .replace("contact.first_name", "Imię")
+                        .replace("contact.last_name", "Nazwisko")
+                        .replace("contact.email", "E-mail")
+                        .replace("contact.phone", "Telefon")
+                        .replace("contact.address.street", "Ulica")
+                        .replace("contact.address.city", "Miasto")
+                        .replace("contact.address.zip", "Kod pocztowy");
+                      errorMessages.push(`${readablePath}: ${obj[key].message}`);
+                      errorFields.push(currentPath);
+                    } else if (typeof obj[key] === "object" && obj[key] !== null) {
+                      collectErrors(obj[key], currentPath);
+                    }
+                  });
+                };
+                collectErrors(errors);
+                
+                // Znajdź krok z błędami
+                let stepWithError: string | null = null;
+                for (const step of steps) {
+                  const stepFields = getFieldsToValidate(step.id);
+                  const hasError = stepFields.some((field) => errorFields.some((errorField) => errorField.startsWith(field)));
+                  if (hasError) {
+                    stepWithError = step.id;
+                    break;
+                  }
+                }
+                
+                // Przełącz na krok z błędami, jeśli użytkownik jest na innym kroku
+                if (stepWithError && currentStep.id !== stepWithError) {
+                  const stepIndex = steps.findIndex((s) => s.id === stepWithError);
+                  if (stepIndex !== -1) {
+                    setActiveStepIndex(stepIndex);
+                    setMaxAvailableStep(Math.max(maxAvailableStep, stepIndex));
+                  }
+                }
+                
+                // Wyświetl alert z błędami
+                if (errorMessages.length > 0) {
+                  toast.error("Formularz zawiera błędy", {
+                    description: errorMessages.slice(0, 5).join("\n") + (errorMessages.length > 5 ? `\n... i ${errorMessages.length - 5} więcej` : ""),
+                    duration: 5000,
+                  });
+                  
+                  // Przewiń do pierwszego błędu po przełączeniu kroku
+                  setTimeout(() => {
+                    const firstErrorField = document.querySelector('[role="alert"]');
+                    if (firstErrorField) {
+                      firstErrorField.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                  }, 300);
+                }
+              }
+            )} 
+            className="space-y-6"
+          >
             <TabsContent value="contact" className="mt-6">
               <Card>
                 <CardHeader>
@@ -599,7 +873,10 @@ export function BookingForm({ slug }: BookingFormProps) {
                           type="button"
                           variant={applicantType === "individual" ? "default" : "outline"}
                           size="sm"
-                          onClick={() => setApplicantType("individual")}
+                          onClick={() => {
+                            setApplicantType("individual");
+                            setValue("applicant_type", "individual");
+                          }}
                         >
                           1. Osoba fizyczna
                         </Button>
@@ -607,7 +884,10 @@ export function BookingForm({ slug }: BookingFormProps) {
                           type="button"
                           variant={applicantType === "company" ? "default" : "outline"}
                           size="sm"
-                          onClick={() => setApplicantType("company")}
+                          onClick={() => {
+                            setApplicantType("company");
+                            setValue("applicant_type", "company");
+                          }}
                         >
                           2. Firma
                         </Button>
@@ -1339,6 +1619,55 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   <Separator />
 
+                  {tripPrice !== null && (
+                    <>
+                      <section className="space-y-3">
+                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Cena</h3>
+                        <div className="grid gap-2 text-sm">
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Cena za osobę</span>
+                            <span className="font-semibold">
+                              {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              PLN
+                            </span>
+                          </div>
+                          {participantsSummary.length > 1 && (
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="text-muted-foreground">
+                                Cena za {participantsSummary.length} osoby
+                              </span>
+                              <span className="font-semibold">
+                                {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}{" "}
+                                PLN
+                              </span>
+                            </div>
+                          )}
+                          <Separator className="my-2" />
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
+                            <span className="font-semibold text-lg">
+                              {((tripPrice * participantsSummary.length * paymentSplitFirstPercent) / 10000).toLocaleString("pl-PL", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              PLN
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
+                          </p>
+                        </div>
+                      </section>
+                      <Separator />
+                    </>
+                  )}
+
                   <section className="space-y-4">
                     <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
                     <p className="text-sm text-muted-foreground">
@@ -1373,10 +1702,21 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                               />
                             </FormControl>
-                            <div className="space-y-1">
+                            <div className="space-y-1 flex-1">
                               <FormLabel className="text-sm font-medium leading-none">
                                 Zgoda na przetwarzanie danych osobowych (RODO)
                               </FormLabel>
+                              {documents.rodo && (
+                                <a
+                                  href={documents.rodo.url || `/api/documents/file/${documents.rodo.file_name}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Przeczytaj dokument RODO
+                                </a>
+                              )}
                               <FormMessage />
                             </div>
                           </FormItem>
@@ -1393,10 +1733,21 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                               />
                             </FormControl>
-                            <div className="space-y-1">
+                            <div className="space-y-1 flex-1">
                               <FormLabel className="text-sm font-medium leading-none">
                                 Zapoznałem się z regulaminem i go akceptuję
                               </FormLabel>
+                              {documents.terms && (
+                                <a
+                                  href={documents.terms.url || `/api/documents/file/${documents.terms.file_name}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Przeczytaj regulamin
+                                </a>
+                              )}
                               <FormMessage />
                             </div>
                           </FormItem>
@@ -1413,10 +1764,21 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                               />
                             </FormControl>
-                            <div className="space-y-1">
+                            <div className="space-y-1 flex-1">
                               <FormLabel className="text-sm font-medium leading-none">
                                 Potwierdzam znajomość warunków udziału w wycieczce
                               </FormLabel>
+                              {documents.conditions && (
+                                <a
+                                  href={documents.conditions.url || `/api/documents/file/${documents.conditions.file_name}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Przeczytaj warunki udziału
+                                </a>
+                              )}
                               <FormMessage />
                             </div>
                           </FormItem>
@@ -1429,7 +1791,13 @@ export function BookingForm({ slug }: BookingFormProps) {
                   <Button type="button" variant="outline" onClick={goToPrevStep}>
                     Wstecz
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
+                  <Button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    onClick={(e) => {
+                      console.log("Submit button clicked", { isSubmitting, formState: form.formState });
+                    }}
+                  >
                     {isSubmitting ? "Wysyłanie..." : "Potwierdź rezerwację"}
                   </Button>
                 </CardFooter>

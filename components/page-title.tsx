@@ -25,6 +25,7 @@ const pageTitles: Record<string, string> = {
   "/trip-dashboard/uczestnicy": "Uczestnicy",
   "/trip-dashboard/zaproszenia-koordynatorow": "Zaproszenia koordynatorów",
   "/trip-dashboard/komunikacja-masowa": "Komunikacja masowa",
+  "/trip-dashboard/dokumentacja": "Dokumentacja wycieczki",
 }
 
 // Wzorce ścieżek z dynamicznymi segmentami

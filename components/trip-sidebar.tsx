@@ -12,6 +12,7 @@ import {
   IconWallet,
   IconEdit,
   IconPlus,
+  IconFileText,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -116,12 +117,17 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       url: "/trip-dashboard/uczestnicy",
       icon: IconUsers,
     },
+    {
+      title: "Dokumentacja",
+      url: "/trip-dashboard/dokumentacja",
+      icon: IconFileText,
+    },
   ]
 
   const globalNavItems = [
     {
       title: "Dodaj wycieczkę",
-      url: "/admin/trips/new",
+      url: "/trip-dashboard/dodaj-wycieczke",
       icon: IconPlus,
     },
     {
@@ -133,6 +139,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       title: "Komunikacja masowa",
       url: "/trip-dashboard/komunikacja-masowa",
       icon: IconMail,
+    },
+    {
+      title: "Dokumenty",
+      url: "/trip-dashboard/dokumenty",
+      icon: IconFileText,
     },
   ]
 

@@ -125,10 +125,28 @@ export async function createPaynowPayment(
     throw new Error(`Paynow payment failed: ${res.status} ${text}`);
   }
 
-  const data = (await res.json()) as {
-    paymentId: string;
-    redirectUrl?: string;
-  };
+  const responseText = await res.text();
+  let data: { paymentId: string; redirectUrl?: string; [key: string]: any };
+  
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    console.error("Failed to parse Paynow response:", responseText);
+    throw new Error(`Paynow payment failed: Invalid JSON response`);
+  }
+
+  // Debug logging - tylko w development
+  if (process.env.NODE_ENV === "development") {
+    console.log("Paynow payment response:", {
+      paymentId: data.paymentId,
+      redirectUrl: data.redirectUrl,
+      fullResponse: data,
+    });
+  }
+
+  if (!data.paymentId) {
+    throw new Error(`Paynow payment failed: Missing paymentId in response`);
+  }
 
   return {
     paymentId: data.paymentId,

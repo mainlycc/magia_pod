@@ -25,6 +25,8 @@ type InvoiceWithBooking = {
   created_at: string;
   updated_at: string;
   booking_id: string;
+  saldeo_invoice_id: string | null;
+  saldeo_error: string | null;
   bookings: {
     id: string;
     booking_ref: string;

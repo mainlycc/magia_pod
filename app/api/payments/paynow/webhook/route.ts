@@ -505,6 +505,68 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Wystaw fakturę automatycznie dla płatności z statusem "paid" lub "partial"
+  if ((newPaymentStatus === "paid" || newPaymentStatus === "partial") && paymentHistoryInserted) {
+    try {
+      // Sprawdź czy faktura już istnieje dla tego booking_id
+      const { data: existingInvoice } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("booking_id", booking.id)
+        .single();
+
+      if (!existingInvoice) {
+        console.log(`[Paynow Webhook] Creating invoice for booking ${booking.id} (${payload.externalId})`);
+        
+        // Pobierz ID ostatniej płatności z payment_history
+        const { data: lastPayment } = await supabase
+          .from("payment_history")
+          .select("id")
+          .eq("booking_id", booking.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        const paymentId = lastPayment?.id || null;
+
+        // Pobierz baseUrl dla wywołania API
+        const { origin } = new URL(request.url);
+        let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        
+        if (!baseUrl && process.env.VERCEL_URL) {
+          baseUrl = `https://${process.env.VERCEL_URL}`;
+        }
+        
+        if (!baseUrl) {
+          baseUrl = origin;
+        }
+
+        // Wywołaj endpoint do wystawiania faktury
+        const invoiceResponse = await fetch(`${baseUrl}/api/saldeo/invoice/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            booking_id: booking.id,
+            payment_id: paymentId,
+          }),
+        });
+
+        if (invoiceResponse.ok) {
+          const invoiceData = await invoiceResponse.json();
+          console.log(`[Paynow Webhook] ✓ Invoice created successfully:`, invoiceData);
+        } else {
+          const errorData = await invoiceResponse.json().catch(() => ({ error: "Unknown error" }));
+          console.error(`[Paynow Webhook] Failed to create invoice:`, errorData);
+        }
+      } else {
+        console.log(`[Paynow Webhook] Invoice already exists for booking ${booking.id}, skipping`);
+      }
+    } catch (err) {
+      // Błąd wystawiania faktury nie powinien blokować obsługi webhooka
+      console.error("[Paynow Webhook] Error creating invoice:", err);
+    }
+  }
+
   // Wyślij mail potwierdzający opłacenie rezerwacji tylko dla potwierdzonych płatności
   if (status === "CONFIRMED" && booking.contact_email) {
     try {

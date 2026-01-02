@@ -129,7 +129,7 @@ export async function POST(req: Request) {
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug",
+        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent",
       )
       .or(`slug.eq.${payload.slug},public_slug.eq.${payload.slug}`)
       .eq("is_active", true)
@@ -364,33 +364,81 @@ export async function POST(req: Request) {
       console.log("✅ access_token retrieved from INSERT:", accessToken);
     }
 
-    const participantsPayload = payload.participants.map((participant) => ({
-      booking_id: booking.id,
-      first_name: participant.first_name.trim(),
-      last_name: participant.last_name.trim(),
-      pesel: participant.pesel || null,
-      email: participant.email ?? null,
-      phone: participant.phone ?? null,
-      document_type: participant.document_type ?? null,
-      document_number: participant.document_number ?? null,
-      document_issue_date: participant.document_issue_date
-        ? new Date(participant.document_issue_date)
-        : null,
-      document_expiry_date: participant.document_expiry_date
-        ? new Date(participant.document_expiry_date)
-        : null,
-      gender_code: participant.gender_code ?? null,
-      address: payload.address ?? null,
-    }));
+    const participantsPayload = payload.participants.map((participant) => {
+      const participantData: any = {
+        booking_id: booking.id,
+        first_name: participant.first_name.trim(),
+        last_name: participant.last_name.trim(),
+        pesel: participant.pesel && participant.pesel.trim() !== "" ? participant.pesel.trim() : null,
+        email: participant.email && participant.email.trim() !== "" ? participant.email.trim() : null,
+        phone: participant.phone && participant.phone.trim() !== "" ? participant.phone.trim() : null,
+        document_type: participant.document_type ?? null,
+        document_number: participant.document_number && participant.document_number.trim() !== "" ? participant.document_number.trim() : null,
+        // gender_code - tymczasowo usunięte, ponieważ kolumna nie istnieje w bazie
+        // Aby dodać z powrotem, uruchom migrację 017_insurance_hdi_enhancements.sql
+        // gender_code: participant.gender_code ?? null,
+      };
+      
+      // Obsługa dat dokumentu - konwersja string na Date tylko jeśli data jest poprawna
+      if (participant.document_issue_date && participant.document_issue_date.trim() !== "") {
+        try {
+          const issueDate = new Date(participant.document_issue_date);
+          if (!isNaN(issueDate.getTime())) {
+            participantData.document_issue_date = issueDate.toISOString().split('T')[0]; // Format YYYY-MM-DD
+          }
+        } catch (e) {
+          console.warn("Invalid document_issue_date:", participant.document_issue_date);
+        }
+      }
+      
+      if (participant.document_expiry_date && participant.document_expiry_date.trim() !== "") {
+        try {
+          const expiryDate = new Date(participant.document_expiry_date);
+          if (!isNaN(expiryDate.getTime())) {
+            participantData.document_expiry_date = expiryDate.toISOString().split('T')[0]; // Format YYYY-MM-DD
+          }
+        } catch (e) {
+          console.warn("Invalid document_expiry_date:", participant.document_expiry_date);
+        }
+      }
+      
+      // Address - używamy adresu kontaktu, nie adresu uczestnika (jeśli nie ma osobnego)
+      // Sprawdzamy czy address jest obiektem i czy ma wymagane pola
+      if (payload.address && typeof payload.address === 'object') {
+        participantData.address = payload.address;
+      }
+      
+      return participantData;
+    });
+    
+    console.log("📝 Participants payload prepared:", JSON.stringify(participantsPayload, null, 2));
 
     const adminSupabase = createAdminClient();
-    const { error: participantsErr } = await adminSupabase.from("participants").insert(participantsPayload);
+    const { error: participantsErr, data: participantsData } = await adminSupabase.from("participants").insert(participantsPayload).select();
 
     if (participantsErr) {
+      console.error("❌ Error inserting participants:", {
+        error: participantsErr,
+        message: participantsErr.message,
+        code: participantsErr.code,
+        details: participantsErr.details,
+        hint: participantsErr.hint,
+        participantsPayload: JSON.stringify(participantsPayload, null, 2),
+      });
       await adminSupabase.from("bookings").delete().eq("id", booking.id);
       await rollbackSeats();
-      return NextResponse.json({ error: "Failed to add participants" }, { status: 500 });
+      return NextResponse.json(
+        { 
+          error: "Failed to add participants",
+          details: participantsErr.message || "Unknown error",
+          code: participantsErr.code,
+          hint: participantsErr.hint,
+        },
+        { status: 500 }
+      );
     }
+    
+    console.log("✅ Successfully inserted participants:", participantsData);
 
     // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
     // W przeciwnym razie Paynow przekieruje na localhost zamiast produkcyjnego URL
@@ -539,22 +587,57 @@ export async function POST(req: Request) {
     let redirectUrl: string | null = null;
     const unitPrice = trip.price_cents ?? 0;
     const totalAmountCents = unitPrice * seatsRequested;
+    
+    // Oblicz kwotę zaliczki i reszty na podstawie ustawień wycieczki
+    const paymentSplitEnabled = trip.payment_split_enabled ?? true;
+    const paymentSplitFirstPercent = trip.payment_split_first_percent ?? 30;
+    
+    let firstPaymentAmountCents = totalAmountCents;
+    let secondPaymentAmountCents = 0;
+    
+    if (paymentSplitEnabled) {
+      // Oblicz zaliczkę (np. 30% z pełnej kwoty)
+      firstPaymentAmountCents = Math.round((totalAmountCents * paymentSplitFirstPercent) / 100);
+      // Reszta to pozostała kwota
+      secondPaymentAmountCents = totalAmountCents - firstPaymentAmountCents;
+    }
+    
+    // Zapisz kwoty w booking
+    try {
+      const adminSupabase = createAdminClient();
+      await adminSupabase
+        .from("bookings")
+        .update({
+          first_payment_amount_cents: firstPaymentAmountCents,
+          second_payment_amount_cents: secondPaymentAmountCents,
+        })
+        .eq("id", booking.id);
+    } catch (err) {
+      console.error("Error updating payment amounts in booking:", err);
+      // Nie blokujemy rezerwacji jeśli aktualizacja się nie powiedzie
+    }
 
-    if (totalAmountCents > 0) {
+    console.log(`[Bookings POST] Creating Paynow payment: total=${totalAmountCents}, first_payment=${firstPaymentAmountCents} (${paymentSplitFirstPercent}%), second_payment=${secondPaymentAmountCents}, booking_ref=${booking.booking_ref}`);
+
+    if (firstPaymentAmountCents > 0) {
       try {
         // Utwórz URL powrotu - jeśli mamy access_token, przekieruj do strony rezerwacji, w przeciwnym razie do strony powrotu
         const returnUrl = accessToken
           ? `${baseUrl}/booking/${accessToken}`
           : `${baseUrl}/payments/return?booking_ref=${booking.booking_ref}`;
 
+        console.log(`[Bookings POST] Creating Paynow payment with returnUrl: ${returnUrl}`);
+        
         const payment = await createPaynowPayment({
-          amountCents: totalAmountCents,
+          amountCents: firstPaymentAmountCents, // Używamy kwoty zaliczki zamiast pełnej kwoty
           externalId: booking.booking_ref,
-          description: `Rezerwacja ${booking.booking_ref} - ${trip.title}`,
+          description: `Rezerwacja ${booking.booking_ref} - ${trip.title} (zaliczka ${paymentSplitFirstPercent}%)`,
           buyerEmail: payload.contact_email,
           continueUrl: returnUrl,
           notificationUrl: `${baseUrl}/api/payments/paynow/webhook`,
         });
+        
+        console.log(`[Bookings POST] Paynow payment created: paymentId=${payment.paymentId}, redirectUrl=${payment.redirectUrl}`);
         redirectUrl = payment.redirectUrl ?? null;
 
         // WAŻNE: Zapisz payment_id w payment_history - to pozwoli na sprawdzenie statusu bez webhooków
@@ -578,7 +661,7 @@ export async function POST(req: Request) {
           if (!existingPayment || existingPayment.length === 0) {
             // Dodaj wpis w historii płatności z paymentId (status pending)
             console.log(`[Bookings POST] Inserting payment history entry for payment ${payment.paymentId} (PENDING)`);
-            console.log(`[Bookings POST] Insert data: booking_id=${booking.id}, amount_cents=${totalAmountCents}, payment_method=paynow`);
+            console.log(`[Bookings POST] Insert data: booking_id=${booking.id}, amount_cents=${firstPaymentAmountCents}, payment_method=paynow`);
             
             // Użyj retry logic, aby upewnić się, że payment_id jest zawsze zapisane
             let retries = 3;
@@ -589,9 +672,9 @@ export async function POST(req: Request) {
                 .from("payment_history")
                 .insert({
                   booking_id: booking.id,
-                  amount_cents: totalAmountCents,
+                  amount_cents: firstPaymentAmountCents,
                   payment_method: "paynow",
-                  notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized)`,
+                  notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized) - zaliczka ${paymentSplitFirstPercent}%`,
                 })
                 .select();
 
@@ -604,7 +687,7 @@ export async function POST(req: Request) {
                   errorHint: insertError.hint,
                   bookingId: booking.id,
                   paymentId: payment.paymentId,
-                  amountCents: totalAmountCents,
+                  amountCents: firstPaymentAmountCents,
                 });
                 
                 retries--;
@@ -631,7 +714,12 @@ export async function POST(req: Request) {
       } catch (err) {
         // jeśli nie uda się stworzyć płatności, rezerwacja dalej istnieje,
         // ale użytkownik nie zostanie przekierowany do płatności online
-        console.error("Paynow create payment error", err);
+        console.error("[Bookings POST] ❌ Paynow create payment error:", err);
+        console.error("[Bookings POST] Error details:", {
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+        // redirectUrl pozostaje null, więc użytkownik zostanie przekierowany do booking_url
       }
     }
 
@@ -650,15 +738,21 @@ export async function POST(req: Request) {
       console.warn("   Please run migration 015_bookings_access_token.sql or 018_fix_access_token.sql");
     }
 
-    return NextResponse.json(
-      {
-        booking_ref: booking.booking_ref,
-        agreement_pdf_url: agreementPdfUrl,
-        booking_url: bookingUrl, // URL do strony rezerwacji (załączanie umowy + płatność)
-        redirect_url: redirectUrl, // Opcjonalny URL do Paynow (jeśli płatność została utworzona)
-      },
-      { status: 201 },
-    );
+    const responseData = {
+      booking_ref: booking.booking_ref,
+      agreement_pdf_url: agreementPdfUrl,
+      booking_url: bookingUrl, // URL do strony rezerwacji (załączanie umowy + płatność)
+      redirect_url: redirectUrl, // Opcjonalny URL do Paynow (jeśli płatność została utworzona)
+    };
+    
+    console.log("[Bookings POST] ✅ Returning response:", {
+      booking_ref: responseData.booking_ref,
+      has_booking_url: !!responseData.booking_url,
+      has_redirect_url: !!responseData.redirect_url,
+      redirect_url: responseData.redirect_url,
+    });
+    
+    return NextResponse.json(responseData, { status: 201 });
   } catch (error) {
     console.error("POST /api/bookings error", error);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });

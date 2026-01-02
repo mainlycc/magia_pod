@@ -61,4 +61,37 @@ using (
   and public.is_admin()
 );
 
+-- Utwórz publiczny bucket na dokumenty zgód (documents)
+insert into storage.buckets (id, name, public)
+values ('documents', 'documents', true)
+on conflict (id) do nothing;
+
+-- Polityki: publiczny odczyt dla wszystkich, upload tylko dla admina
+drop policy if exists storage_documents_read on storage.objects;
+create policy storage_documents_read
+on storage.objects
+for select
+to public
+using (bucket_id = 'documents');
+
+drop policy if exists storage_documents_insert on storage.objects;
+create policy storage_documents_insert
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'documents'
+  and public.is_admin()
+);
+
+drop policy if exists storage_documents_delete on storage.objects;
+create policy storage_documents_delete
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'documents'
+  and public.is_admin()
+);
+
 
