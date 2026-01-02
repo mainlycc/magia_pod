@@ -466,7 +466,7 @@ export function BookingForm({ slug }: BookingFormProps) {
 
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
-  const getFieldsToValidate = (stepId: string): FieldPath<BookingFormValues>[] => {
+  const getFieldsToValidate = (stepId: (typeof steps)[number]["id"]): FieldPath<BookingFormValues>[] => {
     const baseFields = stepFieldGroups[stepId] || [];
     
     if (stepId === "contact") {

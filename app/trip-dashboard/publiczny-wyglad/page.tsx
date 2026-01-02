@@ -122,7 +122,7 @@ export default function PublicznyWygladPage() {
           setAdditionalFieldSections(content.additional_fields as AdditionalFieldSection[])
         } else {
           // Stara struktura - pojedyncze pola, konwertuj na sekcję
-          const oldFields = content.additional_fields as Array<{ title: string; value: string }>
+          const oldFields = (content.additional_fields as unknown) as Array<{ title: string; value: string }>
           if (oldFields.length > 0) {
             setAdditionalFieldSections([{
               id: `section-${Date.now()}`,
