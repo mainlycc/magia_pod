@@ -45,6 +45,12 @@ const addressSchema = z.object({
   zip: z.string().min(4, "Podaj kod pocztowy"),
 });
 
+const optionalAddressSchema = z.object({
+  street: z.string().optional(),
+  city: z.string().optional(),
+  zip: z.string().optional(),
+}).optional();
+
 const companySchema = z
   .object({
     name: z.string().optional().or(z.literal("").transform(() => undefined)),
@@ -76,7 +82,7 @@ const companySchema = z
       name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
       nip: z
         .string()
-        .regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr")
+        .regex(/^\d{9,10}$/, "NIP/KRS musi mieć 9 (KRS) lub 10 (NIP) cyfr")
         .optional()
         .or(z.literal("").transform(() => undefined)),
       address: addressSchema.optional(),
@@ -150,7 +156,7 @@ const invoiceSchema = z
       if (!value.company?.nip) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Podaj NIP firmy do faktury",
+          message: "Podaj NIP/KRS firmy do faktury",
           path: ["company", "nip"],
         });
       }
@@ -190,7 +196,7 @@ const bookingFormSchema = z
         .or(z.literal("").transform(() => undefined)),
       email: z.string().email("Podaj poprawny e-mail"),
       phone: z.string().min(7, "Podaj telefon"),
-      address: addressSchema,
+      address: optionalAddressSchema,
     }),
     company: companySchema.optional(),
     participants: z.array(participantSchema),
@@ -234,7 +240,7 @@ const bookingFormSchema = z
       if (!value.company?.nip || value.company.nip.trim() === "") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Podaj NIP",
+          message: "Podaj NIP/KRS",
           path: ["company", "nip"],
         });
       }
@@ -296,9 +302,6 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
     "contact.last_name",
     "contact.email",
     "contact.phone",
-    "contact.address.street",
-    "contact.address.city",
-    "contact.address.zip",
     "company.name",
     "company.nip",
     "company.address.street",
@@ -404,11 +407,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         last_name: "",
         email: "",
         phone: "",
-        address: {
-          street: "",
-          city: "",
-          zip: "",
-        },
+        address: undefined,
       },
       company: {
         name: "",
@@ -479,9 +478,6 @@ export function BookingForm({ slug }: BookingFormProps) {
           "contact.last_name",
           "contact.email",
           "contact.phone",
-          "contact.address.street",
-          "contact.address.city",
-          "contact.address.zip",
         ];
       } else if (applicantType === "company") {
         // Dla firmy: first_name i last_name są opcjonalne, ale wymagaj pól firmy
@@ -489,9 +485,6 @@ export function BookingForm({ slug }: BookingFormProps) {
           "applicant_type",
           "contact.email",
           "contact.phone",
-          "contact.address.street",
-          "contact.address.city",
-          "contact.address.zip",
           "company.name",
           "company.nip",
           "company.address.street",
@@ -553,11 +546,13 @@ export function BookingForm({ slug }: BookingFormProps) {
             : undefined,
         contact_email: values.contact.email,
         contact_phone: values.contact.phone,
-        address: {
-          street: values.contact.address.street,
-          city: values.contact.address.city,
-          zip: values.contact.address.zip,
-        },
+        address: values.contact.address && (values.contact.address.street || values.contact.address.city || values.contact.address.zip)
+          ? {
+              street: values.contact.address.street || "",
+              city: values.contact.address.city || "",
+              zip: values.contact.address.zip || "",
+            }
+          : undefined,
         company_name:
           values.company?.name && values.company.name.trim() !== ""
             ? values.company.name
@@ -803,7 +798,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         .replace("company.address.city", "Miasto firmy")
                         .replace("company.address.zip", "Kod pocztowy firmy")
                         .replace("company.name", "Nazwa firmy")
-                        .replace("company.nip", "NIP firmy")
+                        .replace("company.nip", "NIP/KRS firmy")
                         .replace("contact.first_name", "Imię")
                         .replace("contact.last_name", "Nazwisko")
                         .replace("contact.email", "E-mail")
@@ -959,50 +954,6 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   <Separator />
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <FormField
-                      control={control}
-                      name="contact.address.street"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Ulica i numer</FormLabel>
-                          <FormControl>
-                            <Input placeholder="ul. Słoneczna 12/5" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={control}
-                      name="contact.address.city"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Miasto</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Warszawa" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={control}
-                      name="contact.address.zip"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Kod pocztowy</FormLabel>
-                          <FormControl>
-                            <Input placeholder="00-001" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <Separator />
-
                   {applicantType === "company" && (
                     <div className="space-y-4">
                       <h3 className="font-medium text-sm">Dane firmy</h3>
@@ -1029,9 +980,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                           name="company.nip"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>NIP</FormLabel>
+                              <FormLabel>NIP/KRS</FormLabel>
                               <FormControl>
-                                <Input placeholder="1234567890" {...field} value={field.value || ""} />
+                                <Input placeholder="1234567890 (NIP) lub 123456789 (KRS)" {...field} value={field.value || ""} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -1102,8 +1053,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               Proszę o wystawienie faktury na inne dane
                             </FormLabel>
                             <p className="text-xs text-muted-foreground">
-                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane zgłaszającego lub firmy
-                              (zgodnie z wybranym typem zgłoszenia).
+                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane zgłaszającego lub firmy.
                             </p>
                           </div>
                         </FormItem>
@@ -1232,9 +1182,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 name="invoice.company.nip"
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>NIP</FormLabel>
+                                    <FormLabel>NIP/KRS</FormLabel>
                                     <FormControl>
-                                      <Input placeholder="1234567890" {...field} value={field.value || ""} />
+                                      <Input placeholder="1234567890 (NIP) lub 123456789 (KRS)" {...field} value={field.value || ""} />
                                     </FormControl>
                                     <FormMessage />
                                   </FormItem>
@@ -1563,7 +1513,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                           )}
                           {companySummary.nip && (
                             <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">NIP</span>
+                              <span className="text-muted-foreground">NIP/KRS</span>
                               <span>{companySummary.nip || "—"}</span>
                             </div>
                           )}

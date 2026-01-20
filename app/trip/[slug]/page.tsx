@@ -39,7 +39,6 @@ type Trip = {
   section_poznaj_title: string | null
   section_poznaj_description: string | null
   location: string | null
-  category: string | null
   show_seats_left: boolean | null
   included_in_price_text: string | null
   additional_costs_text: string | null
@@ -77,7 +76,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
         let { data: tripData, error: tripError } = await supabase
           .from("trips")
           .select(
-            "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location,category"
+            "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location"
           )
           .eq("slug", slug)
           .maybeSingle<Trip>()
@@ -87,7 +86,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
           const { data: tripByPublicSlug, error: errorByPublicSlug } = await supabase
             .from("trips")
             .select(
-              "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location,category"
+              "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location"
             )
             .eq("public_slug", slug)
             .maybeSingle<Trip>()
@@ -322,7 +321,8 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                 parsed = JSON.parse(trip.trip_info_text)
                 isJson = true
                 hasWhatToBring = parsed.whatToBring && Array.isArray(parsed.whatToBring) && parsed.whatToBring.length > 0
-                hasIncludedInPrice = parsed.includedInPrice && Array.isArray(parsed.includedInPrice) && parsed.includedInPrice.length > 0
+                // Nie wyświetlaj includedInPrice z trip_info_text, jeśli istnieje included_in_price_text (unika duplikacji)
+                hasIncludedInPrice = !trip.included_in_price_text && parsed.includedInPrice && Array.isArray(parsed.includedInPrice) && parsed.includedInPrice.length > 0
               } catch {
                 // Nie jest JSON
               }
@@ -376,7 +376,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                       </div>
                     )}
 
-                    {/* Świadczenia w cenie – repeater (read-only) */}
+                    {/* Świadczenia w cenie – repeater (read-only) - tylko jeśli nie ma included_in_price_text */}
                     {hasIncludedInPrice && (
                       <div className="space-y-3">
                         {parsed.includedInPrice.map((item: { id: string; title: string; content: string }, index: number) => (
@@ -405,25 +405,31 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
             })()}
 
             {/* Bagaż */}
-            {trip.baggage_text && (
+            {trip.baggage_text && trip.baggage_text.trim() && (
               <Card>
                 <CardHeader className="px-3 py-2">
                   <CardTitle className="text-sm font-semibold">Bagaż</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-2">
-                  <p className="text-sm text-muted-foreground">{trip.baggage_text}</p>
+                  <div 
+                    className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                    dangerouslySetInnerHTML={{ __html: trip.baggage_text }}
+                  />
                 </CardContent>
               </Card>
             )}
 
             {/* Pogoda */}
-            {trip.weather_text && (
+            {trip.weather_text && trip.weather_text.trim() && (
               <Card>
                 <CardHeader className="px-3 py-2">
                   <CardTitle className="text-sm font-semibold">Pogoda</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-2">
-                  <p className="text-sm text-muted-foreground">{trip.weather_text}</p>
+                  <div 
+                    className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                    dangerouslySetInnerHTML={{ __html: trip.weather_text }}
+                  />
                 </CardContent>
               </Card>
             )}
@@ -601,13 +607,9 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                     disabled={seatsLeft <= 0}
                   >
                     <Link href={`/trip/${trip.slug}/reserve`}>
-                      {seatsLeft > 0 ? "Przejdź do rezerwacji" : "Brak wolnych miejsc"}
+                      {seatsLeft > 0 ? "Zarezerwuj" : "Brak wolnych miejsc"}
                     </Link>
                   </Button>
-
-                  <p className="text-xs text-center text-muted-foreground leading-tight">
-                    Do rezerwacji potrzebne będą dane kontaktowe oraz lista uczestników. Po złożeniu rezerwacji otrzymasz e-mail z potwierdzeniem i wzorem umowy.
-                  </p>
                 </div>
               </CardContent>
             </Card>

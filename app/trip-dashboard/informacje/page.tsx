@@ -419,16 +419,7 @@ export default function TripGeneralInfoPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <Label className="text-xs">Kategoria</Label>
-                  <Input
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    placeholder="np. Wycieczki górskie"
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <Label className="text-xs">Miejsce</Label>
+                  <Label className="text-xs">Trasa/Kraj</Label>
                   <Input
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}

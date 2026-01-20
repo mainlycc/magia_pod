@@ -32,11 +32,9 @@ export default function PublicznyWygladPage() {
   const [sectionPoznajTitle, setSectionPoznajTitle] = useState("")
   const [sectionPoznajDescription, setSectionPoznajDescription] = useState("")
   const [tripInfoText, setTripInfoText] = useState("")
-  const [includedInPriceLeftText, setIncludedInPriceLeftText] = useState("")
   const [baggageText, setBaggageText] = useState("")
   const [weatherText, setWeatherText] = useState("")
   const [showTripInfoConfigCard, setShowTripInfoConfigCard] = useState(true)
-  const [showIncludedInPriceLeftCard, setShowIncludedInPriceLeftCard] = useState(true)
   const [showBaggageCard, setShowBaggageCard] = useState(true)
   const [showWeatherCard, setShowWeatherCard] = useState(true)
   const [showSeatsLeft, setShowSeatsLeft] = useState(false)
@@ -106,7 +104,6 @@ export default function PublicznyWygladPage() {
       setSectionPoznajTitle(content.section_poznaj_title || "")
       setSectionPoznajDescription(content.section_poznaj_description || "")
       setTripInfoText(content.trip_info_text || "")
-      setIncludedInPriceLeftText(content.included_in_price_text || "")
       setBaggageText(content.baggage_text || "")
       setWeatherText(content.weather_text || "")
       setShowSeatsLeft(content.show_seats_left ?? false)
@@ -518,30 +515,6 @@ export default function PublicznyWygladPage() {
             </Card>
           )}
 
-          {/* W cenie wycieczki – osobna karta */}
-          {showIncludedInPriceLeftCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
-                <CardTitle className="text-sm font-semibold">W cenie wycieczki</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowIncludedInPriceLeftCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-2">
-                <Textarea
-                  value={includedInPriceLeftText}
-                  onChange={(e) => setIncludedInPriceLeftText(e.target.value)}
-                  placeholder="Wpisz co jest w cenie wycieczki..."
-                  className="min-h-[80px] text-xs"
-                />
-              </CardContent>
-            </Card>
-          )}
-
           {/* Bagaż – osobna karta */}
           {showBaggageCard && (
             <Card>
@@ -591,7 +564,7 @@ export default function PublicznyWygladPage() {
           )}
 
           {/* Przycisk przywracania ukrytych kart */}
-          {(!showTripInfoConfigCard || !showIncludedInPriceLeftCard || !showBaggageCard || !showWeatherCard || hiddenAdditionalSections.length > 0) && (
+          {(!showTripInfoConfigCard || !showBaggageCard || !showWeatherCard || hiddenAdditionalSections.length > 0) && (
             <Card>
               <CardContent className="pt-6">
                 <Button
@@ -600,7 +573,6 @@ export default function PublicznyWygladPage() {
                   className="w-full"
                   onClick={() => {
                     setShowTripInfoConfigCard(true)
-                    setShowIncludedInPriceLeftCard(true)
                     setShowBaggageCard(true)
                     setShowWeatherCard(true)
                     setHiddenAdditionalSections([])
