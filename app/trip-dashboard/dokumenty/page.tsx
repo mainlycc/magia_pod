@@ -150,13 +150,6 @@ export default function DokumentyPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dokumenty zgód</h1>
-        <p className="text-muted-foreground mt-2">
-          Zarządzaj dokumentami PDF używanymi domyślnie dla wszystkich wycieczek
-        </p>
-      </div>
-
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
         {documentTypes.map((docType) => {
           const document = getDocument(docType.type)

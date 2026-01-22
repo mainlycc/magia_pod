@@ -287,12 +287,6 @@ export default function ZaproszeniaKoordynatorowPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold">Zaproszenia koordynatorów</h1>
-        <p className="text-muted-foreground mt-2">
-          Zarządzaj zaproszeniami dla koordynatorów wycieczek
-        </p>
-      </div>
 
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">

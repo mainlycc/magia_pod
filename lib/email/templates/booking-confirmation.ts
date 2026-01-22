@@ -4,7 +4,8 @@ export function generateBookingConfirmationEmail(
   tripTitle: string,
   tripStartDate: string | null,
   tripEndDate: string | null,
-  participantsCount: number
+  participantsCount: number,
+  paymentLink?: string | null
 ): string {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
@@ -97,7 +98,7 @@ export function generateBookingConfirmationEmail(
                 </ol>
               </div>
               
-              <!-- CTA Button -->
+              <!-- CTA Buttons -->
               <table role="presentation" style="width: 100%; margin: 30px 0;">
                 <tr>
                   <td align="center" style="padding: 0;">
@@ -111,6 +112,27 @@ export function generateBookingConfirmationEmail(
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6b7280; text-align: center; line-height: 1.5;">
                 Kliknij powyższy przycisk, aby przejść do strony, gdzie możesz przesłać podpisaną umowę w formacie PDF.
               </p>
+              ${paymentLink ? `
+              <!-- Payment Link -->
+              <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 6px; margin: 20px 0;">
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #1e40af; font-weight: 600;">
+                  💳 Płatność
+                </p>
+                <p style="margin: 0 0 12px 0; font-size: 14px; color: #1e40af; line-height: 1.5;">
+                  Możesz dokonać płatności za rezerwację klikając w poniższy link:
+                </p>
+                <table role="presentation" style="width: 100%; margin: 12px 0;">
+                  <tr>
+                    <td align="center" style="padding: 0;">
+                      <a href="${paymentLink}" 
+                         style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: all 0.3s ease;">
+                        Zapłać teraz
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+              ` : ''}
               
               <!-- Instructions -->
               <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 6px; margin: 20px 0;">

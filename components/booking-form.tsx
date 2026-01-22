@@ -16,9 +16,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -34,10 +36,11 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -62,6 +65,9 @@ const companySchema = z
         zip: z.string().optional(),
       })
       .optional(),
+    has_representative: z.boolean().optional(),
+    representative_first_name: z.string().optional().or(z.literal("").transform(() => undefined)),
+    representative_last_name: z.string().optional().or(z.literal("").transform(() => undefined)),
   })
   .transform((val) => {
     // Jeśli address istnieje, ale wszystkie pola są puste, usuń address
@@ -80,12 +86,30 @@ const companySchema = z
   .pipe(
     z.object({
       name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
-      nip: z
-        .string()
-        .regex(/^\d{9,10}$/, "NIP/KRS musi mieć 9 (KRS) lub 10 (NIP) cyfr")
-        .optional()
-        .or(z.literal("").transform(() => undefined)),
+      nip: z.string().optional().or(z.literal("").transform(() => undefined)),
       address: addressSchema.optional(),
+      has_representative: z.boolean().optional(),
+      representative_first_name: z.string().optional().or(z.literal("").transform(() => undefined)),
+      representative_last_name: z.string().optional().or(z.literal("").transform(() => undefined)),
+    })
+    .superRefine((value, ctx) => {
+      // Jeśli has_representative jest true, wymagaj imienia i nazwiska
+      if (value.has_representative === true) {
+        if (!value.representative_first_name || value.representative_first_name.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj imię osoby do reprezentacji",
+            path: ["representative_first_name"],
+          });
+        }
+        if (!value.representative_last_name || value.representative_last_name.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj nazwisko osoby do reprezentacji",
+            path: ["representative_last_name"],
+          });
+        }
+      }
     })
   );
 
@@ -180,7 +204,26 @@ const invoiceSchema = z
     }
   });
 
-const bookingFormSchema = z
+const participantServiceSchema = z.object({
+  type: z.enum(["insurance", "attraction", "diet"]),
+  service_id: z.string(),
+  variant_id: z.string().optional(),
+  price_cents: z.number().nullable().optional(),
+  currency: z.enum(["PLN", "EUR"]).optional(),
+  include_in_contract: z.boolean().optional(),
+  // Dla osoby fizycznej: indeks uczestnika z listy
+  participant_index: z.number().optional(),
+  // Dla firmy: imię i nazwisko uczestnika
+  participant_first_name: z.string().optional(),
+  participant_last_name: z.string().optional(),
+});
+
+const createBookingFormSchema = (requiredFields?: {
+  pesel?: boolean;
+  document?: boolean;
+  gender?: boolean;
+  phone?: boolean;
+} | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
     contact: z.object({
@@ -194,12 +237,18 @@ const bookingFormSchema = z
         .min(2, "Podaj nazwisko")
         .optional()
         .or(z.literal("").transform(() => undefined)),
+      pesel: z
+        .string()
+        .regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
+        .min(11, "PESEL jest wymagany"),
       email: z.string().email("Podaj poprawny e-mail"),
       phone: z.string().min(7, "Podaj telefon"),
       address: optionalAddressSchema,
     }),
     company: companySchema.optional(),
     participants: z.array(participantSchema),
+    participants_count: z.number().min(1, "Liczba uczestników musi być większa od 0").optional(),
+    participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
       rodo: z.literal(true),
       terms: z.literal(true),
@@ -266,7 +315,70 @@ const bookingFormSchema = z
         });
       }
     }
+
+    // Walidacja pól uczestników na podstawie konfiguracji
+    if (requiredFields && value.applicant_type !== "company") {
+      value.participants.forEach((participant, index) => {
+        if (requiredFields.pesel) {
+          if (!participant.pesel || participant.pesel.trim() === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "PESEL jest wymagany",
+              path: ["participants", index, "pesel"],
+            });
+          } else if (!/^\d{11}$/.test(participant.pesel)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "PESEL musi mieć dokładnie 11 cyfr",
+              path: ["participants", index, "pesel"],
+            });
+          }
+        }
+        if (requiredFields.document) {
+          if (!participant.document_type) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Wybierz typ dokumentu",
+              path: ["participants", index, "document_type"],
+            });
+          }
+          if (!participant.document_number || participant.document_number.trim() === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Podaj numer dokumentu",
+              path: ["participants", index, "document_number"],
+            });
+          }
+        }
+        if (requiredFields.gender) {
+          if (!participant.gender_code) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Wybierz płeć",
+              path: ["participants", index, "gender_code"],
+            });
+          }
+        }
+        if (requiredFields.phone) {
+          if (!participant.phone || participant.phone.trim() === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Podaj telefon",
+              path: ["participants", index, "phone"],
+            });
+          } else if (participant.phone.length < 7) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Telefon jest zbyt krótki",
+              path: ["participants", index, "phone"],
+            });
+          }
+        }
+      });
+    }
   });
+
+const bookingFormSchema = createBookingFormSchema();
 
 type BookingFormValues = z.infer<typeof bookingFormSchema>;
 
@@ -275,19 +387,54 @@ type RegistrationMode = "individual" | "company" | "both";
 type TripConfig = {
   registration_mode: RegistrationMode | null;
   require_pesel: boolean | null;
+  form_show_additional_services: boolean | null;
   company_participants_info: string | null;
+  seats_total: number | null;
+  additional_attractions?: { 
+    id: string; 
+    title: string; 
+    description: string; 
+    price_cents: number | null;
+    include_in_contract?: boolean;
+    currency?: "PLN" | "EUR";
+  }[];
+  diets?: { 
+    id: string; 
+    title: string; 
+    description: string; 
+    price_cents: number | null;
+    variants?: { id: string; title: string; price_cents: number | null }[];
+  }[];
+  extra_insurances?: { 
+    id: string; 
+    title: string; 
+    description: string; 
+    owu_url: string;
+    variants?: { id: string; title: string; price_cents: number | null }[];
+  }[];
+  form_required_participant_fields?: {
+    pesel?: boolean;
+    document?: boolean;
+    gender?: boolean;
+    phone?: boolean;
+  } | null;
 };
 
 const steps = [
   {
     id: "contact",
     label: "Kontakt",
-    description: "Dane osoby kontaktowej i adres korespondencyjny",
+    description: "Dane osoby zgłaszającej i adres korespondencyjny",
   },
   {
     id: "participants",
     label: "Uczestnicy",
     description: "Lista uczestników oraz dokumenty podróży",
+  },
+  {
+    id: "services",
+    label: "Usługi dodatkowe",
+    description: "Ubezpieczenia, atrakcje i diety",
   },
   {
     id: "summary",
@@ -300,6 +447,7 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
   contact: [
     "contact.first_name",
     "contact.last_name",
+    "contact.pesel",
     "contact.email",
     "contact.phone",
     "company.name",
@@ -309,6 +457,7 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
     "company.address.zip",
   ],
   participants: ["participants"],
+  services: ["participant_services"],
   summary: ["consents.rodo", "consents.terms", "consents.conditions"],
 };
 
@@ -339,9 +488,9 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,seats_total")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
-          .maybeSingle<TripConfig & { slug: string; public_slug: string | null; price_cents: number | null; payment_split_enabled: boolean | null; payment_split_first_percent: number | null; id: string }>();
+          .maybeSingle<TripConfig & { slug: string; public_slug: string | null; price_cents: number | null; payment_split_enabled: boolean | null; payment_split_first_percent: number | null; id: string; seats_total: number | null; form_additional_attractions?: unknown; form_diets?: unknown; form_extra_insurances?: unknown; form_required_participant_fields?: unknown }>();
 
         if (tripError) {
           console.error("Error loading trip config:", tripError);
@@ -353,7 +502,23 @@ export function BookingForm({ slug }: BookingFormProps) {
           setTripConfig({
             registration_mode: (trip.registration_mode as RegistrationMode) ?? "both",
             require_pesel: typeof trip.require_pesel === "boolean" ? trip.require_pesel : true,
+            form_show_additional_services: typeof trip.form_show_additional_services === "boolean" ? trip.form_show_additional_services : false,
             company_participants_info: trip.company_participants_info,
+            seats_total: typeof trip.seats_total === "number" ? trip.seats_total : null,
+            additional_attractions: Array.isArray(trip.form_additional_attractions) 
+              ? trip.form_additional_attractions as TripConfig["additional_attractions"]
+              : [],
+            diets: Array.isArray(trip.form_diets)
+              ? trip.form_diets as TripConfig["diets"]
+              : [],
+            extra_insurances: Array.isArray(trip.form_extra_insurances)
+              ? trip.form_extra_insurances as TripConfig["extra_insurances"]
+              : [],
+            form_required_participant_fields: trip.form_required_participant_fields &&
+              typeof trip.form_required_participant_fields === "object" &&
+              !Array.isArray(trip.form_required_participant_fields)
+              ? trip.form_required_participant_fields as TripConfig["form_required_participant_fields"]
+              : null,
           });
 
           if (trip.registration_mode === "company") {
@@ -398,13 +563,18 @@ export function BookingForm({ slug }: BookingFormProps) {
     loadTripConfig();
   }, [slug]);
 
+  const bookingFormSchemaWithConfig = useMemo(() => {
+    return createBookingFormSchema(tripConfig?.form_required_participant_fields ?? null);
+  }, [tripConfig?.form_required_participant_fields]);
+
   const form = useForm({
-    resolver: zodResolver(bookingFormSchema),
+    resolver: zodResolver(bookingFormSchemaWithConfig),
     defaultValues: {
       applicant_type: "individual" as const,
       contact: {
         first_name: "",
         last_name: "",
+        pesel: "",
         email: "",
         phone: "",
         address: undefined,
@@ -417,8 +587,13 @@ export function BookingForm({ slug }: BookingFormProps) {
           city: "",
           zip: "",
         },
+        has_representative: false,
+        representative_first_name: "",
+        representative_last_name: "",
       },
       participants: [],
+      participants_count: undefined,
+      participant_services: [],
       consents: {
         rodo: true,
         terms: true,
@@ -441,9 +616,21 @@ export function BookingForm({ slug }: BookingFormProps) {
     setValue("applicant_type", applicantType);
   }, [applicantType, setValue]);
 
+  // Ustaw wartość domyślną dla participants_count z seats_total dla firmy
+  useEffect(() => {
+    if (applicantType === "company" && tripConfig?.seats_total && !form.getValues("participants_count")) {
+      setValue("participants_count", tripConfig.seats_total);
+    }
+  }, [applicantType, tripConfig?.seats_total, setValue, form]);
+
   const { fields, append, remove } = useFieldArray({
     control,
     name: "participants",
+  });
+
+  const { fields: serviceFields, append: appendService, remove: removeService } = useFieldArray({
+    control,
+    name: "participant_services",
   });
 
   const contactWatch = useWatch({
@@ -463,6 +650,27 @@ export function BookingForm({ slug }: BookingFormProps) {
 
   const currentStep = steps[activeStepIndex];
 
+  // Sprawdź czy krok usług dodatkowych ma być widoczny (z ustawień wycieczki)
+  const hasAdditionalServices = useMemo(() => {
+    if (!tripConfig) return false;
+    return tripConfig.form_show_additional_services === true;
+  }, [tripConfig]);
+
+  // Filtruj kroki - usuń "services" jeśli nie ma usług dodatkowych
+  const visibleSteps = useMemo(() => {
+    return hasAdditionalServices ? steps : steps.filter(s => s.id !== "services");
+  }, [hasAdditionalServices]);
+
+  // Mapuj activeStepIndex na visibleSteps
+  const mappedStepIndex = useMemo(() => {
+    const currentStepId = steps[activeStepIndex].id;
+    if (!hasAdditionalServices && currentStepId === "services") {
+      // Jeśli services nie jest widoczny, przejdź do summary
+      return visibleSteps.findIndex(s => s.id === "summary");
+    }
+    return visibleSteps.findIndex(s => s.id === currentStepId);
+  }, [activeStepIndex, hasAdditionalServices, visibleSteps]);
+
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
   const getFieldsToValidate = (stepId: (typeof steps)[number]["id"]): FieldPath<BookingFormValues>[] => {
@@ -471,18 +679,20 @@ export function BookingForm({ slug }: BookingFormProps) {
     if (stepId === "contact") {
       // Dla kroku kontaktowego, dostosuj pola do walidacji w zależności od typu zgłaszającego
       if (applicantType === "individual") {
-        // Dla osoby fizycznej: wymagaj first_name i last_name, nie waliduj pól firmy
+        // Dla osoby fizycznej: wymagaj first_name, last_name i pesel, nie waliduj pól firmy
         return [
           "applicant_type",
           "contact.first_name",
           "contact.last_name",
+          "contact.pesel",
           "contact.email",
           "contact.phone",
         ];
       } else if (applicantType === "company") {
-        // Dla firmy: first_name i last_name są opcjonalne, ale wymagaj pól firmy
+        // Dla firmy: first_name i last_name są opcjonalne, ale wymagaj pesel i pól firmy
         return [
           "applicant_type",
+          "contact.pesel",
           "contact.email",
           "contact.phone",
           "company.name",
@@ -517,17 +727,40 @@ export function BookingForm({ slug }: BookingFormProps) {
     const fieldsToValidate = getFieldsToValidate(currentStep.id);
     const isValid = await trigger(fieldsToValidate);
     if (!isValid) return;
-    const nextIndex = Math.min(activeStepIndex + 1, steps.length - 1);
-    setActiveStepIndex(nextIndex);
-    setMaxAvailableStep((prev) => Math.max(prev, nextIndex));
+    
+    // Znajdź następny widoczny krok
+    let nextIndex = activeStepIndex + 1;
+    while (nextIndex < steps.length) {
+      const nextStepId = steps[nextIndex].id;
+      if (nextStepId === "services" && !hasAdditionalServices) {
+        nextIndex++;
+        continue;
+      }
+      break;
+    }
+    
+    const finalNextIndex = Math.min(nextIndex, steps.length - 1);
+    setActiveStepIndex(finalNextIndex);
+    setMaxAvailableStep((prev) => Math.max(prev, finalNextIndex));
   };
 
   const goToPrevStep = () => {
-    const prevIndex = Math.max(activeStepIndex - 1, 0);
-    setActiveStepIndex(prevIndex);
+    // Znajdź poprzedni widoczny krok
+    let prevIndex = activeStepIndex - 1;
+    while (prevIndex >= 0) {
+      const prevStepId = steps[prevIndex].id;
+      if (prevStepId === "services" && !hasAdditionalServices) {
+        prevIndex--;
+        continue;
+      }
+      break;
+    }
+    
+    const finalPrevIndex = Math.max(prevIndex, 0);
+    setActiveStepIndex(finalPrevIndex);
   };
 
-  const onSubmit = async (values: BookingFormValues) => {
+  const onSubmit = async (values: BookingFormValues, withPayment: boolean = false) => {
     console.log("onSubmit called", values);
     console.log("onSubmit applicant_type:", values.applicant_type);
     console.log("onSubmit applicantType state:", applicantType);
@@ -544,6 +777,7 @@ export function BookingForm({ slug }: BookingFormProps) {
           values.contact.last_name && values.contact.last_name.trim() !== ""
             ? values.contact.last_name
             : undefined,
+        contact_pesel: values.contact.pesel,
         contact_email: values.contact.email,
         contact_phone: values.contact.phone,
         address: values.contact.address && (values.contact.address.street || values.contact.address.city || values.contact.address.zip)
@@ -568,19 +802,151 @@ export function BookingForm({ slug }: BookingFormProps) {
               zip: values.company.address.zip,
             }
           : undefined,
-        participants: values.participants.map((p) => ({
-          first_name: p.first_name,
-          last_name: p.last_name,
-          pesel: p.pesel && p.pesel.toString().trim() !== "" ? p.pesel : undefined,
-          email: p.email && p.email.trim() !== "" ? p.email : undefined,
-          phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
-          gender_code: p.gender_code || undefined,
-          document_type: p.document_type || undefined,
-          document_number:
-            p.document_number && p.document_number.trim() !== ""
-              ? p.document_number
-              : undefined,
-        })),
+        company_representative_first_name:
+          values.company?.has_representative && values.company?.representative_first_name && values.company.representative_first_name.trim() !== ""
+            ? values.company.representative_first_name
+            : undefined,
+        company_representative_last_name:
+          values.company?.has_representative && values.company?.representative_last_name && values.company.representative_last_name.trim() !== ""
+            ? values.company.representative_last_name
+            : undefined,
+        participants: (() => {
+          if (applicantType === "company") {
+            // Dla firmy: utwórz uczestników na podstawie usług lub participants_count
+            const services = values.participant_services || [];
+            const participantsCount = values.participants_count || 0;
+            const uniqueParticipants = new Map<string, { first_name: string; last_name: string; services: any[] }>();
+            
+            // Najpierw zbierz uczestników z usług
+            services.forEach((service: any) => {
+              if (service.participant_first_name && service.participant_last_name) {
+                const key = `${service.participant_first_name}_${service.participant_last_name}`;
+                if (!uniqueParticipants.has(key)) {
+                  uniqueParticipants.set(key, {
+                    first_name: service.participant_first_name,
+                    last_name: service.participant_last_name,
+                    services: [],
+                  });
+                }
+                uniqueParticipants.get(key)!.services.push(service);
+              }
+            });
+            
+            // Jeśli nie ma uczestników z usług, utwórz uczestników na podstawie participants_count
+            if (uniqueParticipants.size === 0 && participantsCount > 0) {
+              for (let i = 0; i < participantsCount; i++) {
+                const key = `participant_${i}`;
+                uniqueParticipants.set(key, {
+                  first_name: "",
+                  last_name: "",
+                  services: [],
+                });
+              }
+            }
+            
+            return Array.from(uniqueParticipants.values()).map((participantData) => {
+              const selectedServices: {
+                insurances?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
+                attractions?: Array<{ service_id: string; price_cents?: number | null; currency?: string; include_in_contract?: boolean }>;
+                diets?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
+              } = {};
+              
+              participantData.services.forEach((service) => {
+                if (service.type === "insurance") {
+                  if (!selectedServices.insurances) selectedServices.insurances = [];
+                  selectedServices.insurances.push({
+                    service_id: service.service_id,
+                    variant_id: service.variant_id,
+                    price_cents: service.price_cents ?? null,
+                  });
+                } else if (service.type === "attraction") {
+                  if (!selectedServices.attractions) selectedServices.attractions = [];
+                  selectedServices.attractions.push({
+                    service_id: service.service_id,
+                    price_cents: service.price_cents ?? null,
+                    currency: service.currency || "PLN",
+                    include_in_contract: service.include_in_contract ?? true,
+                  });
+                } else if (service.type === "diet") {
+                  if (!selectedServices.diets) selectedServices.diets = [];
+                  selectedServices.diets.push({
+                    service_id: service.service_id,
+                    variant_id: service.variant_id,
+                    price_cents: service.price_cents ?? null,
+                  });
+                }
+              });
+              
+              return {
+                first_name: participantData.first_name,
+                last_name: participantData.last_name,
+                pesel: undefined,
+                email: undefined,
+                phone: undefined,
+                gender_code: undefined,
+                document_type: undefined,
+                document_number: undefined,
+                selected_services: Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
+              };
+            });
+          } else {
+            // Dla osoby fizycznej: użyj istniejących uczestników
+            return values.participants.map((p, index) => {
+              // Znajdź usługi przypisane do tego uczestnika
+              const participantServices = (values.participant_services || []).filter((service) => {
+                return service.participant_index === index;
+              });
+              
+              // Przekształć usługi na format selected_services
+              const selectedServices: {
+                insurances?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
+                attractions?: Array<{ service_id: string; price_cents?: number | null; currency?: string; include_in_contract?: boolean }>;
+                diets?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
+              } = {};
+              
+              participantServices.forEach((service) => {
+                if (service.type === "insurance") {
+                  if (!selectedServices.insurances) selectedServices.insurances = [];
+                  selectedServices.insurances.push({
+                    service_id: service.service_id,
+                    variant_id: service.variant_id,
+                    price_cents: service.price_cents ?? null,
+                  });
+                } else if (service.type === "attraction") {
+                  if (!selectedServices.attractions) selectedServices.attractions = [];
+                  selectedServices.attractions.push({
+                    service_id: service.service_id,
+                    price_cents: service.price_cents ?? null,
+                    currency: service.currency || "PLN",
+                    include_in_contract: service.include_in_contract ?? true,
+                  });
+                } else if (service.type === "diet") {
+                  if (!selectedServices.diets) selectedServices.diets = [];
+                  selectedServices.diets.push({
+                    service_id: service.service_id,
+                    variant_id: service.variant_id,
+                    price_cents: service.price_cents ?? null,
+                  });
+                }
+              });
+              
+              return {
+                first_name: p.first_name,
+                last_name: p.last_name,
+                pesel: p.pesel && p.pesel.toString().trim() !== "" ? p.pesel : undefined,
+                email: p.email && p.email.trim() !== "" ? p.email : undefined,
+                phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
+                gender_code: p.gender_code || undefined,
+                document_type: p.document_type || undefined,
+                document_number:
+                  p.document_number && p.document_number.trim() !== ""
+                    ? p.document_number
+                    : undefined,
+                selected_services: Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
+              };
+            });
+          }
+        })(),
         consents: values.consents,
       };
 
@@ -637,6 +1003,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         invoice_name,
         invoice_nip,
         invoice_address,
+        with_payment: withPayment,
       };
 
       const response = await fetch("/api/bookings", {
@@ -680,37 +1047,56 @@ export function BookingForm({ slug }: BookingFormProps) {
       console.log("booking_url:", data?.booking_url);
       
       // Wyświetl komunikat sukcesu
-      toast.success("Rezerwacja została potwierdzona!", {
-        description: `Kod rezerwacji: ${data?.booking_ref || ""}. Przekierowywanie do płatności...`,
-        duration: 2000,
-      });
+      if (withPayment) {
+        toast.success("Rezerwacja została potwierdzona!", {
+          description: `Kod rezerwacji: ${data?.booking_ref || ""}. Przekierowywanie do płatności...`,
+          duration: 2000,
+        });
 
-      // PRIORYTET 1: Jeśli jest redirect_url (Paynow), przekieruj od razu do płatności
-      if (data?.redirect_url && typeof data.redirect_url === "string" && data.redirect_url.trim() !== "") {
-        console.log("Redirecting to Paynow:", data.redirect_url);
-        // Użyj setTimeout, aby dać czas na wyświetlenie toast
+        // PRIORYTET 1: Jeśli jest redirect_url (Paynow), przekieruj od razu do płatności
+        if (data?.redirect_url && typeof data.redirect_url === "string" && data.redirect_url.trim() !== "") {
+          console.log("Redirecting to Paynow:", data.redirect_url);
+          // Użyj setTimeout, aby dać czas na wyświetlenie toast
+          setTimeout(() => {
+            window.location.replace(data.redirect_url as string);
+          }, 500);
+          return;
+        }
+
+        // PRIORYTET 2: Jeśli nie ma Paynow, przekieruj do strony rezerwacji (gdzie można załączyć umowę i zapłacić)
+        if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
+          console.log("Redirecting to booking page:", data.booking_url);
+          // Użyj setTimeout, aby dać czas na wyświetlenie toast
+          setTimeout(() => {
+            window.location.replace(data.booking_url as string);
+          }, 500);
+          return;
+        }
+
+        // Ostatni fallback: strona wycieczki
+        console.warn("No redirect_url or booking_url, falling back to trip page");
+        console.warn("Response data:", JSON.stringify(data, null, 2));
         setTimeout(() => {
-          window.location.replace(data.redirect_url as string);
-        }, 500);
-        return;
-      }
+          router.push(`/trip/${slug}`);
+        }, 1000);
+      } else {
+        // Tylko rezerwacja bez płatności - pokaż komunikat sukcesu i przekieruj do strony rezerwacji
+        toast.success("Rezerwacja została potwierdzona!", {
+          description: `Kod rezerwacji: ${data?.booking_ref || ""}. Umowa została wysłana na Twój adres e-mail.`,
+          duration: 5000,
+        });
 
-      // PRIORYTET 2: Jeśli nie ma Paynow, przekieruj do strony rezerwacji (gdzie można załączyć umowę i zapłacić)
-      if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
-        console.log("Redirecting to booking page:", data.booking_url);
-        // Użyj setTimeout, aby dać czas na wyświetlenie toast
-        setTimeout(() => {
-          window.location.replace(data.booking_url as string);
-        }, 500);
-        return;
+        // Przekieruj do strony rezerwacji, gdzie można zapłacić później
+        if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
+          setTimeout(() => {
+            window.location.replace(data.booking_url as string);
+          }, 2000);
+        } else {
+          setTimeout(() => {
+            router.push(`/trip/${slug}`);
+          }, 2000);
+        }
       }
-
-      // Ostatni fallback: strona wycieczki
-      console.warn("No redirect_url or booking_url, falling back to trip page");
-      console.warn("Response data:", JSON.stringify(data, null, 2));
-      setTimeout(() => {
-        router.push(`/trip/${slug}`);
-      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Błąd rezerwacji");
     } finally {
@@ -759,18 +1145,24 @@ export function BookingForm({ slug }: BookingFormProps) {
   return (
     <>
       <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
-          {steps.map((step, index) => (
-            <TabsTrigger
-              key={step.id}
-              value={step.id}
-              className={cn("flex flex-col gap-1 text-left", index > maxAvailableStep && "cursor-not-allowed opacity-50")}
-              disabled={index > maxAvailableStep + 1}
-            >
-              <span className="text-sm font-semibold">{index + 1}. {step.label}</span>
-              <span className="text-muted-foreground text-xs">{step.description}</span>
-            </TabsTrigger>
-          ))}
+        <TabsList className={cn("grid w-full gap-2", hasAdditionalServices ? "grid-cols-1 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
+          {visibleSteps.map((step, index) => {
+            const originalIndex = steps.findIndex(s => s.id === step.id);
+            const stepLabel = step.id === "participants" && applicantType === "company" 
+              ? "Liczba uczestników" 
+              : step.label;
+            return (
+              <TabsTrigger
+                key={step.id}
+                value={step.id}
+                className={cn("flex flex-col gap-1 text-left", originalIndex > maxAvailableStep && "cursor-not-allowed opacity-50")}
+                disabled={originalIndex > maxAvailableStep + 1}
+              >
+                <span className="text-sm font-semibold">{index + 1}. {stepLabel}</span>
+                <span className="text-muted-foreground text-xs">{step.description}</span>
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
         <Form {...form}>
@@ -857,12 +1249,12 @@ export function BookingForm({ slug }: BookingFormProps) {
             <TabsContent value="contact" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Dane zgłaszającego</CardTitle>
+                  <CardTitle>Dane osoby zgłaszającej</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {tripConfig?.registration_mode === "both" && (
                     <div className="space-y-2">
-                      <h3 className="font-medium text-sm">Typ zgłaszającego</h3>
+                      <h3 className="font-medium text-sm">Typ osoby zgłaszającej</h3>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
@@ -897,7 +1289,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            {applicantType === "company" ? "Imię osoby do kontaktu" : "Imię zgłaszającego"}
+                            Imię
                           </FormLabel>
                           <FormControl>
                             <Input placeholder="Jan" {...field} value={field.value || ""} />
@@ -912,7 +1304,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            {applicantType === "company" ? "Nazwisko osoby do kontaktu" : "Nazwisko zgłaszającego"}
+                            Nazwisko
                           </FormLabel>
                           <FormControl>
                             <Input placeholder="Kowalski" {...field} value={field.value || ""} />
@@ -926,10 +1318,26 @@ export function BookingForm({ slug }: BookingFormProps) {
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField
                       control={control}
+                      name="contact.pesel"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>PESEL</FormLabel>
+                          <FormControl>
+                            <Input placeholder="12345678901" {...field} maxLength={11} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField
+                      control={control}
                       name="contact.email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>E-mail do kontaktu</FormLabel>
+                          <FormLabel>E-mail</FormLabel>
                           <FormControl>
                             <Input type="email" placeholder="ania@example.com" {...field} />
                           </FormControl>
@@ -956,6 +1364,57 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   {applicantType === "company" && (
                     <div className="space-y-4">
+                      <FormField
+                        control={control}
+                        name="company.has_representative"
+                        render={({ field }) => (
+                          <FormItem className="flex items-start gap-2">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value || false}
+                                onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                              />
+                            </FormControl>
+                            <div className="space-y-1">
+                              <FormLabel className="text-sm font-medium leading-none">
+                                Dodaj osobę do reprezentacji
+                              </FormLabel>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+
+                      {form.watch("company.has_representative") && (
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <FormField
+                            control={control}
+                            name="company.representative_first_name"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Imię osoby do reprezentacji</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Jan" {...field} value={field.value || ""} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="company.representative_last_name"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Nazwisko osoby do reprezentacji</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Kowalski" {...field} value={field.value || ""} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
+
                       <h3 className="font-medium text-sm">Dane firmy</h3>
                       <p className="text-xs text-muted-foreground">
                         Wypełnij dane firmy, w imieniu której składane jest zgłoszenie. Na te dane domyślnie
@@ -1053,7 +1512,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               Proszę o wystawienie faktury na inne dane
                             </FormLabel>
                             <p className="text-xs text-muted-foreground">
-                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane zgłaszającego lub firmy.
+                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane osoby zgłaszającej lub firmy.
                             </p>
                           </div>
                         </FormItem>
@@ -1252,11 +1711,39 @@ export function BookingForm({ slug }: BookingFormProps) {
             <TabsContent value="participants" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Uczestnicy</CardTitle>
+                  <CardTitle>{applicantType === "company" ? "Liczba uczestników" : "Uczestnicy"}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {applicantType === "company" ? (
                     <div className="space-y-3">
+                      <FormField
+                        control={control}
+                        name="participants_count"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Liczba uczestników *</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="1"
+                                placeholder={tripConfig?.seats_total?.toString() || "1"}
+                                {...field}
+                                value={field.value || ""}
+                                onChange={(e) => {
+                                  const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
+                                  field.onChange(isNaN(value as number) ? undefined : value);
+                                }}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {tripConfig?.seats_total
+                                ? `Liczba miejsc dostępnych: ${tripConfig.seats_total}`
+                                : "Podaj liczbę uczestników"}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       <p className="text-sm text-muted-foreground">
                         {tripConfig?.company_participants_info ||
                           "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista powinna zawierać imię i nazwisko oraz datę urodzenia każdego uczestnika."}
@@ -1295,7 +1782,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.first_name`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Imię</FormLabel>
+                                  <FormLabel>Imię *</FormLabel>
                                   <FormControl>
                                     <Input placeholder="Jan" {...field} />
                                   </FormControl>
@@ -1308,7 +1795,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.last_name`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Nazwisko</FormLabel>
+                                  <FormLabel>Nazwisko *</FormLabel>
                                   <FormControl>
                                     <Input placeholder="Kowalski" {...field} />
                                   </FormControl>
@@ -1321,10 +1808,27 @@ export function BookingForm({ slug }: BookingFormProps) {
                           <div className="grid gap-4 md:grid-cols-3 mt-6">
                             <FormField
                               control={control}
+                              name={`participants.${index}.pesel`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>
+                                    PESEL{tripConfig?.form_required_participant_fields?.pesel ? " *" : ""}
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="12345678901" {...field} value={field.value || ""} maxLength={11} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={control}
                               name={`participants.${index}.gender_code`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Płeć</FormLabel>
+                                  <FormLabel>
+                                    Płeć{tripConfig?.form_required_participant_fields?.gender ? " *" : ""}
+                                  </FormLabel>
                                   <Select
                                     onValueChange={field.onChange}
                                     defaultValue={field.value}
@@ -1348,7 +1852,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.phone`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Telefon</FormLabel>
+                                  <FormLabel>
+                                    Telefon{tripConfig?.form_required_participant_fields?.phone ? " *" : ""}
+                                  </FormLabel>
                                   <FormControl>
                                     <Input placeholder="+48 600 000 000" {...field} />
                                   </FormControl>
@@ -1364,7 +1870,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.document_type`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Dokument</FormLabel>
+                                  <FormLabel>
+                                    Dokument{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
+                                  </FormLabel>
                                   <Select
                                     onValueChange={field.onChange}
                                     defaultValue={field.value}
@@ -1388,7 +1896,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.document_number`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Seria i numer dokumentu</FormLabel>
+                                  <FormLabel>
+                                    Seria i numer dokumentu{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
+                                  </FormLabel>
                                   <FormControl>
                                     <Input placeholder="ABC123456" {...field} />
                                   </FormControl>
@@ -1467,64 +1977,701 @@ export function BookingForm({ slug }: BookingFormProps) {
               </Card>
             </TabsContent>
 
+            {hasAdditionalServices && (
+              <TabsContent value="services" className="mt-6 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Usługi dodatkowe</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {applicantType === "individual" && fields.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Dodaj uczestników, aby wybrać usługi dodatkowe.
+                      </p>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Diety */}
+                        {tripConfig?.diets && tripConfig.diets.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-sm font-semibold">Diety</Label>
+                            {tripConfig.diets.map((diet) => {
+                              const allServices = form.watch("participant_services") || [];
+                              const dietServices = allServices.filter((s: any) => s.type === "diet" && s.service_id === diet.id);
+                              
+                              return (
+                                <div key={diet.id} className="border rounded-lg p-4 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <Label className="text-sm font-medium">{diet.title}</Label>
+                                      {diet.price_cents !== null && diet.price_cents > 0 && (
+                                        <span className="ml-2 text-xs text-muted-foreground">
+                                          (+{((diet.price_cents || 0) / 100).toFixed(2)} PLN)
+                                        </span>
+                                      )}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        const currentServices = form.getValues("participant_services") || [];
+                                        const newService: any = {
+                                          type: "diet",
+                                          service_id: diet.id,
+                                          price_cents: diet.price_cents ?? null,
+                                          currency: "PLN",
+                                        };
+                                        
+                                        if (applicantType === "individual") {
+                                          // Dla osoby fizycznej: ustaw pierwszy dostępny indeks uczestnika
+                                          if (fields.length > 0) {
+                                            newService.participant_index = 0;
+                                          }
+                                        } else {
+                                          // Dla firmy: zostaw puste, użytkownik wpisze imię i nazwisko
+                                        }
+                                        
+                                        form.setValue("participant_services", [...currentServices, newService]);
+                                      }}
+                                    >
+                                      Dodaj dietę
+                                    </Button>
+                                  </div>
+                                  
+                                  {dietServices.map((service: any, serviceIndex: number) => {
+                                    // Znajdź indeks usługi w tablicy wszystkich usług
+                                    const serviceArrayIndex = allServices.findIndex((s: any, idx: number) => {
+                                      if (s.type !== "diet" || s.service_id !== diet.id) return false;
+                                      if (applicantType === "individual") {
+                                        return s.participant_index === service.participant_index;
+                                      } else {
+                                        return s.participant_first_name === service.participant_first_name && 
+                                               s.participant_last_name === service.participant_last_name;
+                                      }
+                                    });
+                                    
+                                    if (serviceArrayIndex === -1) return null;
+                                    
+                                    return (
+                                      <div key={serviceIndex} className="border rounded p-3 space-y-2 bg-muted/30">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1 space-y-2">
+                                            {applicantType === "individual" ? (
+                                              <FormField
+                                                control={control}
+                                                name={`participant_services.${serviceArrayIndex}.participant_index`}
+                                                render={({ field: participantField }) => (
+                                                  <div className="space-y-1">
+                                                    <Label className="text-xs">Uczestnik</Label>
+                                                    <Select
+                                                      value={participantField.value?.toString() || ""}
+                                                      onValueChange={(value) => {
+                                                        participantField.onChange(parseInt(value, 10));
+                                                      }}
+                                                    >
+                                                      <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue placeholder="Wybierz uczestnika" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {fields.map((field, idx) => {
+                                                          const p = participantsWatch?.[idx];
+                                                          const name = p 
+                                                            ? `${p.first_name} ${p.last_name}`.trim() 
+                                                            : `Uczestnik ${idx + 1}`;
+                                                          return (
+                                                            <SelectItem key={idx} value={idx.toString()}>
+                                                              {name}
+                                                            </SelectItem>
+                                                          );
+                                                        })}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                )}
+                                              />
+                                            ) : (
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <FormField
+                                                  control={control}
+                                                  name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                  render={({ field: firstNameField }) => (
+                                                    <div className="space-y-1">
+                                                      <Label className="text-xs">Imię uczestnika</Label>
+                                                      <Input
+                                                        {...firstNameField}
+                                                        className="h-8 text-xs"
+                                                        placeholder="Imię"
+                                                      />
+                                                    </div>
+                                                  )}
+                                                />
+                                                <FormField
+                                                  control={control}
+                                                  name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                  render={({ field: lastNameField }) => (
+                                                    <div className="space-y-1">
+                                                      <Label className="text-xs">Nazwisko uczestnika</Label>
+                                                      <Input
+                                                        {...lastNameField}
+                                                        className="h-8 text-xs"
+                                                        placeholder="Nazwisko"
+                                                      />
+                                                    </div>
+                                                  )}
+                                                />
+                                              </div>
+                                            )}
+                                            
+                                            {diet.variants && diet.variants.length > 0 && (
+                                              <FormField
+                                                control={control}
+                                                name={`participant_services.${serviceArrayIndex}.variant_id`}
+                                                render={({ field: variantField }) => (
+                                                  <div className="space-y-1">
+                                                    <Label className="text-xs">Wariant diety</Label>
+                                                    <Select
+                                                      value={variantField.value || ""}
+                                                      onValueChange={(value) => {
+                                                        variantField.onChange(value);
+                                                        // Aktualizuj cenę na podstawie wariantu
+                                                        const selectedVariant = diet.variants?.find(v => v.id === value);
+                                                        const currentServices = form.getValues("participant_services") || [];
+                                                        const updatedServices = currentServices.map((s: any, idx: number) => {
+                                                          if (idx === serviceArrayIndex) {
+                                                            return {
+                                                              ...s,
+                                                              variant_id: value,
+                                                              price_cents: selectedVariant?.price_cents ?? null,
+                                                            };
+                                                          }
+                                                          return s;
+                                                        });
+                                                        form.setValue("participant_services", updatedServices);
+                                                      }}
+                                                    >
+                                                      <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue placeholder="Wybierz wariant" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {diet.variants?.map((variant) => (
+                                                          <SelectItem key={variant.id} value={variant.id}>
+                                                            {variant.title}
+                                                            {variant.price_cents !== null && variant.price_cents > 0 
+                                                              ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                              : " (bezpłatna)"
+                                                            }
+                                                          </SelectItem>
+                                                        )) || []}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                )}
+                                              />
+                                            )}
+                                          </div>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              const currentServices = form.getValues("participant_services") || [];
+                                              const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceArrayIndex);
+                                              form.setValue("participant_services", updatedServices);
+                                            }}
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Ubezpieczenia */}
+                        {tripConfig?.extra_insurances && tripConfig.extra_insurances.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-sm font-semibold">Ubezpieczenia dodatkowe</Label>
+                            {tripConfig.extra_insurances.map((insurance) => {
+                              const allServices = form.watch("participant_services") || [];
+                              const insuranceServices = allServices.filter((s: any) => s.type === "insurance" && s.service_id === insurance.id);
+                              
+                              return (
+                                <div key={insurance.id} className="border rounded-lg p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1">
+                                      <Label className="text-sm font-medium">{insurance.title}</Label>
+                                      {insurance.description && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {insurance.description}
+                                        </p>
+                                      )}
+                                      {insurance.owu_url && (
+                                        <a
+                                          href={insurance.owu_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          OWU
+                                        </a>
+                                      )}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        const currentServices = form.getValues("participant_services") || [];
+                                        const newService: any = {
+                                          type: "insurance",
+                                          service_id: insurance.id,
+                                          price_cents: null,
+                                          currency: "PLN",
+                                        };
+                                        
+                                        if (insurance.variants && insurance.variants.length > 0) {
+                                          newService.variant_id = insurance.variants[0].id;
+                                          newService.price_cents = insurance.variants[0].price_cents ?? null;
+                                        }
+                                        
+                                        if (applicantType === "individual") {
+                                          if (fields.length > 0) {
+                                            newService.participant_index = 0;
+                                          }
+                                        }
+                                        
+                                        form.setValue("participant_services", [...currentServices, newService]);
+                                      }}
+                                    >
+                                      Dodaj ubezpieczenie
+                                    </Button>
+                                  </div>
+                                  
+                                  {insuranceServices.map((service: any, serviceIndex: number) => {
+                                    // Znajdź indeks usługi w tablicy wszystkich usług
+                                    const serviceArrayIndex = allServices.findIndex((s: any, idx: number) => {
+                                      if (s.type !== "insurance" || s.service_id !== insurance.id) return false;
+                                      if (applicantType === "individual") {
+                                        return s.participant_index === service.participant_index;
+                                      } else {
+                                        return s.participant_first_name === service.participant_first_name && 
+                                               s.participant_last_name === service.participant_last_name;
+                                      }
+                                    });
+                                    
+                                    if (serviceArrayIndex === -1) return null;
+                                    
+                                    return (
+                                      <div key={serviceIndex} className="border rounded p-3 space-y-2 bg-muted/30">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1 space-y-2">
+                                            {applicantType === "individual" ? (
+                                              <FormField
+                                                control={control}
+                                                name={`participant_services.${serviceArrayIndex}.participant_index`}
+                                                render={({ field: participantField }) => (
+                                                  <div className="space-y-1">
+                                                    <Label className="text-xs">Uczestnik</Label>
+                                                    <Select
+                                                      value={participantField.value?.toString() || ""}
+                                                      onValueChange={(value) => {
+                                                        participantField.onChange(parseInt(value, 10));
+                                                      }}
+                                                    >
+                                                      <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue placeholder="Wybierz uczestnika" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {fields.map((field, idx) => {
+                                                          const p = participantsWatch?.[idx];
+                                                          const name = p 
+                                                            ? `${p.first_name} ${p.last_name}`.trim() 
+                                                            : `Uczestnik ${idx + 1}`;
+                                                          return (
+                                                            <SelectItem key={idx} value={idx.toString()}>
+                                                              {name}
+                                                            </SelectItem>
+                                                          );
+                                                        })}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                )}
+                                              />
+                                            ) : (
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <FormField
+                                                  control={control}
+                                                  name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                  render={({ field: firstNameField }) => (
+                                                    <div className="space-y-1">
+                                                      <Label className="text-xs">Imię uczestnika</Label>
+                                                      <Input
+                                                        {...firstNameField}
+                                                        className="h-8 text-xs"
+                                                        placeholder="Imię"
+                                                      />
+                                                    </div>
+                                                  )}
+                                                />
+                                                <FormField
+                                                  control={control}
+                                                  name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                  render={({ field: lastNameField }) => (
+                                                    <div className="space-y-1">
+                                                      <Label className="text-xs">Nazwisko uczestnika</Label>
+                                                      <Input
+                                                        {...lastNameField}
+                                                        className="h-8 text-xs"
+                                                        placeholder="Nazwisko"
+                                                      />
+                                                    </div>
+                                                  )}
+                                                />
+                                              </div>
+                                            )}
+                                            
+                                            {insurance.variants && insurance.variants.length > 0 && (
+                                              <FormField
+                                                control={control}
+                                                name={`participant_services.${serviceArrayIndex}.variant_id`}
+                                                render={({ field: variantField }) => (
+                                                  <div className="space-y-1">
+                                                    <Label className="text-xs">Wariant ubezpieczenia</Label>
+                                                    <Select
+                                                      value={variantField.value || ""}
+                                                      onValueChange={(value) => {
+                                                        variantField.onChange(value);
+                                                        const selectedVariant = insurance.variants?.find(v => v.id === value);
+                                                        const currentServices = form.getValues("participant_services") || [];
+                                                        const updatedServices = currentServices.map((s: any, idx: number) => {
+                                                          if (idx === serviceArrayIndex) {
+                                                            return {
+                                                              ...s,
+                                                              variant_id: value,
+                                                              price_cents: selectedVariant?.price_cents ?? null,
+                                                            };
+                                                          }
+                                                          return s;
+                                                        });
+                                                        form.setValue("participant_services", updatedServices);
+                                                      }}
+                                                    >
+                                                      <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue placeholder="Wybierz wariant" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {insurance.variants?.map((variant) => (
+                                                          <SelectItem key={variant.id} value={variant.id}>
+                                                            {variant.title}
+                                                            {variant.price_cents !== null && variant.price_cents > 0
+                                                              ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                              : ""
+                                                            }
+                                                          </SelectItem>
+                                                        )) || []}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                )}
+                                              />
+                                            )}
+                                          </div>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              const currentServices = form.getValues("participant_services") || [];
+                                              const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceArrayIndex);
+                                              form.setValue("participant_services", updatedServices);
+                                            }}
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Atrakcje dodatkowe */}
+                        {tripConfig?.additional_attractions && tripConfig.additional_attractions.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-sm font-semibold">Atrakcje dodatkowe</Label>
+                            {tripConfig.additional_attractions.map((attraction) => {
+                              const allServices = form.watch("participant_services") || [];
+                              const attractionServices = allServices.filter((s: any) => s.type === "attraction" && s.service_id === attraction.id);
+                              
+                              return (
+                                <div key={attraction.id} className="border rounded-lg p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1">
+                                      <Label className="text-sm font-medium">{attraction.title}</Label>
+                                      {attraction.description && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {attraction.description}
+                                        </p>
+                                      )}
+                                      <div className="flex items-center gap-2 mt-1">
+                                        {attraction.price_cents !== null && attraction.price_cents > 0 && (
+                                          <span className="text-xs font-medium">
+                                            {(attraction.price_cents / 100).toFixed(2)} {attraction.currency || "PLN"}
+                                          </span>
+                                        )}
+                                        {attraction.currency === "EUR" && (
+                                          <span className="text-xs text-muted-foreground">
+                                            (nie wlicza się do umowy)
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        const currentServices = form.getValues("participant_services") || [];
+                                        const newService: any = {
+                                          type: "attraction",
+                                          service_id: attraction.id,
+                                          price_cents: attraction.price_cents ?? null,
+                                          currency: attraction.currency || "PLN",
+                                          include_in_contract: attraction.include_in_contract ?? true,
+                                        };
+                                        
+                                        if (applicantType === "individual") {
+                                          if (fields.length > 0) {
+                                            newService.participant_index = 0;
+                                          }
+                                        }
+                                        
+                                        form.setValue("participant_services", [...currentServices, newService]);
+                                      }}
+                                    >
+                                      Dodaj atrakcję
+                                    </Button>
+                                  </div>
+                                  
+                                  {attractionServices.map((service: any, serviceIndex: number) => {
+                                    // Znajdź indeks usługi w tablicy wszystkich usług
+                                    const serviceArrayIndex = allServices.findIndex((s: any, idx: number) => {
+                                      if (s.type !== "attraction" || s.service_id !== attraction.id) return false;
+                                      if (applicantType === "individual") {
+                                        return s.participant_index === service.participant_index;
+                                      } else {
+                                        return s.participant_first_name === service.participant_first_name && 
+                                               s.participant_last_name === service.participant_last_name;
+                                      }
+                                    });
+                                    
+                                    if (serviceArrayIndex === -1) return null;
+                                    
+                                    return (
+                                      <div key={serviceIndex} className="border rounded p-3 space-y-2 bg-muted/30">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1">
+                                            {applicantType === "individual" ? (
+                                              <FormField
+                                                control={control}
+                                                name={`participant_services.${serviceArrayIndex}.participant_index`}
+                                                render={({ field: participantField }) => (
+                                                  <div className="space-y-1">
+                                                    <Label className="text-xs">Uczestnik</Label>
+                                                    <Select
+                                                      value={participantField.value?.toString() || ""}
+                                                      onValueChange={(value) => {
+                                                        participantField.onChange(parseInt(value, 10));
+                                                      }}
+                                                    >
+                                                      <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue placeholder="Wybierz uczestnika" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {fields.map((field, idx) => {
+                                                          const p = participantsWatch?.[idx];
+                                                          const name = p 
+                                                            ? `${p.first_name} ${p.last_name}`.trim() 
+                                                            : `Uczestnik ${idx + 1}`;
+                                                          return (
+                                                            <SelectItem key={idx} value={idx.toString()}>
+                                                              {name}
+                                                            </SelectItem>
+                                                          );
+                                                        })}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                )}
+                                              />
+                                            ) : (
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <FormField
+                                                  control={control}
+                                                  name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                  render={({ field: firstNameField }) => (
+                                                    <div className="space-y-1">
+                                                      <Label className="text-xs">Imię uczestnika</Label>
+                                                      <Input
+                                                        {...firstNameField}
+                                                        className="h-8 text-xs"
+                                                        placeholder="Imię"
+                                                      />
+                                                    </div>
+                                                  )}
+                                                />
+                                                <FormField
+                                                  control={control}
+                                                  name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                  render={({ field: lastNameField }) => (
+                                                    <div className="space-y-1">
+                                                      <Label className="text-xs">Nazwisko uczestnika</Label>
+                                                      <Input
+                                                        {...lastNameField}
+                                                        className="h-8 text-xs"
+                                                        placeholder="Nazwisko"
+                                                      />
+                                                    </div>
+                                                  )}
+                                                />
+                                              </div>
+                                            )}
+                                          </div>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              const currentServices = form.getValues("participant_services") || [];
+                                              const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceArrayIndex);
+                                              form.setValue("participant_services", updatedServices);
+                                            }}
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter className="flex justify-between gap-3">
+                    <Button type="button" variant="outline" onClick={goToPrevStep}>
+                      Wstecz
+                    </Button>
+                    <Button type="button" onClick={goToNextStep}>
+                      Dalej
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </TabsContent>
+            )}
+
             <TabsContent value="summary" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Podsumowanie rezerwacji</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <section className="space-y-3">
-                    <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane kontaktowe</h3>
-                    <div className="grid gap-2 text-sm">
-                      {(contactSummary.first_name || contactSummary.last_name) && (
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-muted-foreground">Imię i nazwisko</span>
-                          <span>{[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-muted-foreground">E-mail</span>
-                        <span>{contactSummary.email || "—"}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-muted-foreground">Telefon</span>
-                        <span>{contactSummary.phone || "—"}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-muted-foreground">Adres</span>
-                        <span>
-                          {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
-                        </span>
-                      </div>
-                    </div>
-                  </section>
-
-                  {(companySummary.name || companySummary.nip) && (
+                  {applicantType === "company" ? (
                     <>
+                      {/* Dla firm: najpierw DANE FIRMY */}
+                      {(companySummary.name || companySummary.nip) && (
+                        <section className="space-y-3">
+                          <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane firmy</h3>
+                          <div className="grid gap-2 text-sm">
+                            {companySummary.name && (
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-muted-foreground">Nazwa firmy</span>
+                                <span>{companySummary.name || "—"}</span>
+                              </div>
+                            )}
+                            {companySummary.nip && (
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-muted-foreground">NIP/KRS</span>
+                                <span>{companySummary.nip || "—"}</span>
+                              </div>
+                            )}
+                            {(companySummary.street || companySummary.city || companySummary.zip) && (
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-muted-foreground">Adres firmy</span>
+                                <span>
+                                  {[companySummary.street, companySummary.zip, companySummary.city].filter(Boolean).join(", ") || "—"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </section>
+                      )}
                       <Separator />
+                      {/* Potem DANE OSOBY DO KONTAKTU */}
                       <section className="space-y-3">
-                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane firmy</h3>
+                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane osoby do kontaktu</h3>
                         <div className="grid gap-2 text-sm">
-                          {companySummary.name && (
+                          {(contactSummary.first_name || contactSummary.last_name) && (
                             <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">Nazwa firmy</span>
-                              <span>{companySummary.name || "—"}</span>
+                              <span className="text-muted-foreground">Imię i nazwisko</span>
+                              <span>{[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}</span>
                             </div>
                           )}
-                          {companySummary.nip && (
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">E-mail</span>
+                            <span>{contactSummary.email || "—"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Telefon</span>
+                            <span>{contactSummary.phone || "—"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Adres</span>
+                            <span>
+                              {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
+                            </span>
+                          </div>
+                        </div>
+                      </section>
+                    </>
+                  ) : (
+                    <>
+                      {/* Dla osoby fizycznej: standardowa kolejność */}
+                      <section className="space-y-3">
+                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane osoby zgłaszającej</h3>
+                        <div className="grid gap-2 text-sm">
+                          {(contactSummary.first_name || contactSummary.last_name) && (
                             <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">NIP/KRS</span>
-                              <span>{companySummary.nip || "—"}</span>
+                              <span className="text-muted-foreground">Imię i nazwisko</span>
+                              <span>{[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}</span>
                             </div>
                           )}
-                          {(companySummary.street || companySummary.city || companySummary.zip) && (
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">Adres firmy</span>
-                              <span>
-                                {[companySummary.street, companySummary.zip, companySummary.city].filter(Boolean).join(", ") || "—"}
-                              </span>
-                            </div>
-                          )}
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">E-mail</span>
+                            <span>{contactSummary.email || "—"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Telefon</span>
+                            <span>{contactSummary.phone || "—"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Adres</span>
+                            <span>
+                              {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
+                            </span>
+                          </div>
                         </div>
                       </section>
                     </>
@@ -1533,36 +2680,121 @@ export function BookingForm({ slug }: BookingFormProps) {
                   <Separator />
 
                   <section className="space-y-3">
-                    <h3 className="font-medium text-sm uppercase text-muted-foreground">Uczestnicy</h3>
+                    <h3 className="font-medium text-sm uppercase text-muted-foreground">
+                      {applicantType === "company" ? "Uczestnicy" : "Uczestnicy"}
+                    </h3>
                     <div className="space-y-3 text-sm">
-                      {participantsSummary.length === 0 ? (
+                      {applicantType === "company" ? (
+                        <>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Liczba uczestników</span>
+                            <span>{form.watch("participants_count") || tripConfig?.seats_total || "—"}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {tripConfig?.company_participants_info ||
+                              "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista powinna zawierać imię i nazwisko oraz datę urodzenia każdego uczestnika."}
+                          </p>
+                        </>
+                      ) : participantsSummary.length === 0 ? (
                         <p className="text-muted-foreground">Brak uczestników.</p>
                       ) : (
-                        participantsSummary.map((participant, index) => (
-                          <div
-                            key={participant.key}
-                            className="rounded-lg border bg-muted/40 p-3"
-                          >
-                            <div className="flex justify-between gap-3 text-sm font-medium">
-                              <span>
-                                {index + 1}. {participant.first_name} {participant.last_name}
-                              </span>
-                              <span>{participant.document_type}</span>
+                        participantsSummary.map((participant, index) => {
+                          // Znajdź usługi przypisane do tego uczestnika
+                          const allServices = form.watch("participant_services") || [];
+                          const participantServices = allServices.filter((service: any) => {
+                            // W tym bloku applicantType jest "individual" (bo jesteśmy w else po sprawdzeniu "company")
+                            // Dla osoby fizycznej: sprawdź participant_index
+                            if (service.participant_index !== undefined) {
+                              return service.participant_index === index;
+                            }
+                            return false;
+                          });
+                          
+                          return (
+                            <div
+                              key={participant.key}
+                              className="rounded-lg border bg-muted/40 p-3"
+                            >
+                              <div className="flex justify-between gap-3 text-sm font-medium">
+                                <span>
+                                  {index + 1}. {participant.first_name} {participant.last_name}
+                                </span>
+                                <span>{participant.document_type}</span>
+                              </div>
+                              <div className="grid gap-1 text-xs text-muted-foreground">
+                                <span>
+                                  Płeć:{" "}
+                                  {participant.gender_code === "F"
+                                    ? "Kobieta"
+                                    : participant.gender_code === "M"
+                                    ? "Mężczyzna"
+                                    : "—"}
+                                </span>
+                                <span>Telefon: {participant.phone || "—"}</span>
+                                <span>Dokument: {participant.document_number || "—"}</span>
+                              </div>
+                              {participantServices.length > 0 && (
+                                <div className="mt-3 pt-3 border-t space-y-2">
+                                  <span className="text-xs font-semibold text-muted-foreground">Usługi dodatkowe:</span>
+                                  {participantServices.map((service: any, serviceIndex: number) => {
+                                    if (service.type === "diet") {
+                                      const diet = tripConfig?.diets?.find(d => d.id === service.service_id);
+                                      const variant = service.variant_id 
+                                        ? diet?.variants?.find(v => v.id === service.variant_id)
+                                        : null;
+                                      const displayTitle = variant ? `${diet?.title || ""} - ${variant.title}` : (diet?.title || service.service_id);
+                                      
+                                      return (
+                                        <div key={serviceIndex} className="text-xs text-muted-foreground">
+                                          • Dieta: {displayTitle}
+                                          {service.price_cents !== null && service.price_cents > 0 && (
+                                            <span className="ml-2">
+                                              (+{((service.price_cents || 0) / 100).toFixed(2)} PLN)
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    if (service.type === "insurance") {
+                                      const insurance = tripConfig?.extra_insurances?.find(i => i.id === service.service_id);
+                                      const variant = insurance?.variants?.find(v => v.id === service.variant_id);
+                                      return (
+                                        <div key={serviceIndex} className="text-xs text-muted-foreground">
+                                          • Ubezpieczenie: {insurance?.title || service.service_id}
+                                          {variant && (
+                                            <span className="ml-2">({variant.title})</span>
+                                          )}
+                                          {service.price_cents !== null && service.price_cents > 0 && (
+                                            <span className="ml-2">
+                                              (+{((service.price_cents || 0) / 100).toFixed(2)} PLN)
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    if (service.type === "attraction") {
+                                      const attraction = tripConfig?.additional_attractions?.find(a => a.id === service.service_id);
+                                      return (
+                                        <div key={serviceIndex} className="text-xs text-muted-foreground">
+                                          • Atrakcja: {attraction?.title || service.service_id}
+                                          {service.price_cents !== null && service.price_cents > 0 && (
+                                            <span className="ml-2">
+                                              (+{((service.price_cents || 0) / 100).toFixed(2)} {service.currency || "PLN"})
+                                            </span>
+                                          )}
+                                          {service.currency === "EUR" && (
+                                            <span className="ml-2 text-xs">(nie wlicza się do umowy)</span>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })}
+                                </div>
+                              )}
                             </div>
-                            <div className="grid gap-1 text-xs text-muted-foreground">
-                              <span>
-                                Płeć:{" "}
-                                {participant.gender_code === "F"
-                                  ? "Kobieta"
-                                  : participant.gender_code === "M"
-                                  ? "Mężczyzna"
-                                  : "—"}
-                              </span>
-                              <span>Telefon: {participant.phone || "—"}</span>
-                              <span>Dokument: {participant.document_number || "—"}</span>
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </section>
@@ -1574,44 +2806,128 @@ export function BookingForm({ slug }: BookingFormProps) {
                       <section className="space-y-3">
                         <h3 className="font-medium text-sm uppercase text-muted-foreground">Cena</h3>
                         <div className="grid gap-2 text-sm">
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">Cena za osobę</span>
-                            <span className="font-semibold">
-                              {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}{" "}
-                              PLN
-                            </span>
-                          </div>
-                          {participantsSummary.length > 1 && (
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">
-                                Cena za {participantsSummary.length} osoby
-                              </span>
-                              <span className="font-semibold">
-                                {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}{" "}
-                                PLN
-                              </span>
-                            </div>
+                          {applicantType === "company" ? (
+                            <>
+                              {/* Dla firm: cena jednostkowa * liczba uczestników + usługi dodatkowe */}
+                              {(() => {
+                                const participantsCount = form.watch("participants_count") || tripConfig?.seats_total || 0;
+                                const allServices = form.watch("participant_services") || [];
+                                // Oblicz sumę usług dodatkowych (tylko PLN, bez EUR)
+                                const additionalServicesTotal = allServices.reduce((sum: number, service: any) => {
+                                  if (service.currency === "EUR") return sum; // EUR nie wlicza się do umowy
+                                  if (service.price_cents !== null && service.price_cents > 0) {
+                                    return sum + (service.price_cents || 0);
+                                  }
+                                  return sum;
+                                }, 0);
+                                const basePrice = (tripPrice * participantsCount) + additionalServicesTotal;
+                                const depositAmount = (basePrice * paymentSplitFirstPercent) / 100;
+                                
+                                return (
+                                  <>
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-muted-foreground">Cena za osobę</span>
+                                      <span className="font-semibold">
+                                        {(tripPrice / 100).toLocaleString("pl-PL", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}{" "}
+                                        PLN
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-muted-foreground">
+                                        Liczba uczestników
+                                      </span>
+                                      <span className="font-semibold">
+                                        {participantsCount}
+                                      </span>
+                                    </div>
+                                    {additionalServicesTotal > 0 && (
+                                      <div className="flex items-center justify-between gap-4">
+                                        <span className="text-muted-foreground">
+                                          Usługi dodatkowe
+                                        </span>
+                                        <span className="font-semibold">
+                                          {(additionalServicesTotal / 100).toLocaleString("pl-PL", {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}{" "}
+                                          PLN
+                                        </span>
+                                      </div>
+                                    )}
+                                    <Separator className="my-2" />
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-muted-foreground">Cena całkowita</span>
+                                      <span className="font-semibold text-lg">
+                                        {(basePrice / 100).toLocaleString("pl-PL", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}{" "}
+                                        PLN
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
+                                      <span className="font-semibold text-lg">
+                                        {(depositAmount / 100).toLocaleString("pl-PL", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}{" "}
+                                        PLN
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                      Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
+                                    </p>
+                                  </>
+                                );
+                              })()}
+                            </>
+                          ) : (
+                            <>
+                              {/* Dla osoby fizycznej: standardowe obliczenia */}
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-muted-foreground">Cena za osobę</span>
+                                <span className="font-semibold">
+                                  {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                  PLN
+                                </span>
+                              </div>
+                              {participantsSummary.length > 1 && (
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground">
+                                    Cena za {participantsSummary.length} osoby
+                                  </span>
+                                  <span className="font-semibold">
+                                    {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}{" "}
+                                    PLN
+                                  </span>
+                                </div>
+                              )}
+                              <Separator className="my-2" />
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
+                                <span className="font-semibold text-lg">
+                                  {((tripPrice * participantsSummary.length * paymentSplitFirstPercent) / 10000).toLocaleString("pl-PL", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                  PLN
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
+                              </p>
+                            </>
                           )}
-                          <Separator className="my-2" />
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
-                            <span className="font-semibold text-lg">
-                              {((tripPrice * participantsSummary.length * paymentSplitFirstPercent) / 10000).toLocaleString("pl-PL", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}{" "}
-                              PLN
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
-                          </p>
                         </div>
                       </section>
                       <Separator />
@@ -1737,19 +3053,50 @@ export function BookingForm({ slug }: BookingFormProps) {
                     </div>
                   </section>
                 </CardContent>
-                <CardFooter className="flex justify-between gap-3">
-                  <Button type="button" variant="outline" onClick={goToPrevStep}>
-                    Wstecz
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    disabled={isSubmitting}
-                    onClick={(e) => {
-                      console.log("Submit button clicked", { isSubmitting, formState: form.formState });
-                    }}
-                  >
-                    {isSubmitting ? "Wysyłanie..." : "Potwierdź rezerwację"}
-                  </Button>
+                <CardFooter className="flex flex-col gap-3">
+                  <div className="flex justify-between gap-3 w-full">
+                    <Button type="button" variant="outline" onClick={goToPrevStep}>
+                      Wstecz
+                    </Button>
+                    {applicantType === "company" ? (
+                      /* Dla firm: tylko jeden przycisk "ZAREZERWUJ" */
+                      <Button 
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          form.handleSubmit((values) => onSubmit(values, false))();
+                        }}
+                      >
+                        {isSubmitting ? "Wysyłanie..." : "ZAREZERWUJ"}
+                      </Button>
+                    ) : (
+                      /* Dla osoby fizycznej: dwa przyciski */
+                      <div className="flex gap-3">
+                        <Button 
+                          type="button" 
+                          variant="outline"
+                          disabled={isSubmitting}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            form.handleSubmit((values) => onSubmit(values, false))();
+                          }}
+                        >
+                          {isSubmitting ? "Wysyłanie..." : "Rezerwuj"}
+                        </Button>
+                        <Button 
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            form.handleSubmit((values) => onSubmit(values, true))();
+                          }}
+                        >
+                          {isSubmitting ? "Wysyłanie..." : "Rezerwuj i Zapłać"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </CardFooter>
               </Card>
             </TabsContent>

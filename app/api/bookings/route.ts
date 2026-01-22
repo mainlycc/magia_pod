@@ -35,6 +35,7 @@ const participantSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
   gender_code: z.enum(["F", "M"]).optional(),
+  selected_services: z.record(z.string(), z.unknown()).optional(),
 });
 
 const consentsSchema = z.object({
@@ -76,6 +77,7 @@ const bookingPayloadSchema = z.object({
   slug: z.string().min(1, "Brak identyfikatora wycieczki"),
   contact_first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
   contact_last_name: z.string().min(2, "Podaj nazwisko").optional().or(z.literal("").transform(() => undefined)),
+  contact_pesel: z.string().regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr"),
   contact_email: z.string().email("Niepoprawny adres e-mail"),
   contact_phone: z.string().min(7, "Podaj numer telefonu"),
   address: addressSchema,
@@ -90,6 +92,7 @@ const bookingPayloadSchema = z.object({
   invoice_nip: z.string().optional().or(z.literal("").transform(() => undefined)),
   invoice_address: addressSchema.optional(),
   invoice: invoiceSchema,
+  with_payment: z.boolean().optional().default(false),
 });
 
 type BookingPayload = z.infer<typeof bookingPayloadSchema>;
@@ -178,6 +181,7 @@ export async function POST(req: Request) {
         p_booking_ref: bookingRef,
         p_contact_first_name: payload.contact_first_name || null,
         p_contact_last_name: payload.contact_last_name || null,
+        p_contact_pesel: payload.contact_pesel,
         p_contact_email: payload.contact_email,
         p_contact_phone: payload.contact_phone,
         p_address: payload.address,
@@ -228,6 +232,7 @@ export async function POST(req: Request) {
         const updateData: any = {};
         if (payload.contact_first_name) updateData.contact_first_name = payload.contact_first_name;
         if (payload.contact_last_name) updateData.contact_last_name = payload.contact_last_name;
+        if (payload.contact_pesel) updateData.contact_pesel = payload.contact_pesel;
         if (payload.company_name) updateData.company_name = payload.company_name;
         if (payload.company_nip) updateData.company_nip = payload.company_nip;
         if (payload.company_address) updateData.company_address = payload.company_address;
@@ -408,6 +413,11 @@ export async function POST(req: Request) {
         participantData.address = payload.address;
       }
       
+      // Selected services - zapis wybranych usług dodatkowych
+      if (participant.selected_services && typeof participant.selected_services === 'object') {
+        participantData.selected_services = participant.selected_services;
+      }
+      
       return participantData;
     });
     
@@ -478,6 +488,7 @@ export async function POST(req: Request) {
           contact_email: payload.contact_email,
           contact_first_name: payload.contact_first_name || null,
           contact_last_name: payload.contact_last_name || null,
+          contact_pesel: payload.contact_pesel || null,
           contact_phone: payload.contact_phone || null,
           address: payload.address || null,
           company_name: payload.company_name || null,
@@ -556,6 +567,14 @@ export async function POST(req: Request) {
           console.warn("⚠️ Using fallback link to trip page:", bookingLink);
         }
 
+        // Jeśli with_payment=false, utwórz link do płatności
+        let paymentLink: string | null = null;
+        if (!payload.with_payment && accessToken) {
+          paymentLink = `${baseUrl}/booking/${accessToken}`;
+        } else if (!payload.with_payment && booking.booking_ref) {
+          paymentLink = `${baseUrl}/booking/${booking.booking_ref}`;
+        }
+
         emailHtml = generateBookingConfirmationEmail(
           booking.booking_ref,
           bookingLink,
@@ -563,8 +582,16 @@ export async function POST(req: Request) {
           trip.start_date,
           trip.end_date,
           seatsRequested,
+          paymentLink,
         );
-        textContent = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nKod rezerwacji: ${booking.booking_ref}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n\nLink do przesłania podpisanej umowy:\n${bookingLink}`;
+        
+        let textContentBase = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nKod rezerwacji: ${booking.booking_ref}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n\nLink do przesłania podpisanej umowy:\n${bookingLink}`;
+        
+        if (paymentLink) {
+          textContentBase += `\n\nMożesz również dokonać płatności za rezerwację klikając w poniższy link:\n${paymentLink}`;
+        }
+        
+        textContent = textContentBase;
 
         await fetch(`${baseUrl}/api/email`, {
           method: "POST",
@@ -617,9 +644,10 @@ export async function POST(req: Request) {
       // Nie blokujemy rezerwacji jeśli aktualizacja się nie powiedzie
     }
 
-    console.log(`[Bookings POST] Creating Paynow payment: total=${totalAmountCents}, first_payment=${firstPaymentAmountCents} (${paymentSplitFirstPercent}%), second_payment=${secondPaymentAmountCents}, booking_ref=${booking.booking_ref}`);
+    console.log(`[Bookings POST] Creating Paynow payment: total=${totalAmountCents}, first_payment=${firstPaymentAmountCents} (${paymentSplitFirstPercent}%), second_payment=${secondPaymentAmountCents}, booking_ref=${booking.booking_ref}, with_payment=${payload.with_payment}`);
 
-    if (firstPaymentAmountCents > 0) {
+    // Tworzenie płatności Paynow tylko gdy with_payment=true
+    if (firstPaymentAmountCents > 0 && payload.with_payment) {
       try {
         // Utwórz URL powrotu - jeśli mamy access_token, przekieruj do strony rezerwacji, w przeciwnym razie do strony powrotu
         const returnUrl = accessToken

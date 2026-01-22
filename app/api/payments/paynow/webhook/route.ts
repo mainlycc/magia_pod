@@ -154,6 +154,8 @@ export async function POST(request: NextRequest) {
       second_payment_status,
       first_payment_amount_cents,
       second_payment_amount_cents,
+      agreement_pdf_url,
+      access_token,
       trips:trips!inner(
         id,
         payment_split_enabled,
@@ -179,6 +181,8 @@ export async function POST(request: NextRequest) {
         second_payment_status,
         first_payment_amount_cents,
         second_payment_amount_cents,
+        agreement_pdf_url,
+        access_token,
         trips:trips!inner(
           id,
           payment_split_enabled,
@@ -567,6 +571,39 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Oznacz umowę jako podpisaną po pomyślnej płatności
+  if (status === "CONFIRMED") {
+    try {
+      const { data: agreement } = await supabase
+        .from("agreements")
+        .select("id")
+        .eq("booking_id", booking.id)
+        .eq("status", "generated")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (agreement) {
+        const { error: updateAgreementError } = await supabase
+          .from("agreements")
+          .update({
+            status: "signed",
+            signed_at: new Date().toISOString(),
+          })
+          .eq("id", agreement.id);
+        
+        if (updateAgreementError) {
+          console.error("[Paynow Webhook] Failed to mark agreement as signed:", updateAgreementError);
+        } else {
+          console.log(`[Paynow Webhook] ✓ Marked agreement ${agreement.id} as signed for booking ${booking.id}`);
+        }
+      }
+    } catch (agreementErr) {
+      // Błąd oznaczania umowy nie powinien blokować obsługi webhooka
+      console.error("[Paynow Webhook] Error marking agreement as signed:", agreementErr);
+    }
+  }
+
   // Wyślij mail potwierdzający opłacenie rezerwacji tylko dla potwierdzonych płatności
   if (status === "CONFIRMED" && booking.contact_email) {
     try {
@@ -585,13 +622,92 @@ export async function POST(request: NextRequest) {
         console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
       }
 
+      // Pobierz umowę PDF jeśli istnieje
+      let attachment: { filename: string; base64: string } | undefined;
+      if (booking.agreement_pdf_url) {
+        try {
+          const { data: pdfData, error: pdfError } = await supabase.storage
+            .from("agreements")
+            .download(booking.agreement_pdf_url);
+          
+          if (!pdfError && pdfData) {
+            const arrayBuffer = await pdfData.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString("base64");
+            attachment = {
+              filename: booking.agreement_pdf_url,
+              base64: base64,
+            };
+          }
+        } catch (pdfErr) {
+          console.error("Failed to download agreement PDF for email:", pdfErr);
+        }
+      }
+
+      // Wygeneruj link do strony sukcesu
+      const successUrl = booking.access_token
+        ? `${baseUrl}/payments/success?token=${booking.access_token}&booking_ref=${payload.externalId}`
+        : `${baseUrl}/payments/success?booking_ref=${payload.externalId}`;
+
       await fetch(`${baseUrl}/api/email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: booking.contact_email,
           subject: `Płatność potwierdzona dla rezerwacji ${payload.externalId}`,
-          text: `Dziękujemy! Płatność za rezerwację ${payload.externalId} została zaksięgowana.`,
+          html: `
+            <!DOCTYPE html>
+            <html lang="pl">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Płatność potwierdzona - Magia Podróżowania</title>
+            </head>
+            <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f5f5; padding: 20px;">
+                <tr>
+                  <td align="center" style="padding: 20px 0;">
+                    <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                      <tr>
+                        <td style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 40px 30px; text-align: center;">
+                          <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">
+                            Magia Podróżowania
+                          </h1>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 40px 30px;">
+                          <h2 style="margin: 0 0 20px 0; color: #16a34a; font-size: 24px; font-weight: 600;">
+                            Płatność potwierdzona
+                          </h2>
+                          <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
+                            Dziękujemy! Płatność za rezerwację <strong>${payload.externalId}</strong> została zaksięgowana.
+                          </p>
+                          ${attachment ? `
+                          <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 16px; border-radius: 6px; margin: 20px 0;">
+                            <p style="margin: 0 0 8px 0; font-size: 14px; color: #166534; font-weight: 600;">
+                              📄 Dokumenty
+                            </p>
+                            <p style="margin: 0; font-size: 14px; color: #166534; line-height: 1.5;">
+                              W załączniku do tego maila znajdziesz umowę w formacie PDF.
+                            </p>
+                          </div>
+                          ` : ''}
+                          <div style="text-align: center; margin: 30px 0;">
+                            <a href="${successUrl}" style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);">
+                              Zobacz szczegóły rezerwacji
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </body>
+            </html>
+          `,
+          text: `Dziękujemy! Płatność za rezerwację ${payload.externalId} została zaksięgowana.${attachment ? '\n\nW załączniku do tego maila znajdziesz umowę w formacie PDF.' : ''}\n\nZobacz szczegóły rezerwacji: ${successUrl}`,
+          attachment,
         }),
       });
     } catch (err) {

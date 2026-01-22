@@ -88,6 +88,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconSettings,
     },
     {
+      title: "Formularz",
+      url: "/trip-dashboard/informacje/formularz",
+      icon: IconFileDescription,
+    },
+    {
       title: "Edycja publicznego wyglądu",
       url: "/trip-dashboard/publiczny-wyglad",
       icon: IconEdit,

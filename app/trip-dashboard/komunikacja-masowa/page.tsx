@@ -244,12 +244,6 @@ export default function KomunikacjaMasowaPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold">Komunikacja masowa</h1>
-        <p className="text-muted-foreground mt-2">
-          Zarządzaj szablonami wiadomości do komunikacji masowej
-        </p>
-      </div>
 
       <div className="flex items-center justify-between">
         {selectedRows.length > 0 && (

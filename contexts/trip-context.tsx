@@ -29,10 +29,12 @@ type TripFullData = {
   public_slug: string | null
   registration_mode: string | null
   require_pesel: boolean | null
+  form_show_additional_services: boolean | null
   company_participants_info: string | null
   form_additional_attractions: unknown
   form_diets: unknown
   form_extra_insurances: unknown
+  form_required_participant_fields: unknown
   payment_split_enabled: boolean | null
   payment_split_first_percent: number | null
   payment_split_second_percent: number | null

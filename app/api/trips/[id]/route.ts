@@ -35,7 +35,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     let query = supabase
       .from("trips")
       .select(
-        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode,require_pesel,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before",
+        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before",
       )
       .eq("id", id);
     
@@ -82,10 +82,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       public_slug: string | null;
       registration_mode: string | null;
       require_pesel: boolean | null;
+      form_show_additional_services: boolean | null;
       company_participants_info: string | null;
       form_additional_attractions: unknown;
       form_diets: unknown;
       form_extra_insurances: unknown;
+      form_required_participant_fields: unknown;
       payment_split_enabled: boolean;
       payment_split_first_percent: number | null;
       payment_split_second_percent: number | null;
@@ -106,6 +108,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payload.registration_mode = body.registration_mode ?? "both";
     if ("require_pesel" in body)
       payload.require_pesel = body.require_pesel;
+    if ("form_show_additional_services" in body)
+      payload.form_show_additional_services = body.form_show_additional_services === true ? true : (body.form_show_additional_services === false ? false : null);
     if ("company_participants_info" in body)
       payload.company_participants_info = body.company_participants_info ?? null;
     if ("form_additional_attractions" in body)
@@ -114,6 +118,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payload.form_diets = body.form_diets ?? null;
     if ("form_extra_insurances" in body)
       payload.form_extra_insurances = body.form_extra_insurances ?? null;
+    if ("form_required_participant_fields" in body)
+      payload.form_required_participant_fields = body.form_required_participant_fields ?? null;
     if ("payment_split_enabled" in body)
       payload.payment_split_enabled = Boolean(body.payment_split_enabled);
     if ("payment_split_first_percent" in body)

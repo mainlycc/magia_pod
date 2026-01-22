@@ -17,6 +17,8 @@ const pageTitles: Record<string, string> = {
   "/coord": "Moje wyjazdy",
   // Trip dashboard
   "/trip-dashboard": "Dashboard wycieczki",
+  "/trip-dashboard/informacje": "Informacje",
+  "/trip-dashboard/informacje/formularz": "Formularz zgłoszeń",
   "/trip-dashboard/publiczny-wyglad": "Edycja publicznego wyglądu",
   "/trip-dashboard/rezerwacje": "Rezerwacje i umowy",
   "/trip-dashboard/platnosci": "Płatności",
@@ -26,6 +28,8 @@ const pageTitles: Record<string, string> = {
   "/trip-dashboard/zaproszenia-koordynatorow": "Zaproszenia koordynatorów",
   "/trip-dashboard/komunikacja-masowa": "Komunikacja masowa",
   "/trip-dashboard/dokumentacja": "Dokumentacja wycieczki",
+  "/trip-dashboard/dokumenty": "Dokumenty zgód",
+  "/trip-dashboard/dodaj-wycieczke": "Dodaj wycieczkę",
 }
 
 // Wzorce ścieżek z dynamicznymi segmentami
