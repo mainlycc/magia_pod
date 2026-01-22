@@ -410,6 +410,7 @@ type TripConfig = {
     title: string; 
     description: string; 
     owu_url: string;
+    price_cents?: number | null;
     variants?: { id: string; title: string; price_cents: number | null }[];
   }[];
   form_required_participant_fields?: {
@@ -1991,10 +1992,10 @@ export function BookingForm({ slug }: BookingFormProps) {
                     ) : (
                       <div className="space-y-6">
                         {/* Diety */}
-                        {tripConfig?.diets && tripConfig.diets.length > 0 && (
+                        {tripConfig?.diets && tripConfig.diets.filter((d: any) => d.enabled !== false).length > 0 && (
                           <div className="space-y-4">
                             <Label className="text-sm font-semibold">Diety</Label>
-                            {tripConfig.diets.map((diet) => {
+                            {tripConfig.diets.filter((d: any) => d.enabled !== false).map((diet) => {
                               const allServices = form.watch("participant_services") || [];
                               const dietServices = allServices.filter((s: any) => s.type === "diet" && s.service_id === diet.id);
                               
@@ -2192,10 +2193,10 @@ export function BookingForm({ slug }: BookingFormProps) {
                         )}
 
                         {/* Ubezpieczenia */}
-                        {tripConfig?.extra_insurances && tripConfig.extra_insurances.length > 0 && (
+                        {tripConfig?.extra_insurances && tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).length > 0 && (
                           <div className="space-y-4">
                             <Label className="text-sm font-semibold">Ubezpieczenia dodatkowe</Label>
-                            {tripConfig.extra_insurances.map((insurance) => {
+                            {tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).map((insurance) => {
                               const allServices = form.watch("participant_services") || [];
                               const insuranceServices = allServices.filter((s: any) => s.type === "insurance" && s.service_id === insurance.id);
                               
@@ -2203,7 +2204,14 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 <div key={insurance.id} className="border rounded-lg p-4 space-y-3">
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1">
-                                      <Label className="text-sm font-medium">{insurance.title}</Label>
+                                      <div className="flex items-center gap-2">
+                                        <Label className="text-sm font-medium">{insurance.title}</Label>
+                                        {(!insurance.variants || insurance.variants.length === 0) && insurance.price_cents !== null && insurance.price_cents !== undefined && insurance.price_cents > 0 && (
+                                          <span className="text-xs text-muted-foreground">
+                                            (+{((insurance.price_cents || 0) / 100).toFixed(2)} PLN)
+                                          </span>
+                                        )}
+                                      </div>
                                       {insurance.description && (
                                         <p className="text-xs text-muted-foreground mt-1">
                                           {insurance.description}
@@ -2237,6 +2245,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                                         if (insurance.variants && insurance.variants.length > 0) {
                                           newService.variant_id = insurance.variants[0].id;
                                           newService.price_cents = insurance.variants[0].price_cents ?? null;
+                                        } else {
+                                          // Jeśli nie ma wariantów, użyj głównej ceny ubezpieczenia
+                                          newService.price_cents = insurance.price_cents ?? null;
                                         }
                                         
                                         if (applicantType === "individual") {
@@ -2405,10 +2416,10 @@ export function BookingForm({ slug }: BookingFormProps) {
                         )}
 
                         {/* Atrakcje dodatkowe */}
-                        {tripConfig?.additional_attractions && tripConfig.additional_attractions.length > 0 && (
+                        {tripConfig?.additional_attractions && tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).length > 0 && (
                           <div className="space-y-4">
                             <Label className="text-sm font-semibold">Atrakcje dodatkowe</Label>
-                            {tripConfig.additional_attractions.map((attraction) => {
+                            {tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).map((attraction) => {
                               const allServices = form.watch("participant_services") || [];
                               const attractionServices = allServices.filter((s: any) => s.type === "attraction" && s.service_id === attraction.id);
                               

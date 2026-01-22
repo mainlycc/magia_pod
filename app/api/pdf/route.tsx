@@ -11,6 +11,8 @@ export const maxDuration = 30; // Maksymalny czas wykonania funkcji (sekundy)
 
 export type PdfPayload = {
   booking_ref: string;
+  reservation_number?: string | null; // 6-cyfrowy numer rezerwacji z wycieczki
+  agreement_number?: number | null; // Numer kolejny umowy (1, 2, 3...)
   trip: { title: string; start_date?: string | null; end_date?: string | null; price_cents?: number | null };
   contact_email: string;
   contact_first_name?: string | null;
@@ -67,6 +69,37 @@ function formatDate(dateString: string | null | undefined): string {
   }
 }
 
+/**
+ * Generuje nazwę umowy w formacie #AAAAAA/BBB
+ * @param reservationNumber - 6-cyfrowy numer rezerwacji z wycieczki
+ * @param agreementNumber - Numer kolejny umowy (1, 2, 3...)
+ * @returns Nazwa umowy w formacie #AAAAAA/BBB lub fallback do booking_ref
+ */
+function generateAgreementName(reservationNumber: string | null | undefined, agreementNumber: number | null | undefined): string {
+  if (reservationNumber && agreementNumber) {
+    const paddedReservation = reservationNumber.padStart(6, '0');
+    const paddedAgreement = String(agreementNumber).padStart(3, '0');
+    return `#${paddedReservation}/${paddedAgreement}`;
+  }
+  return ""; // Zwrócimy pusty string, jeśli brak danych - wtedy użyjemy booking_ref jako fallback
+}
+
+/**
+ * Generuje nazwę pliku PDF umowy
+ * @param reservationNumber - 6-cyfrowy numer rezerwacji z wycieczki
+ * @param agreementNumber - Numer kolejny umowy (1, 2, 3...)
+ * @param bookingRef - Fallback: kod rezerwacji
+ * @returns Nazwa pliku PDF
+ */
+function generateAgreementFilename(reservationNumber: string | null | undefined, agreementNumber: number | null | undefined, bookingRef: string): string {
+  const agreementName = generateAgreementName(reservationNumber, agreementNumber);
+  if (agreementName) {
+    return `${agreementName}.pdf`;
+  }
+  // Fallback do starego formatu jeśli brak reservation_number lub agreement_number
+  return `${bookingRef}.pdf`;
+}
+
 export function generatePdf(data: PdfPayload): Buffer {
   // Inicjalizacja jsPDF z domyślnymi ustawieniami
   // jsPDF 2.x automatycznie obsługuje UTF-8, więc polskie znaki powinny działać poprawnie
@@ -115,7 +148,11 @@ export function generatePdf(data: PdfPayload): Buffer {
   
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text(`Kod rezerwacji: ${data.booking_ref}`, 105, y, { align: "center" });
+  // Generuj numer umowy w formacie #AAAAAA/BBB
+  const agreementNumberText = data.reservation_number && data.agreement_number
+    ? `#${data.reservation_number.padStart(6, '0')}/${String(data.agreement_number).padStart(3, '0')}`
+    : `Kod rezerwacji: ${data.booking_ref}`;
+  doc.text(agreementNumberText, 105, y, { align: "center" });
   y += 12;
 
   // Strony umowy
@@ -483,10 +520,13 @@ export async function POST(req: Request) {
 
     const supabaseAdmin = createAdminClient();
     
+    // Generuj nazwę pliku umowy w formacie #AAAAAA/BBB.pdf
+    const filename = generateAgreementFilename(body.reservation_number, body.agreement_number, body.booking_ref);
+    
     // Próba zapisania PDF do Supabase Storage
     const { error: upErr } = await supabaseAdmin.storage
       .from("agreements")
-      .upload(`${body.booking_ref}.pdf`, buf, { 
+      .upload(filename, buf, { 
         contentType: "application/pdf", 
         upsert: true 
       });
@@ -497,7 +537,7 @@ export async function POST(req: Request) {
       const base64 = buf.toString("base64");
       return NextResponse.json({ 
         base64, 
-        filename: `${body.booking_ref}.pdf`,
+        filename,
         warning: "PDF generated but not saved to storage"
       });
     }
@@ -505,7 +545,7 @@ export async function POST(req: Request) {
     // Aktualizacja rekordu booking z URL do PDF
     const { error: updateErr } = await supabaseAdmin
       .from("bookings")
-      .update({ agreement_pdf_url: `${body.booking_ref}.pdf` })
+      .update({ agreement_pdf_url: filename })
       .eq("booking_ref", body.booking_ref);
 
     if (updateErr) {
@@ -516,7 +556,7 @@ export async function POST(req: Request) {
     const base64 = buf.toString("base64");
     return NextResponse.json({ 
       base64, 
-      filename: `${body.booking_ref}.pdf` 
+      filename
     });
   } catch (error) {
     console.error("PDF generation error:", error);

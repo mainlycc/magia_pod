@@ -71,9 +71,35 @@ export async function POST(
       price_cents: trip.price_cents ?? null,
     };
 
+    // Pobierz reservation_number z wycieczki i policz numer kolejny umowy dla tej wycieczki
+    const reservationNumber = (trip as any).reservation_number || null;
+    let agreementNumber = 1; // Domyślnie pierwsza umowa
+    
+    if (reservationNumber && trip.id) {
+      // Policz ile już jest umów dla wszystkich rezerwacji tej wycieczki
+      const { data: tripBookings, error: bookingsError } = await supabaseAdmin
+        .from("bookings")
+        .select("id")
+        .eq("trip_id", trip.id);
+      
+      if (!bookingsError && tripBookings && tripBookings.length > 0) {
+        const bookingIds = tripBookings.map(b => b.id);
+        const { count: agreementsCount, error: agreementsCountError } = await supabaseAdmin
+          .from("agreements")
+          .select("*", { count: "exact", head: true })
+          .in("booking_id", bookingIds);
+        
+        if (!agreementsCountError && agreementsCount !== null) {
+          agreementNumber = agreementsCount + 1;
+        }
+      }
+    }
+
     // Przygotuj dane do generowania PDF
     const pdfPayload = {
       booking_ref: booking.booking_ref,
+      reservation_number: reservationNumber,
+      agreement_number: agreementNumber,
       trip: tripInfo,
       contact_email: booking.contact_email,
       contact_first_name: booking.contact_first_name || null,

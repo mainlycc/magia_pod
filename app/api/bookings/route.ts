@@ -132,7 +132,7 @@ export async function POST(req: Request) {
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent",
+        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent, reservation_number",
       )
       .or(`slug.eq.${payload.slug},public_slug.eq.${payload.slug}`)
       .eq("is_active", true)
@@ -476,6 +476,31 @@ export async function POST(req: Request) {
     let attachment: { filename: string; base64: string } | null = null;
     let agreementPdfUrl: string | null = null;
 
+    // Pobierz reservation_number z wycieczki i policz numer kolejny umowy dla tej wycieczki
+    const reservationNumber = trip.reservation_number || null;
+    let agreementNumber = 1; // Domyślnie pierwsza umowa
+    
+    if (reservationNumber) {
+      // Policz ile już jest umów dla wszystkich rezerwacji tej wycieczki
+      // Najpierw pobierz wszystkie booking_id dla tej wycieczki
+      const { data: tripBookings, error: bookingsError } = await adminSupabase
+        .from("bookings")
+        .select("id")
+        .eq("trip_id", trip.id);
+      
+      if (!bookingsError && tripBookings && tripBookings.length > 0) {
+        const bookingIds = tripBookings.map(b => b.id);
+        const { count: agreementsCount, error: agreementsCountError } = await adminSupabase
+          .from("agreements")
+          .select("*", { count: "exact", head: true })
+          .in("booking_id", bookingIds);
+        
+        if (!agreementsCountError && agreementsCount !== null) {
+          agreementNumber = agreementsCount + 1;
+        }
+      }
+    }
+
     try {
       // W development zawsze używaj origin (localhost), w produkcji baseUrl
       const pdfUrl = process.env.NODE_ENV === "development" ? origin : baseUrl;
@@ -484,6 +509,8 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           booking_ref: booking.booking_ref,
+          reservation_number: reservationNumber,
+          agreement_number: agreementNumber,
           trip: tripInfo,
           contact_email: payload.contact_email,
           contact_first_name: payload.contact_first_name || null,

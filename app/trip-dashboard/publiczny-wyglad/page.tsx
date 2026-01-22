@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,15 +9,19 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { TripContentEditor } from "@/components/trip-content-editor"
+import { TripCreationProgress } from "@/components/trip-creation-progress"
 import { toast } from "sonner"
 import { Upload, X, Loader2, Link as LinkIcon, Camera, GripVertical, Plus, RotateCcw } from "lucide-react"
 import Image from "next/image"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 
-export default function PublicznyWygladPage() {
+function PublicznyWygladContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isCreateMode = searchParams.get("mode") === "create"
   const { selectedTrip, tripFullData, tripContentData, isLoadingTripData, invalidateTripCache } = useTrip()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -84,8 +88,49 @@ export default function PublicznyWygladPage() {
     category?: string | null
   } | null>(null)
 
-  // Użyj cache'owanych danych z kontekstu
+  // W trybie tworzenia sprawdź czy są dane z kroku 1
   useEffect(() => {
+    if (isCreateMode) {
+      if (typeof window !== "undefined") {
+        const step1Data = localStorage.getItem("tripCreation_step1")
+        if (!step1Data) {
+          toast.error("Najpierw uzupełnij informacje ogólne")
+          router.push("/trip-dashboard/dodaj-wycieczke")
+          return
+        }
+        
+        // Wczytaj tylko podstawowe informacje z kroku 1 (tytuł, daty, cena itp.)
+        // Wszystkie dane związane z publicznym wyglądem będą w kroku 2
+        try {
+          const data = JSON.parse(step1Data)
+          setTripTitle(data.tripTitle || "")
+          setTripData({
+            start_date: data.startDate || null,
+            end_date: data.endDate || null,
+            price_cents: data.price ? Math.round(parseFloat(data.price) * 100) : null,
+            seats_total: data.seats ? parseInt(data.seats) : 0,
+            seats_reserved: 0,
+            is_active: true,
+            location: data.location || null,
+            description: data.description || null,
+            category: data.category || null,
+          })
+        } catch (e) {
+          console.error("Error loading step1 data:", e)
+          toast.error("Błąd wczytywania danych")
+          router.push("/trip-dashboard/dodaj-wycieczke")
+          return
+        }
+      }
+      setLoading(false)
+      return
+    }
+  }, [isCreateMode, router])
+
+  // Użyj cache'owanych danych z kontekstu (tylko w trybie edycji)
+  useEffect(() => {
+    if (isCreateMode) return
+    
     if (!selectedTrip) {
       setLoading(false)
       return
@@ -157,6 +202,39 @@ export default function PublicznyWygladPage() {
   }, [selectedTrip, tripFullData, tripContentData, isLoadingTripData])
 
   const handleSave = async () => {
+    if (isCreateMode) {
+      // W trybie tworzenia zapisz do localStorage
+      try {
+        setSaving(true)
+        const step2Data = {
+          programAtrakcje,
+          dodatkoweSwiadczenia,
+          galleryUrls,
+          introText,
+          sectionPoznajTitle,
+          sectionPoznajDescription,
+          tripInfoText,
+          baggageText,
+          weatherText,
+          showSeatsLeft,
+          includedInPriceText,
+          additionalCostsText,
+          additionalServiceText,
+          reservationNumber,
+          durationText,
+          additionalFieldSections,
+        }
+        localStorage.setItem("tripCreation_step2", JSON.stringify(step2Data))
+        toast.success("Dane zostały zapisane")
+        router.push("/trip-dashboard/informacje/formularz?mode=create")
+      } catch (err) {
+        toast.error("Nie udało się zapisać danych")
+        setSaving(false)
+      }
+      return
+    }
+
+    // Tryb edycji - zapisz do API
     if (!selectedTrip) return
 
     try {
@@ -318,7 +396,7 @@ export default function PublicznyWygladPage() {
     }
   }
 
-  if (!selectedTrip) {
+  if (!isCreateMode && !selectedTrip) {
     return (
       <div className="flex items-center justify-center h-full">
         <Card>
@@ -359,14 +437,18 @@ export default function PublicznyWygladPage() {
 
   return (
     <div className="space-y-6">
+      {isCreateMode && <TripCreationProgress currentStep={2} />}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-start">
         {/* Lewa kolumna – galeria + informacje o wyjeździe */}
         <div className="xl:col-span-4 flex flex-col gap-4">
-          <Card>
+          <Card className="bg-green-50/50 border-green-200">
             <CardHeader className="px-3 py-2">
-              <CardTitle className="text-sm font-semibold">
-                Informacje o wyjeździe i galeria
-              </CardTitle>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500" />
+                <CardTitle className="text-sm font-semibold">
+                  Informacje o wyjeździe i galeria
+                </CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 pt-2">
               <div className="grid grid-cols-2 gap-2">
@@ -490,20 +572,20 @@ export default function PublicznyWygladPage() {
           </Card>
 
           {/* Informacje o wyjeździe */}
-          {showTripInfoConfigCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
+          <Card className={showTripInfoConfigCard ? "bg-green-50/50 border-green-200" : "bg-gray-50/50 border-gray-200"}>
+            <CardHeader className="px-3 py-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1">
+                <div className={`h-2 w-2 rounded-full ${showTripInfoConfigCard ? 'bg-green-500' : 'bg-gray-300'}`} />
                 <CardTitle className="text-sm font-semibold">
                   Informacje o wyjeździe
                 </CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowTripInfoConfigCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
+              </div>
+              <Switch
+                checked={showTripInfoConfigCard}
+                onCheckedChange={setShowTripInfoConfigCard}
+              />
+            </CardHeader>
+            {showTripInfoConfigCard && (
               <CardContent className="space-y-2 pt-2">
                 <Textarea
                   value={tripInfoText}
@@ -512,22 +594,22 @@ export default function PublicznyWygladPage() {
                   className="min-h-[120px] text-xs"
                 />
               </CardContent>
-            </Card>
-          )}
+            )}
+          </Card>
 
           {/* Bagaż – osobna karta */}
-          {showBaggageCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
+          <Card className={showBaggageCard ? "bg-green-50/50 border-green-200" : "bg-gray-50/50 border-gray-200"}>
+            <CardHeader className="px-3 py-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1">
+                <div className={`h-2 w-2 rounded-full ${showBaggageCard ? 'bg-green-500' : 'bg-gray-300'}`} />
                 <CardTitle className="text-sm font-semibold">Bagaż</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowBaggageCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
+              </div>
+              <Switch
+                checked={showBaggageCard}
+                onCheckedChange={setShowBaggageCard}
+              />
+            </CardHeader>
+            {showBaggageCard && (
               <CardContent className="space-y-2 pt-2">
                 <Textarea
                   value={baggageText}
@@ -536,22 +618,22 @@ export default function PublicznyWygladPage() {
                   className="min-h-[80px] text-xs"
                 />
               </CardContent>
-            </Card>
-          )}
+            )}
+          </Card>
 
           {/* Pogoda – osobna karta */}
-          {showWeatherCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
+          <Card className={showWeatherCard ? "bg-green-50/50 border-green-200" : "bg-gray-50/50 border-gray-200"}>
+            <CardHeader className="px-3 py-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1">
+                <div className={`h-2 w-2 rounded-full ${showWeatherCard ? 'bg-green-500' : 'bg-gray-300'}`} />
                 <CardTitle className="text-sm font-semibold">Pogoda</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowWeatherCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
+              </div>
+              <Switch
+                checked={showWeatherCard}
+                onCheckedChange={setShowWeatherCard}
+              />
+            </CardHeader>
+            {showWeatherCard && (
               <CardContent className="space-y-2 pt-2">
                 <Textarea
                   value={weatherText}
@@ -560,11 +642,11 @@ export default function PublicznyWygladPage() {
                   className="min-h-[80px] text-xs"
                 />
               </CardContent>
-            </Card>
-          )}
+            )}
+          </Card>
 
-          {/* Przycisk przywracania ukrytych kart */}
-          {(!showTripInfoConfigCard || !showBaggageCard || !showWeatherCard || hiddenAdditionalSections.length > 0) && (
+          {/* Przycisk przywracania ukrytych sekcji dodatkowych */}
+          {hiddenAdditionalSections.length > 0 && (
             <Card>
               <CardContent className="pt-6">
                 <Button
@@ -572,9 +654,6 @@ export default function PublicznyWygladPage() {
                   size="sm"
                   className="w-full"
                   onClick={() => {
-                    setShowTripInfoConfigCard(true)
-                    setShowBaggageCard(true)
-                    setShowWeatherCard(true)
                     setHiddenAdditionalSections([])
                   }}
                 >
@@ -712,7 +791,15 @@ export default function PublicznyWygladPage() {
         {/* Środkowa kolumna – opis, informacje o wyjeździe, program, dodatkowe świadczenia, sekcja „Poznaj" (drag & drop) */}
         <div className="xl:col-span-5 flex flex-col gap-4">
           {/* Tytuł wyjazdu, numer rezerwacji, data, czas trwania, kraj */}
-          <Card>
+          <Card className="bg-green-50/50 border-green-200">
+            <CardHeader className="px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500" />
+                <CardTitle className="text-sm font-semibold">
+                  Tytuł wyjazdu i informacje
+                </CardTitle>
+              </div>
+            </CardHeader>
             <CardContent className="pt-6 space-y-4">
               {/* Tytuł wyjazdu - duży nagłówek */}
               <h1 className="text-2xl font-bold text-foreground">{tripTitle}</h1>
@@ -793,9 +880,10 @@ export default function PublicznyWygladPage() {
 
             // Jedyna sekcja: Program
             return (
-              <Card key={sectionId}>
+              <Card key={sectionId} className="bg-green-50/50 border-green-200">
                 <CardHeader {...dragHandlers} {...commonHeaderProps}>
                   <div className="flex items-center gap-2 pr-5">
+                    <div className="h-2 w-2 rounded-full bg-green-500" />
                     <GripVertical className="h-3 w-3 text-muted-foreground" />
                     <CardTitle className="text-sm font-semibold">
                       Program
@@ -857,9 +945,10 @@ export default function PublicznyWygladPage() {
 
             if (sectionId === "bookingPreview") {
               return (
-                <Card key={sectionId} className="border-border">
+                <Card key={sectionId} className="bg-green-50/50 border-green-200">
                   <CardHeader {...dragHandlers} {...commonHeaderProps}>
                     <div className="flex items-center gap-2 pr-5">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
                       <GripVertical className="h-3 w-3 text-muted-foreground" />
                       <CardTitle className="text-sm font-semibold">
                         Podgląd karty rezerwacji
@@ -904,9 +993,10 @@ export default function PublicznyWygladPage() {
 
             if (sectionId === "includedInPrice") {
               return (
-                <Card key={sectionId}>
+                <Card key={sectionId} className="bg-green-50/50 border-green-200">
                   <CardHeader {...dragHandlers} {...commonHeaderProps}>
                     <div className="flex items-center gap-2 pr-5">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
                       <GripVertical className="h-3 w-3 text-muted-foreground" />
                       <CardTitle className="text-sm font-semibold">
                         Świadczenia w cenie
@@ -933,9 +1023,10 @@ export default function PublicznyWygladPage() {
 
             if (sectionId === "additionalCosts") {
               return (
-                <Card key={sectionId}>
+                <Card key={sectionId} className="bg-green-50/50 border-green-200">
                   <CardHeader {...dragHandlers} {...commonHeaderProps}>
                     <div className="flex items-center gap-2 pr-5">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
                       <GripVertical className="h-3 w-3 text-muted-foreground" />
                       <CardTitle className="text-sm font-semibold">
                         Dodatkowe koszty
@@ -963,9 +1054,10 @@ export default function PublicznyWygladPage() {
 
             if (sectionId === "additionalService") {
               return (
-                <Card key={sectionId}>
+                <Card key={sectionId} className="bg-green-50/50 border-green-200">
                   <CardHeader {...dragHandlers} {...commonHeaderProps}>
                     <div className="flex items-center gap-2 pr-5">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
                       <GripVertical className="h-3 w-3 text-muted-foreground" />
                       <CardTitle className="text-sm font-semibold">
                         Dodatkowe świadczenie
@@ -1006,6 +1098,8 @@ export default function PublicznyWygladPage() {
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Zapisywanie...
             </>
+          ) : isCreateMode ? (
+            "Zapisz i przejdź dalej"
           ) : (
             "Zapisz zmiany"
           )}
@@ -1015,3 +1109,14 @@ export default function PublicznyWygladPage() {
   )
 }
 
+export default function PublicznyWygladPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <PublicznyWygladContent />
+    </Suspense>
+  )
+}

@@ -1,80 +1,79 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Switch } from "@/components/ui/switch"
+import { TripCreationProgress } from "@/components/trip-creation-progress"
 import { toast } from "sonner"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { X } from "lucide-react"
+import { Loader2 } from "lucide-react"
+import { BasicSettingsSection } from "@/components/trip-form/sections/basic-settings-section"
+import { CompanyParticipantsSection } from "@/components/trip-form/sections/company-participants-section"
+import { AttractionsSection } from "@/components/trip-form/sections/attractions-section"
+import { DietsSection } from "@/components/trip-form/sections/diets-section"
+import { InsurancesSection } from "@/components/trip-form/sections/insurances-section"
+import type {
+  RegistrationMode,
+  RequiredParticipantFields,
+  AdditionalAttraction,
+  Diet,
+  ExtraInsurance,
+} from "@/components/trip-form/types"
 
-const generateId = () =>
-  `${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-export default function TripFormPage() {
-  const { selectedTrip, tripFullData, isLoadingTripData, invalidateTripCache } = useTrip()
+function TripFormContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const isCreateMode = searchParams.get("mode") === "create"
+  const { selectedTrip, tripFullData, isLoadingTripData, invalidateTripCache, setSelectedTrip, setTrips } = useTrip()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const [registrationMode, setRegistrationMode] = useState<
-    "individual" | "company" | "both"
-  >("both")
+  const [registrationMode, setRegistrationMode] = useState<RegistrationMode>("both")
   const [showAdditionalServices, setShowAdditionalServices] = useState<boolean>(false)
   const [companyParticipantsInfo, setCompanyParticipantsInfo] = useState<string>("")
-  const [requiredParticipantFields, setRequiredParticipantFields] = useState<{
-    pesel: boolean
-    document: boolean
-    gender: boolean
-    phone: boolean
-  }>({
+  const [requiredParticipantFields, setRequiredParticipantFields] = useState<RequiredParticipantFields>({
     pesel: false,
     document: false,
     gender: false,
     phone: false,
   })
-  const [additionalAttractions, setAdditionalAttractions] = useState<
-    { 
-      id: string; 
-      title: string; 
-      description: string; 
-      price_cents: number | null;
-      include_in_contract?: boolean;
-      currency?: "PLN" | "EUR";
-    }[]
-  >([])
-  const [diets, setDiets] = useState<
-    { 
-      id: string; 
-      title: string; 
-      description: string; 
-      price_cents: number | null;
-      variants?: { id: string; title: string; price_cents: number | null }[];
-    }[]
-  >([])
-  const [extraInsurances, setExtraInsurances] = useState<
-    { 
-      id: string; 
-      title: string; 
-      description: string; 
-      owu_url: string;
-      variants?: { id: string; title: string; price_cents: number | null }[];
-    }[]
-  >([])
+  const [additionalAttractions, setAdditionalAttractions] = useState<AdditionalAttraction[]>([])
+  const [expandedAttractions, setExpandedAttractions] = useState<Set<string>>(new Set())
+  const [diets, setDiets] = useState<Diet[]>([])
+  const [expandedDiets, setExpandedDiets] = useState<Set<string>>(new Set())
+  const [extraInsurances, setExtraInsurances] = useState<ExtraInsurance[]>([])
+  const [expandedInsurances, setExpandedInsurances] = useState<Set<string>>(new Set())
 
-  // Użyj cache'owanych danych z kontekstu
+  // W trybie tworzenia sprawdź czy są dane z kroku 1 i 2
   useEffect(() => {
+    if (isCreateMode) {
+      if (typeof window !== "undefined") {
+        const step1Data = localStorage.getItem("tripCreation_step1")
+        const step2Data = localStorage.getItem("tripCreation_step2")
+        
+        if (!step1Data) {
+          toast.error("Najpierw uzupełnij informacje ogólne")
+          router.push("/trip-dashboard/dodaj-wycieczke")
+          return
+        }
+        
+        if (!step2Data) {
+          toast.error("Najpierw uzupełnij publiczny wygląd")
+          router.push("/trip-dashboard/publiczny-wyglad?mode=create")
+          return
+        }
+      }
+      setLoading(false)
+      return
+    }
+  }, [isCreateMode, router])
+
+  // Użyj cache'owanych danych z kontekstu (tylko w trybie edycji)
+  useEffect(() => {
+    if (isCreateMode) return
+    
     if (!selectedTrip) {
       setLoading(false)
       return
@@ -106,15 +105,26 @@ export default function TripFormPage() {
       )
       setAdditionalAttractions(
         Array.isArray(trip.form_additional_attractions)
-          ? trip.form_additional_attractions
+          ? trip.form_additional_attractions.map((item: any) => ({
+              ...item,
+              enabled: item.enabled !== undefined ? item.enabled : true,
+            }))
           : []
       )
       setDiets(
-        Array.isArray(trip.form_diets) ? trip.form_diets : []
+        Array.isArray(trip.form_diets)
+          ? trip.form_diets.map((item: any) => ({
+              ...item,
+              enabled: item.enabled !== undefined ? item.enabled : true,
+            }))
+          : []
       )
       setExtraInsurances(
         Array.isArray(trip.form_extra_insurances)
-          ? trip.form_extra_insurances
+          ? trip.form_extra_insurances.map((item: any) => ({
+              ...item,
+              enabled: item.enabled !== undefined ? item.enabled : true,
+            }))
           : []
       )
       setRequiredParticipantFields(
@@ -152,9 +162,163 @@ export default function TripFormPage() {
       setLoading(true)
       return
     }
-  }, [selectedTrip, tripFullData, isLoadingTripData])
+  }, [selectedTrip, tripFullData, isLoadingTripData, isCreateMode])
 
   const handleSave = async () => {
+    if (isCreateMode) {
+      // W trybie tworzenia utwórz wycieczkę z danymi z wszystkich trzech kroków
+      try {
+        setSaving(true)
+
+        // Wczytaj dane z localStorage
+        const step1DataStr = localStorage.getItem("tripCreation_step1")
+        const step2DataStr = localStorage.getItem("tripCreation_step2")
+        
+        if (!step1DataStr || !step2DataStr) {
+          toast.error("Brak danych z poprzednich kroków")
+          setSaving(false)
+          return
+        }
+
+        const step1Data = JSON.parse(step1DataStr)
+        const step2Data = JSON.parse(step2DataStr)
+
+        const effectivePublicSlug = step1Data.isPublic ? (step1Data.publicSlug || step1Data.slug) : ""
+
+        // 1. Utwórz wycieczkę z danymi z kroku 1
+        const tripRes = await fetch("/api/trips", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: step1Data.tripTitle,
+            slug: step1Data.slug,
+            description: step1Data.description || null,
+            start_date: step1Data.startDate || null,
+            end_date: step1Data.endDate || null,
+            price_cents: step1Data.price ? Math.round(parseFloat(step1Data.price) * 100) : null,
+            seats_total: step1Data.seats ? parseInt(step1Data.seats) : 0,
+            is_active: true,
+            is_public: step1Data.isPublic,
+            public_slug: effectivePublicSlug || null,
+            category: step1Data.category || null,
+            location: step1Data.location || null,
+            payment_split_enabled: step1Data.paymentSplitEnabled !== undefined ? step1Data.paymentSplitEnabled : true,
+            payment_split_first_percent: step1Data.paymentSplitEnabled
+              ? parseInt(step1Data.paymentSplitFirstPercent || "30", 10)
+              : null,
+            payment_split_second_percent: step1Data.paymentSplitEnabled
+              ? parseInt(step1Data.paymentSplitSecondPercent || "70", 10)
+              : null,
+            payment_reminder_enabled: step1Data.paymentReminderEnabled || false,
+            payment_reminder_days_before: step1Data.paymentReminderEnabled
+              ? (step1Data.paymentReminderDaysBefore?.trim()
+                  ? parseInt(step1Data.paymentReminderDaysBefore, 10)
+                  : null)
+              : null,
+          }),
+        })
+
+        if (!tripRes.ok) {
+          const errorData = await tripRes.json().catch(() => ({}))
+          toast.error(errorData.error || "Nie udało się utworzyć wycieczki")
+          setSaving(false)
+          return
+        }
+
+        const tripData = await tripRes.json()
+        const tripId = tripData.id
+
+        // 2. Zaktualizuj treść wycieczki
+        const contentRes = await fetch(`/api/trips/${tripId}/content`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            program_atrakcje: step2Data.programAtrakcje || "",
+            dodatkowe_swiadczenia: step2Data.dodatkoweSwiadczenia || "",
+            gallery_urls: step2Data.galleryUrls || [],
+            intro_text: step2Data.introText || "",
+            section_poznaj_title: step2Data.sectionPoznajTitle || "",
+            section_poznaj_description: step2Data.sectionPoznajDescription || "",
+            trip_info_text: step2Data.tripInfoText || "",
+            baggage_text: step2Data.baggageText || "",
+            weather_text: step2Data.weatherText || "",
+            show_seats_left: step2Data.showSeatsLeft || false,
+            included_in_price_text: step2Data.includedInPriceText || "",
+            additional_costs_text: step2Data.additionalCostsText || "",
+            additional_service_text: step2Data.additionalServiceText || "",
+            reservation_number: step2Data.reservationNumber || "",
+            duration_text: step2Data.durationText || "",
+            additional_fields: step2Data.additionalFieldSections || [],
+          }),
+        })
+
+        if (!contentRes.ok) {
+          toast.error("Wycieczka została utworzona, ale nie udało się zapisać treści")
+        }
+
+        // 3. Zaktualizuj ustawienia formularza
+        const formRes = await fetch(`/api/trips/${tripId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            registration_mode: registrationMode,
+            form_show_additional_services: showAdditionalServices,
+            company_participants_info: companyParticipantsInfo || null,
+            form_additional_attractions: additionalAttractions,
+            form_diets: diets,
+            form_extra_insurances: extraInsurances,
+            form_required_participant_fields: requiredParticipantFields,
+          }),
+        })
+
+        if (!formRes.ok) {
+          toast.error("Wycieczka została utworzona, ale nie udało się zapisać ustawień formularza")
+        }
+
+        // 4. Przypisz koordynatorów z kroku 1
+        if (step1Data.coordinatorIds && Array.isArray(step1Data.coordinatorIds) && step1Data.coordinatorIds.length > 0) {
+          for (const coordinatorId of step1Data.coordinatorIds) {
+            try {
+              await fetch(`/api/trips/${tripId}/coordinators`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  coordinator_id: coordinatorId,
+                  action: "assign",
+                }),
+              })
+            } catch (err) {
+              console.error("Error assigning coordinator:", err)
+            }
+          }
+        }
+
+        // 5. Wyczyść localStorage
+        localStorage.removeItem("tripCreation_step1")
+        localStorage.removeItem("tripCreation_step2")
+
+        // 6. Odśwież listę wycieczek i ustaw nową wycieczkę jako wybraną
+        const tripsRes = await fetch("/api/trips")
+        if (tripsRes.ok) {
+          const tripsData = await tripsRes.json()
+          setTrips(tripsData)
+          
+          const newTrip = tripsData.find((t: { id: string }) => t.id === tripId)
+          if (newTrip) {
+            setSelectedTrip(newTrip)
+          }
+        }
+
+        toast.success("Wycieczka została utworzona")
+        router.push("/trip-dashboard")
+      } catch (err) {
+        toast.error("Nie udało się utworzyć wycieczki")
+        setSaving(false)
+      }
+      return
+    }
+
+    // Tryb edycji - zapisz do API
     if (!selectedTrip) return
 
     try {
@@ -189,7 +353,7 @@ export default function TripFormPage() {
     }
   }
 
-  if (!selectedTrip) {
+  if (!isCreateMode && !selectedTrip) {
     return (
       <div className="flex items-center justify-center h-full">
         <Card>
@@ -211,855 +375,80 @@ export default function TripFormPage() {
 
   return (
     <div className="space-y-2">
-      <Card className="p-3 space-y-2">
-        <CardContent className="px-0 pb-0 space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="grid gap-1">
-              <Label className="text-xs">Dostępne ścieżki zgłoszenia</Label>
-              <Select
-                value={registrationMode}
-                onValueChange={(value: "individual" | "company" | "both") =>
-                  setRegistrationMode(value)
-                }
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Wybierz typ zgłoszenia" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="individual">
-                    Tylko Osoba Fizyczna
-                  </SelectItem>
-                  <SelectItem value="company">Tylko Firma</SelectItem>
-                  <SelectItem value="both">
-                    Obie opcje dostępne (wybór użytkownika)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      {isCreateMode && <TripCreationProgress currentStep={3} />}
+      
+      <BasicSettingsSection
+        registrationMode={registrationMode}
+        setRegistrationMode={setRegistrationMode}
+        requiredParticipantFields={requiredParticipantFields}
+        setRequiredParticipantFields={setRequiredParticipantFields}
+        showAdditionalServices={showAdditionalServices}
+        setShowAdditionalServices={setShowAdditionalServices}
+      />
 
-          {(registrationMode === "individual" || registrationMode === "both") && (
-            <div className="grid gap-2 mt-4 border rounded-md p-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">
-                  Wymagane pola uczestników
-                </Label>
-                <p className="text-[10px] text-muted-foreground">
-                  Wybierz które pola są obowiązkowe w formularzu rezerwacji dla uczestników. Imię i nazwisko są zawsze wymagane.
-                </p>
-              </div>
-              <div className="space-y-3 pl-2">
-                <div className="flex items-center justify-between rounded-lg border p-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs font-medium cursor-pointer">
-                      PESEL
-                    </Label>
-                    <p className="text-[10px] text-muted-foreground">
-                      Numer PESEL uczestnika
-                    </p>
-                  </div>
-                  <Switch
-                    checked={requiredParticipantFields.pesel}
-                    onCheckedChange={(checked) =>
-                      setRequiredParticipantFields((prev) => ({
-                        ...prev,
-                        pesel: checked,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border p-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs font-medium cursor-pointer">
-                      Dokument tożsamości / Paszport
-                    </Label>
-                    <p className="text-[10px] text-muted-foreground">
-                      Typ dokumentu i numer
-                    </p>
-                  </div>
-                  <Switch
-                    checked={requiredParticipantFields.document}
-                    onCheckedChange={(checked) =>
-                      setRequiredParticipantFields((prev) => ({
-                        ...prev,
-                        document: checked,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border p-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs font-medium cursor-pointer">
-                      Płeć
-                    </Label>
-                    <p className="text-[10px] text-muted-foreground">
-                      Płeć uczestnika
-                    </p>
-                  </div>
-                  <Switch
-                    checked={requiredParticipantFields.gender}
-                    onCheckedChange={(checked) =>
-                      setRequiredParticipantFields((prev) => ({
-                        ...prev,
-                        gender: checked,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border p-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs font-medium cursor-pointer">
-                      Telefon
-                    </Label>
-                    <p className="text-[10px] text-muted-foreground">
-                      Numer telefonu uczestnika
-                    </p>
-                  </div>
-                  <Switch
-                    checked={requiredParticipantFields.phone}
-                    onCheckedChange={(checked) =>
-                      setRequiredParticipantFields((prev) => ({
-                        ...prev,
-                        phone: checked,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <div className="grid gap-1 mt-4">
-            <Label className="text-xs">Krok usługi dodatkowe</Label>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label className="text-xs font-medium cursor-pointer">
-                  Pokaż krok "Usługi dodatkowe" w formularzu
-                </Label>
-                <p className="text-[10px] text-muted-foreground">
-                  Jeśli włączone, w formularzu pojawi się krok umożliwiający wybór usług dodatkowych dla uczestników
-                </p>
-              </div>
-              <Switch
-                checked={showAdditionalServices}
-                onCheckedChange={setShowAdditionalServices}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              size="sm"
-              className="h-8 text-xs"
-            >
-              {saving ? "Zapisywanie..." : "Zapisz zmiany"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {registrationMode !== "individual" && (
-        <Card className="p-3 space-y-2">
-          <CardHeader className="px-0 pt-0 pb-1">
-            <CardTitle className="text-sm font-semibold">
-              Uczestnicy – zgłoszenia firmowe
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-0 pb-0 space-y-2">
-            <p className="text-[11px] text-muted-foreground">
-              Ten komunikat będzie wyświetlany w formularzu rezerwacji, gdy
-              zgłoszenie jest składane jako firma. Zastępuje on formularz
-              dodawania uczestników.
-            </p>
-            <div className="grid gap-1">
-              <Label className="text-xs">Treść komunikatu dla firm</Label>
-              <Textarea
-                value={companyParticipantsInfo}
-                onChange={(e) => setCompanyParticipantsInfo(e.target.value)}
-                rows={3}
-                className="text-xs resize-none"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                size="sm"
-                className="h-8 text-xs"
-              >
-                {saving ? "Zapisywanie..." : "Zapisz zmiany"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <CompanyParticipantsSection
+        companyParticipantsInfo={companyParticipantsInfo}
+        setCompanyParticipantsInfo={setCompanyParticipantsInfo}
+        registrationMode={registrationMode}
+      />
 
       {showAdditionalServices && (
         <>
-          <Card className="p-3 space-y-2 mt-2">
-            <CardHeader className="px-0 pt-0 pb-1">
-              <CardTitle className="text-sm font-semibold">
-                Dodatkowe atrakcje
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0 space-y-2">
-              <p className="text-[11px] text-muted-foreground">
-                Zdefiniuj opcjonalne atrakcje dostępne w formularzu. Każda może
-                mieć tytuł, opis i cenę. W formularzu klient będzie mógł wybrać
-                <span className="font-semibold"> Tak / Nie</span>. Atrakcje w EUR nie są wliczane do umowy.
-              </p>
-              <div className="space-y-2">
-                {additionalAttractions.map((item, index) => (
-                  <div
-                    key={item.id || index}
-                    className="border rounded-md p-2 space-y-1 text-xs"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-xs">
-                        Atrakcja {index + 1}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[11px] px-2"
-                        onClick={() =>
-                          setAdditionalAttractions((prev) =>
-                            prev.filter((_, i) => i !== index)
-                          )
-                        }
-                      >
-                        Usuń
-                      </Button>
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Tytuł</Label>
-                      <Input
-                        value={item.title}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setAdditionalAttractions((prev) =>
-                            prev.map((attraction, i) =>
-                              i === index
-                                ? { ...attraction, title: value }
-                                : attraction
-                            )
-                          )
-                        }}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Opis</Label>
-                      <Textarea
-                        value={item.description}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setAdditionalAttractions((prev) =>
-                            prev.map((attraction, i) =>
-                              i === index
-                                ? { ...attraction, description: value }
-                                : attraction
-                            )
-                          )
-                        }}
-                        rows={2}
-                        className="text-xs resize-none"
-                      />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Cena</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          value={
-                            item.price_cents != null
-                              ? (item.price_cents / 100).toFixed(2)
-                              : ""
-                          }
-                          onChange={(e) => {
-                            const value = e.target.value
-                            const cents =
-                              value.trim() === ""
-                                ? null
-                                : Math.round(parseFloat(value) * 100)
-                            setAdditionalAttractions((prev) =>
-                              prev.map((attraction, i) =>
-                                i === index
-                                  ? { ...attraction, price_cents: cents }
-                                  : attraction
-                              )
-                            )
-                          }}
-                          placeholder="0.00"
-                          className="h-8 text-xs flex-1"
-                        />
-                        <Select
-                          value={item.currency || "PLN"}
-                          onValueChange={(value: "PLN" | "EUR") => {
-                            setAdditionalAttractions((prev) =>
-                              prev.map((attraction, i) =>
-                                i === index
-                                  ? { ...attraction, currency: value }
-                                  : attraction
-                              )
-                            )
-                          }}
-                        >
-                          <SelectTrigger className="h-8 text-xs w-20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="PLN">PLN</SelectItem>
-                            <SelectItem value="EUR">EUR</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <Checkbox
-                        id={`include-in-contract-${index}`}
-                        checked={item.include_in_contract ?? true}
-                        onCheckedChange={(checked) =>
-                          setAdditionalAttractions((prev) =>
-                            prev.map((attraction, i) =>
-                              i === index
-                                ? { ...attraction, include_in_contract: Boolean(checked) }
-                                : attraction
-                            )
-                          )
-                        }
-                        className="h-4 w-4"
-                      />
-                      <Label
-                        htmlFor={`include-in-contract-${index}`}
-                        className="text-[11px] cursor-pointer"
-                      >
-                        Wliczać do ceny w umowie (tylko dla PLN)
-                      </Label>
-                    </div>
-                    {item.currency === "EUR" && (
-                      <p className="text-[10px] text-muted-foreground">
-                        Atrakcje w EUR nie są wliczane do umowy
-                      </p>
-                    )}
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() =>
-                    setAdditionalAttractions((prev) => [
-                      ...prev,
-                      {
-                        id: generateId(),
-                        title: "",
-                        description: "",
-                        price_cents: null,
-                        include_in_contract: true,
-                        currency: "PLN",
-                      },
-                    ])
-                  }
-                >
-                  Dodaj atrakcję
-                </Button>
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                  size="sm"
-                  className="h-8 text-xs"
-                >
-                  {saving ? "Zapisywanie..." : "Zapisz zmiany"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <AttractionsSection
+            attractions={additionalAttractions}
+            setAttractions={setAdditionalAttractions}
+            expandedIds={expandedAttractions}
+            setExpandedIds={setExpandedAttractions}
+          />
 
-          <Card className="p-3 space-y-2 mt-2">
-            <CardHeader className="px-0 pt-0 pb-1">
-              <CardTitle className="text-sm font-semibold">Diety</CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0 space-y-2">
-              <p className="text-[11px] text-muted-foreground">
-                Zdefiniuj dostępne warianty diety. Klient wybierze jedną z listy.
-                Domyślnie diety są darmowe, ale możesz przypisać cenę, która
-                doliczy się do faktury.
-              </p>
-              <div className="space-y-2">
-                {diets.map((item, index) => (
-                  <div
-                    key={item.id || index}
-                    className="border rounded-md p-2 space-y-1 text-xs"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-xs">
-                        Dieta {index + 1}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[11px] px-2"
-                        onClick={() =>
-                          setDiets((prev) => prev.filter((_, i) => i !== index))
-                        }
-                      >
-                        Usuń
-                      </Button>
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Tytuł</Label>
-                      <Input
-                        value={item.title}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setDiets((prev) =>
-                            prev.map((diet, i) =>
-                              i === index ? { ...diet, title: value } : diet
-                            )
-                          )
-                        }}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Opis</Label>
-                      <Textarea
-                        value={item.description}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setDiets((prev) =>
-                            prev.map((diet, i) =>
-                              i === index
-                                ? { ...diet, description: value }
-                                : diet
-                            )
-                          )
-                        }}
-                        rows={2}
-                        className="text-xs resize-none"
-                      />
-                    </div>
-                    {(!item.variants || item.variants.length === 0) && (
-                      <div className="grid gap-1">
-                        <Label className="text-[11px]">Cena (PLN)</Label>
-                        <Input
-                          type="number"
-                          value={
-                            item.price_cents != null
-                              ? (item.price_cents / 100).toFixed(2)
-                              : ""
-                          }
-                          onChange={(e) => {
-                            const value = e.target.value
-                            const cents =
-                              value.trim() === ""
-                                ? null
-                                : Math.round(parseFloat(value) * 100)
-                            setDiets((prev) =>
-                              prev.map((diet, i) =>
-                                i === index
-                                  ? { ...diet, price_cents: cents }
-                                  : diet
-                              )
-                            )
-                          }}
-                          placeholder="0.00"
-                          className="h-8 text-xs"
-                        />
-                        <p className="text-[10px] text-muted-foreground">
-                          Jeśli dieta ma warianty, użyj sekcji poniżej zamiast tego pola.
-                        </p>
-                      </div>
-                    )}
-                    <div className="border-t pt-2 mt-2">
-                      <Label className="text-[11px] font-semibold">Warianty diety (opcjonalne)</Label>
-                      <p className="text-[10px] text-muted-foreground mb-2">
-                        Jeśli dieta ma kilka wariantów (np. wegetariańska bezpłatna, wegańska odpłatna), dodaj je tutaj. Jeśli nie ma wariantów, zostaw puste i ustaw cenę powyżej.
-                      </p>
-                      <div className="space-y-2">
-                        {(item.variants || []).map((variant, variantIndex) => (
-                          <div key={variant.id || variantIndex} className="flex gap-2 items-end border rounded p-1.5">
-                            <div className="flex-1 grid gap-1">
-                              <Label className="text-[10px]">Nazwa wariantu</Label>
-                              <Input
-                                value={variant.title}
-                                onChange={(e) => {
-                                  const value = e.target.value
-                                  setDiets((prev) =>
-                                    prev.map((diet, i) =>
-                                      i === index
-                                        ? {
-                                            ...diet,
-                                            variants: (diet.variants || []).map((v, vi) =>
-                                              vi === variantIndex ? { ...v, title: value } : v
-                                            ),
-                                          }
-                                        : diet
-                                    )
-                                  )
-                                }}
-                                className="h-7 text-xs"
-                                placeholder="np. Wegetariańska"
-                              />
-                            </div>
-                            <div className="w-24 grid gap-1">
-                              <Label className="text-[10px]">Cena (PLN)</Label>
-                              <Input
-                                type="number"
-                                value={
-                                  variant.price_cents != null
-                                    ? (variant.price_cents / 100).toFixed(2)
-                                    : ""
-                                }
-                                onChange={(e) => {
-                                  const value = e.target.value
-                                  const cents =
-                                    value.trim() === ""
-                                      ? null
-                                      : Math.round(parseFloat(value) * 100)
-                                  setDiets((prev) =>
-                                    prev.map((diet, i) =>
-                                      i === index
-                                        ? {
-                                            ...diet,
-                                            variants: (diet.variants || []).map((v, vi) =>
-                                              vi === variantIndex ? { ...v, price_cents: cents } : v
-                                            ),
-                                          }
-                                        : diet
-                                    )
-                                  )
-                                }}
-                                className="h-7 text-xs"
-                                placeholder="0.00"
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={() =>
-                                setDiets((prev) =>
-                                  prev.map((diet, i) =>
-                                    i === index
-                                      ? {
-                                          ...diet,
-                                          variants: (diet.variants || []).filter((_, vi) => vi !== variantIndex),
-                                        }
-                                      : diet
-                                  )
-                                )
-                              }
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            const newVariant = {
-                              id: generateId(),
-                              title: "",
-                              price_cents: null,
-                            }
-                            setDiets((prev) =>
-                              prev.map((diet, i) =>
-                                i === index
-                                  ? {
-                                      ...diet,
-                                      variants: [...(diet.variants || []), newVariant],
-                                    }
-                                  : diet
-                              )
-                            )
-                          }}
-                        >
-                          Dodaj wariant
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() =>
-                    setDiets((prev) => [
-                      ...prev,
-                      {
-                        id: generateId(),
-                        title: "",
-                        description: "",
-                        price_cents: null,
-                      },
-                    ])
-                  }
-                >
-                  Dodaj dietę
-                </Button>
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                  size="sm"
-                  className="h-8 text-xs"
-                >
-                  {saving ? "Zapisywanie..." : "Zapisz zmiany"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <DietsSection
+            diets={diets}
+            setDiets={setDiets}
+            expandedIds={expandedDiets}
+            setExpandedIds={setExpandedDiets}
+          />
 
-          <Card className="p-3 space-y-2 mt-2">
-            <CardHeader className="px-0 pt-0 pb-1">
-              <CardTitle className="text-sm font-semibold">
-                Ubezpieczenia dodatkowe
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0 space-y-2">
-              <p className="text-[11px] text-muted-foreground">
-                Zdefiniuj dodatkowe ubezpieczenia. Każde ma tytuł, opis i link do
-                OWU organizatora. W formularzu klient będzie mógł zaznaczyć
-                checkbox <span className="font-semibold">Tak</span>.
-              </p>
-              <div className="space-y-2">
-                {extraInsurances.map((item, index) => (
-                  <div
-                    key={item.id || index}
-                    className="border rounded-md p-2 space-y-1 text-xs"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-xs">
-                        Ubezpieczenie {index + 1}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[11px] px-2"
-                        onClick={() =>
-                          setExtraInsurances((prev) =>
-                            prev.filter((_, i) => i !== index)
-                          )
-                        }
-                      >
-                        Usuń
-                      </Button>
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Tytuł</Label>
-                      <Input
-                        value={item.title}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setExtraInsurances((prev) =>
-                            prev.map((insurance, i) =>
-                              i === index
-                                ? { ...insurance, title: value }
-                                : insurance
-                            )
-                          )
-                        }}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Opis</Label>
-                      <Textarea
-                        value={item.description}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setExtraInsurances((prev) =>
-                            prev.map((insurance, i) =>
-                              i === index
-                                ? { ...insurance, description: value }
-                                : insurance
-                            )
-                          )
-                        }}
-                        rows={2}
-                        className="text-xs resize-none"
-                      />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label className="text-[11px]">Link do OWU</Label>
-                      <Input
-                        value={item.owu_url}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setExtraInsurances((prev) =>
-                            prev.map((insurance, i) =>
-                              i === index
-                                ? { ...insurance, owu_url: value }
-                                : insurance
-                            )
-                          )
-                        }}
-                        placeholder="https://..."
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="border-t pt-2 mt-2">
-                      <Label className="text-[11px] font-semibold">Warianty ubezpieczenia (opcjonalne)</Label>
-                      <p className="text-[10px] text-muted-foreground mb-2">
-                        Jeśli ubezpieczenie ma kilka wariantów, dodaj je tutaj. Jeśli nie, uczestnik wybierze tylko Tak/Nie.
-                      </p>
-                      <div className="space-y-2">
-                        {(item.variants || []).map((variant, variantIndex) => (
-                          <div key={variant.id || variantIndex} className="flex gap-2 items-end border rounded p-1.5">
-                            <div className="flex-1 grid gap-1">
-                              <Label className="text-[10px]">Nazwa wariantu</Label>
-                              <Input
-                                value={variant.title}
-                                onChange={(e) => {
-                                  const value = e.target.value
-                                  setExtraInsurances((prev) =>
-                                    prev.map((insurance, i) =>
-                                      i === index
-                                        ? {
-                                            ...insurance,
-                                            variants: (insurance.variants || []).map((v, vi) =>
-                                              vi === variantIndex ? { ...v, title: value } : v
-                                            ),
-                                          }
-                                        : insurance
-                                    )
-                                  )
-                                }}
-                                className="h-7 text-xs"
-                                placeholder="np. Podstawowy"
-                              />
-                            </div>
-                            <div className="w-24 grid gap-1">
-                              <Label className="text-[10px]">Cena (PLN)</Label>
-                              <Input
-                                type="number"
-                                value={
-                                  variant.price_cents != null
-                                    ? (variant.price_cents / 100).toFixed(2)
-                                    : ""
-                                }
-                                onChange={(e) => {
-                                  const value = e.target.value
-                                  const cents =
-                                    value.trim() === ""
-                                      ? null
-                                      : Math.round(parseFloat(value) * 100)
-                                  setExtraInsurances((prev) =>
-                                    prev.map((insurance, i) =>
-                                      i === index
-                                        ? {
-                                            ...insurance,
-                                            variants: (insurance.variants || []).map((v, vi) =>
-                                              vi === variantIndex ? { ...v, price_cents: cents } : v
-                                            ),
-                                          }
-                                        : insurance
-                                    )
-                                  )
-                                }}
-                                className="h-7 text-xs"
-                                placeholder="0.00"
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={() =>
-                                setExtraInsurances((prev) =>
-                                  prev.map((insurance, i) =>
-                                    i === index
-                                      ? {
-                                          ...insurance,
-                                          variants: (insurance.variants || []).filter((_, vi) => vi !== variantIndex),
-                                        }
-                                      : insurance
-                                  )
-                                )
-                              }
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            const newVariant = {
-                              id: generateId(),
-                              title: "",
-                              price_cents: null,
-                            }
-                            setExtraInsurances((prev) =>
-                              prev.map((insurance, i) =>
-                                i === index
-                                  ? {
-                                      ...insurance,
-                                      variants: [...(insurance.variants || []), newVariant],
-                                    }
-                                  : insurance
-                              )
-                            )
-                          }}
-                        >
-                          Dodaj wariant
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() =>
-                    setExtraInsurances((prev) => [
-                      ...prev,
-                      {
-                        id: generateId(),
-                        title: "",
-                        description: "",
-                        owu_url: "",
-                      },
-                    ])
-                  }
-                >
-                  Dodaj ubezpieczenie
-                </Button>
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                  size="sm"
-                  className="h-8 text-xs"
-                >
-                  {saving ? "Zapisywanie..." : "Zapisz zmiany"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <InsurancesSection
+            insurances={extraInsurances}
+            setInsurances={setExtraInsurances}
+            expandedIds={expandedInsurances}
+            setExpandedIds={setExpandedInsurances}
+          />
         </>
       )}
+
+      {/* Globalny przycisk zapisu */}
+      <div className="flex justify-end gap-2 pt-4 pb-2">
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          size="sm"
+          className="h-8 text-xs"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {isCreateMode ? "Tworzenie wycieczki..." : "Zapisywanie..."}
+            </>
+          ) : isCreateMode ? (
+            "Utwórz wycieczkę"
+          ) : (
+            "Zapisz zmiany"
+          )}
+        </Button>
+      </div>
     </div>
+  )
+}
+
+export default function TripFormPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        Wczytywanie...
+      </div>
+    }>
+      <TripFormContent />
+    </Suspense>
   )
 }

@@ -1,29 +1,36 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useTrip } from "@/contexts/trip-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { TripContentEditor } from "@/components/trip-content-editor"
+import { TripCreationProgress } from "@/components/trip-creation-progress"
 import { toast } from "sonner"
-import { Upload, X, Loader2, Link as LinkIcon, Camera, GripVertical } from "lucide-react"
-import Image from "next/image"
-import { Badge } from "@/components/ui/badge"
+import { Loader2 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Separator } from "@/components/ui/separator"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { X } from "lucide-react"
+
+type Coordinator = {
+  id: string
+  full_name: string | null
+}
 
 export default function DodajWycieczkePage() {
   const router = useRouter()
-  const { setSelectedTrip, trips, setTrips } = useTrip()
   const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [addingFromUrl, setAddingFromUrl] = useState(false)
-  const [imageUrl, setImageUrl] = useState("")
-  const [programAtrakcje, setProgramAtrakcje] = useState("")
-  const [galleryUrls, setGalleryUrls] = useState<string[]>([])
+
   const [tripTitle, setTripTitle] = useState("")
   const [slug, setSlug] = useState("")
   const [description, setDescription] = useState("")
@@ -33,120 +40,88 @@ export default function DodajWycieczkePage() {
   const [seats, setSeats] = useState("")
   const [category, setCategory] = useState("")
   const [location, setLocation] = useState("")
+  const [paymentSplitEnabled, setPaymentSplitEnabled] = useState(true)
+  const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState("30")
+  const [paymentSplitSecondPercent, setPaymentSplitSecondPercent] = useState("70")
+  const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
+  const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
   const [isPublic, setIsPublic] = useState(false)
   const [publicSlug, setPublicSlug] = useState("")
-  const [tripInfoText, setTripInfoText] = useState("")
-  const [includedInPriceLeftText, setIncludedInPriceLeftText] = useState("")
-  const [baggageText, setBaggageText] = useState("")
-  const [weatherText, setWeatherText] = useState("")
-  const [showTripInfoConfigCard, setShowTripInfoConfigCard] = useState(true)
-  const [showIncludedInPriceLeftCard, setShowIncludedInPriceLeftCard] = useState(true)
-  const [showBaggageCard, setShowBaggageCard] = useState(true)
-  const [showWeatherCard, setShowWeatherCard] = useState(true)
-  const [showSeatsLeft, setShowSeatsLeft] = useState(false)
-  const [includedInPriceText, setIncludedInPriceText] = useState("")
-  const [additionalCostsText, setAdditionalCostsText] = useState("")
-  const [additionalServiceText, setAdditionalServiceText] = useState("")
-  const [reservationNumber, setReservationNumber] = useState("")
-  const [durationText, setDurationText] = useState("")
-  
-  // Drag & drop i widoczność sekcji w edytorze
-  type MiddleSectionId = "program"
-  type RightSectionId = "bookingPreview" | "includedInPrice" | "additionalCosts" | "additionalService"
 
-  const [middleSections, setMiddleSections] = useState<MiddleSectionId[]>([
-    "program",
-  ])
-  const [rightSections, setRightSections] = useState<RightSectionId[]>([
-    "bookingPreview",
-    "includedInPrice",
-    "additionalCosts",
-    "additionalService",
-  ])
-  const [hiddenMiddleSections, setHiddenMiddleSections] = useState<MiddleSectionId[]>([])
-  const [hiddenRightSections, setHiddenRightSections] = useState<RightSectionId[]>([])
-  const [draggingMiddle, setDraggingMiddle] = useState<MiddleSectionId | null>(null)
-  const [draggingRight, setDraggingRight] = useState<RightSectionId | null>(null)
+  const [coordinators, setCoordinators] = useState<Coordinator[]>([])
+  const [availableCoordinators, setAvailableCoordinators] = useState<Coordinator[]>([])
+  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("")
+  const [loadingCoordinators, setLoadingCoordinators] = useState(true)
 
   const effectivePublicSlug = isPublic ? (publicSlug || slug) : ""
 
-  const validateImageUrl = async (url: string): Promise<boolean> => {
-    try {
-      const response = await fetch(url, { method: "HEAD" })
-      const contentType = response.headers.get("content-type")
-      return contentType?.startsWith("image/") ?? false
-    } catch {
-      return false
-    }
-  }
-
-  const handleAddImageFromUrl = async () => {
-    if (!imageUrl.trim()) return
-
-    try {
-      if (galleryUrls.length >= 3) {
-        toast.error("Możesz dodać maksymalnie 3 zdjęcia do galerii")
-        return
+  // Wczytaj dane z localStorage jeśli istnieją (gdy użytkownik wraca)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedData = localStorage.getItem("tripCreation_step1")
+      if (savedData) {
+        try {
+          const data = JSON.parse(savedData)
+          setTripTitle(data.tripTitle || "")
+          setSlug(data.slug || "")
+          setDescription(data.description || "")
+          setStartDate(data.startDate || "")
+          setEndDate(data.endDate || "")
+          setPrice(data.price || "")
+          setSeats(data.seats || "")
+          setCategory(data.category || "")
+          setLocation(data.location || "")
+          setIsPublic(data.isPublic || false)
+          setPublicSlug(data.publicSlug || "")
+          setPaymentSplitEnabled(data.paymentSplitEnabled !== undefined ? data.paymentSplitEnabled : true)
+          setPaymentSplitFirstPercent(data.paymentSplitFirstPercent || "30")
+          setPaymentSplitSecondPercent(data.paymentSplitSecondPercent || "70")
+          setPaymentReminderEnabled(data.paymentReminderEnabled || false)
+          setPaymentReminderDaysBefore(data.paymentReminderDaysBefore || "")
+        } catch (e) {
+          console.error("Error loading saved data:", e)
+        }
       }
+    }
+  }, [])
 
-      setAddingFromUrl(true)
-
+  // Wczytaj koordynatorów
+  useEffect(() => {
+    const loadCoordinators = async () => {
       try {
-        new URL(imageUrl)
+        setLoadingCoordinators(true)
+        const res = await fetch("/api/coordinators")
+        if (res.ok) {
+          const data = await res.json()
+          setAvailableCoordinators(data)
+        }
       } catch {
-        toast.error("Nieprawidłowy adres URL")
-        setAddingFromUrl(false)
-        return
+        toast.error("Nie udało się wczytać koordynatorów")
+      } finally {
+        setLoadingCoordinators(false)
       }
+    }
+    void loadCoordinators()
+  }, [])
 
-      const isValidImage = await validateImageUrl(imageUrl)
-      if (!isValidImage) {
-        toast.error("Podany URL nie wskazuje na obraz")
-        setAddingFromUrl(false)
-        return
+  const assignCoordinator = async () => {
+    if (!selectedCoordinatorId) return
+
+    try {
+      const coordinator = availableCoordinators.find((c) => c.id === selectedCoordinatorId)
+      if (coordinator) {
+        setCoordinators([...coordinators, coordinator])
+        setSelectedCoordinatorId("")
+        toast.success("Koordynator został dodany")
       }
-
-      if (galleryUrls.includes(imageUrl)) {
-        toast.error("To zdjęcie już jest w galerii")
-        setAddingFromUrl(false)
-        return
-      }
-
-      setGalleryUrls([...galleryUrls, imageUrl].slice(0, 3))
-      setImageUrl("")
-      toast.success("Zdjęcie zostało dodane z linku")
-    } catch (err) {
-      toast.error("Nie udało się dodać zdjęcia")
-    } finally {
-      setAddingFromUrl(false)
+    } catch {
+      toast.error("Nie udało się dodać koordynatora")
     }
   }
 
-  const handleImageDelete = (url: string) => {
-    setGalleryUrls(galleryUrls.filter((u) => u !== url))
-    toast.success("Zdjęcie zostało usunięte")
-  }
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (galleryUrls.length >= 3) {
-      toast.error("Możesz dodać maksymalnie 3 zdjęcia do galerii")
-      e.target.value = ""
-      return
-    }
-
-    // Dla nowej wycieczki, zdjęcia będą zapisane po utworzeniu wycieczki
-    // Na razie tylko dodajemy je lokalnie
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string
-      setGalleryUrls([...galleryUrls, dataUrl].slice(0, 3))
-      toast.success("Zdjęcie zostało dodane (zostanie zapisane po utworzeniu wycieczki)")
-    }
-    reader.readAsDataURL(file)
-    e.target.value = ""
+  const unassignCoordinator = (coordinatorId: string) => {
+    setCoordinators(coordinators.filter((c) => c.id !== coordinatorId))
+    toast.success("Koordynator został usunięty")
   }
 
   const handleSave = async () => {
@@ -155,754 +130,395 @@ export default function DodajWycieczkePage() {
       return
     }
 
+    // Walidacja sumy procentów
+    if (paymentSplitEnabled) {
+      const firstPercent = parseInt(paymentSplitFirstPercent, 10)
+      const secondPercent = parseInt(paymentSplitSecondPercent, 10)
+      if (firstPercent + secondPercent !== 100) {
+        toast.error("Suma procentów musi równać się 100%")
+        return
+      }
+    }
+
     try {
       setSaving(true)
 
-      // Najpierw utwórz wycieczkę
-      const tripRes = await fetch("/api/trips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: tripTitle,
-          slug,
-          description: description || null,
-          start_date: startDate || null,
-          end_date: endDate || null,
-          price_cents: price ? Math.round(parseFloat(price) * 100) : null,
-          seats_total: seats ? parseInt(seats) : 0,
-          is_active: true,
-          is_public: isPublic,
-          public_slug: effectivePublicSlug || null,
-          category: category || null,
-          location: location || null,
-        }),
-      })
-
-      if (!tripRes.ok) {
-        const errorData = await tripRes.json().catch(() => ({}))
-        toast.error(errorData.error || "Nie udało się utworzyć wycieczki")
-        setSaving(false)
-        return
+      // Zapisz tylko podstawowe informacje do localStorage
+      const step1Data = {
+        tripTitle,
+        slug,
+        description,
+        startDate,
+        endDate,
+        price,
+        seats,
+        category,
+        location,
+        isPublic,
+        publicSlug,
+        paymentSplitEnabled,
+        paymentSplitFirstPercent,
+        paymentSplitSecondPercent,
+        paymentReminderEnabled,
+        paymentReminderDaysBefore,
+        coordinatorIds: coordinators.map((c) => c.id),
       }
 
-      const tripData = await tripRes.json()
-      const tripId = tripData.id
-
-      // Zapisz treść wycieczki
-      const contentRes = await fetch(`/api/trips/${tripId}/content`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          program_atrakcje: programAtrakcje,
-          gallery_urls: galleryUrls,
-          trip_info_text: tripInfoText,
-          baggage_text: baggageText,
-          weather_text: weatherText,
-          show_seats_left: showSeatsLeft,
-          included_in_price_text: includedInPriceLeftText,
-          additional_costs_text: additionalCostsText,
-          additional_service_text: additionalServiceText,
-          reservation_number: reservationNumber,
-          duration_text: durationText,
-        }),
-      })
-
-      if (!contentRes.ok) {
-        toast.error("Wycieczka została utworzona, ale nie udało się zapisać treści")
-      }
-
-      // Jeśli są zdjęcia z plików, zapisz je przez API
-      for (const url of galleryUrls) {
-        if (url.startsWith("data:")) {
-          // To jest data URL z pliku - pomiń na razie, użytkownik może dodać później przez URL
-          // W przyszłości można dodać upload przez API
-        }
-      }
-
-      // Odśwież listę wycieczek
-      const tripsRes = await fetch("/api/trips")
-      if (tripsRes.ok) {
-        const tripsData = await tripsRes.json()
-        setTrips(tripsData)
-        
-        // Ustaw nowo utworzoną wycieczkę jako wybraną
-        const newTrip = tripsData.find((t: { id: string }) => t.id === tripId)
-        if (newTrip) {
-          setSelectedTrip(newTrip)
-        }
-      }
-
-      toast.success("Wycieczka została utworzona")
-      router.push("/trip-dashboard/publiczny-wyglad")
+      localStorage.setItem("tripCreation_step1", JSON.stringify(step1Data))
+      toast.success("Dane zostały zapisane")
+      
+      // Przekieruj do następnego kroku
+      router.push("/trip-dashboard/publiczny-wyglad?mode=create")
     } catch (err) {
-      toast.error("Nie udało się utworzyć wycieczki")
+      toast.error("Nie udało się zapisać danych")
       setSaving(false)
     }
   }
 
-  const mainImage = galleryUrls[0] || "/placeholder.svg"
-  const galleryImages = galleryUrls.slice(1, 3)
-  const priceDisplay = price ? parseFloat(price).toFixed(2) : "0"
-  const seatsTotal = seats ? parseInt(seats) : 0
-  const seatsLeft = seatsTotal
+  const unassignedCoordinators = availableCoordinators.filter(
+    (c) => !coordinators.some((assigned) => assigned.id === c.id)
+  )
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-start">
-        {/* Lewa kolumna – galeria + informacje o wyjeździe */}
-        <div className="xl:col-span-4 flex flex-col gap-4">
-          <Card>
-            <CardHeader className="px-3 py-2">
-              <CardTitle className="text-sm font-semibold">
-                Informacje o wyjeździe i galeria
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2 relative rounded-xl overflow-hidden group h-[200px] border-2 border-dashed border-muted-foreground/20">
-                  {mainImage && mainImage !== "/placeholder.svg" ? (
-                    <>
-                      <Image
-                        src={mainImage}
-                        alt={tripTitle || "Główne zdjęcie"}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 100vw, 50vw"
-                      />
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                        <Badge className="text-[10px]">
-                          Główne zdjęcie
-                        </Badge>
-                      </div>
-                      <div className="absolute top-2 right-2">
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleImageDelete(mainImage)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-center">
-                        <Camera className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-xs text-muted-foreground">
-                          Główne zdjęcie (jak na górze strony publicznej)
-                        </p>
-                      </div>
-                    </div>
+    <div className="space-y-2">
+      <TripCreationProgress currentStep={1} />
+      <Card className="p-3 space-y-2">
+        <CardContent className="px-0 pb-0 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid gap-1">
+              <Label className="text-xs">Nazwa *</Label>
+              <Input
+                value={tripTitle}
+                onChange={(e) => setTripTitle(e.target.value)}
+                placeholder="Nazwa wycieczki"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Slug *</Label>
+              <Input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="np. magiczna-wycieczka-wlochy"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Opis</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Opis wycieczki"
+                rows={2}
+                className="text-xs resize-none"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Kategoria</Label>
+              <Input
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="np. Wycieczki górskie"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Data rozpoczęcia</Label>
+              <Input
+                type="date"
+                value={startDate || ""}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Data zakończenia</Label>
+              <Input
+                type="date"
+                value={endDate || ""}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Trasa/Kraj</Label>
+              <Input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="np. Islandia"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Cena (PLN)</Label>
+              <Input
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Liczba miejsc</Label>
+              <Input
+                type="number"
+                value={seats}
+                onChange={(e) => setSeats(e.target.value)}
+                placeholder="0"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            {/* Podział płatności */}
+            <div className="col-span-2 grid gap-2 border rounded-md p-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="payment-split-enabled"
+                  checked={paymentSplitEnabled}
+                  onCheckedChange={(checked) =>
+                    setPaymentSplitEnabled(Boolean(checked))
+                  }
+                  className="h-4 w-4"
+                />
+                <Label
+                  htmlFor="payment-split-enabled"
+                  className="text-xs cursor-pointer font-semibold"
+                >
+                  Płatność podzielona
+                </Label>
+              </div>
+              {paymentSplitEnabled && (
+                <div className="grid grid-cols-2 gap-2 pl-6">
+                  <div className="grid gap-1">
+                    <Label className="text-xs">
+                      Pierwsza płatność (zaliczka) %
+                    </Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={paymentSplitFirstPercent}
+                      onChange={(e) => {
+                        setPaymentSplitFirstPercent(e.target.value)
+                        // Automatycznie oblicz drugi procent
+                        const first = parseInt(e.target.value, 10) || 0
+                        if (first >= 0 && first <= 100) {
+                          setPaymentSplitSecondPercent(String(100 - first))
+                        }
+                      }}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-xs">
+                      Druga płatność (reszta) %
+                    </Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={paymentSplitSecondPercent}
+                      onChange={(e) => {
+                        setPaymentSplitSecondPercent(e.target.value)
+                        // Automatycznie oblicz pierwszy procent
+                        const second = parseInt(e.target.value, 10) || 0
+                        if (second >= 0 && second <= 100) {
+                          setPaymentSplitFirstPercent(String(100 - second))
+                        }
+                      }}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  {parseInt(paymentSplitFirstPercent, 10) +
+                    parseInt(paymentSplitSecondPercent, 10) !==
+                    100 && (
+                    <p className="col-span-2 text-[10px] text-destructive">
+                      Suma procentów musi równać się 100%
+                    </p>
                   )}
                 </div>
-
-                {Array.from({ length: 2 }).map((_, index) => {
-                  const url = galleryImages[index]
-                  return (
-                    <div
-                      key={index}
-                      className="relative rounded-lg overflow-hidden border-2 border-dashed border-muted-foreground/20 h-[100px] group"
-                    >
-                      {url ? (
-                        <>
-                          <Image
-                            src={url}
-                            alt={`Zdjęcie ${index + 2}`}
-                            fill
-                            className="object-cover"
-                            sizes="(max-width: 768px) 50vw, 25vw"
-                          />
-                          <div className="absolute top-1 right-1">
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => url && handleImageDelete(url)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <Camera className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Dodaj zdjęcie z URL</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="url"
-                    placeholder="https://example.com/image.jpg"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleAddImageFromUrl()
-                      }
-                    }}
-                    disabled={addingFromUrl}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddImageFromUrl}
-                    disabled={addingFromUrl || !imageUrl.trim()}
-                  >
-                    <LinkIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-                <Label htmlFor="image-upload" className="cursor-pointer">
-                  <Button variant="outline" size="sm" asChild disabled={uploading}>
-                    <span>
-                      <Upload className="h-4 w-4 mr-2" />
-                      {uploading ? "Dodawanie..." : "Dodaj z pliku"}
-                    </span>
-                  </Button>
+              )}
+              <div className="flex items-center gap-2 pl-6">
+                <Checkbox
+                  id="payment-reminder-enabled"
+                  checked={paymentReminderEnabled}
+                  onCheckedChange={(checked) =>
+                    setPaymentReminderEnabled(Boolean(checked))
+                  }
+                  className="h-4 w-4"
+                />
+                <Label
+                  htmlFor="payment-reminder-enabled"
+                  className="text-xs cursor-pointer"
+                >
+                  Automatyczne przypomnienia o płatności
                 </Label>
-                <input
-                  id="image-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  disabled={uploading}
-                />
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Informacje o wyjeździe */}
-          {showTripInfoConfigCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
-                <CardTitle className="text-sm font-semibold">
-                  Informacje o wyjeździe
-                </CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowTripInfoConfigCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-2">
-                <Textarea
-                  value={tripInfoText}
-                  onChange={(e) => setTripInfoText(e.target.value)}
-                  placeholder="Wpisz informacje o wyjeździe..."
-                  className="min-h-[120px] text-xs"
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* W cenie wycieczki – osobna karta */}
-          {showIncludedInPriceLeftCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
-                <CardTitle className="text-sm font-semibold">W cenie wycieczki</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowIncludedInPriceLeftCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-2">
-                <Textarea
-                  value={includedInPriceLeftText}
-                  onChange={(e) => setIncludedInPriceLeftText(e.target.value)}
-                  placeholder="Wpisz co jest w cenie wycieczki..."
-                  className="min-h-[80px] text-xs"
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Bagaż – osobna karta */}
-          {showBaggageCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
-                <CardTitle className="text-sm font-semibold">Bagaż</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowBaggageCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-2">
-                <Textarea
-                  value={baggageText}
-                  onChange={(e) => setBaggageText(e.target.value)}
-                  placeholder="Np. Bagaż podręczny do 8 kg + bagaż rejestrowany do 20 kg zgodnie z regulaminem przewoźnika..."
-                  className="min-h-[80px] text-xs"
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Pogoda – osobna karta */}
-          {showWeatherCard && (
-            <Card>
-              <CardHeader className="px-3 py-2 relative flex items-center justify-between gap-2 pr-5">
-                <CardTitle className="text-sm font-semibold">Pogoda</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => setShowWeatherCard(false)}
-                  className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-2">
-                <Textarea
-                  value={weatherText}
-                  onChange={(e) => setWeatherText(e.target.value)}
-                  placeholder="Np. Średnia temperatura w ciągu dnia 24–28°C, wieczory chłodniejsze – zalecamy lekką kurtkę..."
-                  className="min-h-[80px] text-xs"
-                />
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Środkowa kolumna – opis, informacje o wyjeździe, program */}
-        <div className="xl:col-span-5 flex flex-col gap-4">
-          {/* Podstawowe informacje o wycieczce */}
-          <Card>
-            <CardHeader className="px-3 py-2">
-              <CardTitle className="text-sm font-semibold">
-                Podstawowe informacje
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-2">
-              <div className="grid gap-2">
-                <Label>Tytuł wycieczki *</Label>
-                <Input
-                  value={tripTitle}
-                  onChange={(e) => setTripTitle(e.target.value)}
-                  placeholder="Np. Magiczna wycieczka do Włoch"
-                  className="text-base"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Slug *</Label>
-                <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="np. magiczna-wycieczka-wlochy"
-                  className="text-sm"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Opis</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Krótki opis wycieczki..."
-                  rows={3}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Data rozpoczęcia</Label>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Data zakończenia</Label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Kategoria</Label>
-                  <Input
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    placeholder="np. Wycieczki górskie"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Miejsce</Label>
-                  <Input
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="np. Islandia"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Cena (PLN)</Label>
+              {paymentReminderEnabled && (
+                <div className="grid gap-1 pl-12">
+                  <Label className="text-xs">
+                    Dni przed wycieczką (wysyłka maila)
+                  </Label>
                   <Input
                     type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="0.00"
+                    min="1"
+                    value={paymentReminderDaysBefore}
+                    onChange={(e) =>
+                      setPaymentReminderDaysBefore(e.target.value)
+                    }
+                    placeholder="np. 7"
+                    className="h-8 text-xs"
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label>Liczba miejsc</Label>
-                  <Input
-                    type="number"
-                    value={seats}
-                    onChange={(e) => setSeats(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="is-public"
-                    checked={isPublic}
-                    onCheckedChange={(checked) => setIsPublic(Boolean(checked))}
-                  />
-                  <div className="space-y-1">
-                    <Label htmlFor="is-public">Publiczna podstrona wycieczki</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Gdy włączone, wycieczka będzie dostępna publicznie pod adresem URL z poniższym slugiem.
-                    </p>
-                  </div>
-                </div>
-                {isPublic && (
-                  <div className="grid gap-2 ml-7">
-                    <Label>Publiczny slug</Label>
-                    <Input
-                      placeholder="np. magicka-wycieczka-wlochy"
-                      value={publicSlug}
-                      onChange={(e) => setPublicSlug(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      URL: <span className="font-mono">/trip/{effectivePublicSlug || "twoj-slug"}</span>
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+              )}
+            </div>
 
-          {/* Tytuł wyjazdu, numer rezerwacji, data, czas trwania, kraj */}
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              {/* Tytuł wyjazdu - duży nagłówek */}
-              <h1 className="text-2xl font-bold text-foreground">{tripTitle || "Tytuł wycieczki"}</h1>
-              
-              {/* Numer rezerwacji */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Numer rezerwacji:</Label>
-                <Input
-                  value={reservationNumber}
-                  onChange={(e) => setReservationNumber(e.target.value)}
-                  placeholder="Wpisz numer rezerwacji..."
-                  className="text-sm"
+            <div className="grid gap-1">
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id="is-public"
+                  checked={isPublic}
+                  onCheckedChange={(checked) => setIsPublic(Boolean(checked))}
+                  className="h-4 w-4"
                 />
+                <Label
+                  htmlFor="is-public"
+                  className="text-xs cursor-pointer"
+                >
+                  Publiczna strona wycieczki
+                </Label>
               </div>
-
-              {/* Data wyjazdu, czas trwania, kraj */}
-              <div className="space-y-3 text-base">
-                {startDate && endDate && (
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">Data wyjazdu:</span>
-                    <span className="text-foreground">
-                      {new Date(startDate).toLocaleDateString("pl-PL")} – {new Date(endDate).toLocaleDateString("pl-PL")}
+              {isPublic && (
+                <div className="grid gap-1 pl-6">
+                  <Input
+                    placeholder="np. magicka-wycieczka-wlochy"
+                    value={publicSlug}
+                    onChange={(e) => setPublicSlug(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    URL:{" "}
+                    <span className="font-mono">
+                      /trip/{effectivePublicSlug || "twoj-slug"}
                     </span>
-                  </div>
-                )}
-                
-                <div className="space-y-2">
-                  <Label className="text-base font-semibold">Czas trwania:</Label>
-                  <Input
-                    value={durationText}
-                    onChange={(e) => setDurationText(e.target.value)}
-                    placeholder="Np. 8 dni / 7 nocy"
-                    className="text-base"
-                  />
+                  </p>
                 </div>
+              )}
+            </div>
+          </div>
 
-                {location && (
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">Kraj:</span>
-                    <span className="text-foreground">{location}</span>
+          <Separator className="my-2" />
+
+          {/* Koordynatorzy */}
+          <div className="space-y-1.5">
+            <h2 className="text-xs font-semibold">Koordynatorzy</h2>
+
+            {loadingCoordinators ? (
+              <div className="text-xs text-muted-foreground">
+                Ładowanie koordynatorów...
+              </div>
+            ) : (
+              <>
+                {coordinators.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {coordinators.map((coordinator) => (
+                      <Badge
+                        key={coordinator.id}
+                        variant="secondary"
+                        className="text-[10px] px-2 py-0.5"
+                      >
+                        {coordinator.full_name || "Brak imienia i nazwiska"}
+                        <button
+                          onClick={() => unassignCoordinator(coordinator.id)}
+                          className="ml-1.5 hover:bg-destructive/20 rounded-full p-0.5"
+                          aria-label="Usuń koordynatora"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">
+                    Brak przypisanych koordynatorów
                   </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
 
-          {middleSections.map((sectionId) => {
-            if (hiddenMiddleSections.includes(sectionId)) return null
-
-            const commonHeaderProps = {
-              className:
-                "relative flex items-center justify-between gap-1 cursor-move px-3 py-2",
-            }
-
-            const dragHandlers = {
-              draggable: true,
-              onDragStart: () => setDraggingMiddle(sectionId),
-              onDragOver: (e: React.DragEvent) => {
-                e.preventDefault()
-                if (!draggingMiddle || draggingMiddle === sectionId) return
-                setMiddleSections((prev) => {
-                  const fromIndex = prev.indexOf(draggingMiddle)
-                  const toIndex = prev.indexOf(sectionId)
-                  if (fromIndex === -1 || toIndex === -1) return prev
-                  const next = [...prev]
-                  next.splice(fromIndex, 1)
-                  next.splice(toIndex, 0, draggingMiddle)
-                  return next
-                })
-              },
-              onDragEnd: () => setDraggingMiddle(null),
-            }
-
-            const removeSection = () =>
-              setHiddenMiddleSections((prev) =>
-                prev.includes(sectionId) ? prev : [...prev, sectionId]
-              )
-
-            // Jedyna sekcja: Program
-            return (
-              <Card key={sectionId}>
-                <CardHeader {...dragHandlers} {...commonHeaderProps}>
-                  <div className="flex items-center gap-2 pr-5">
-                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                    <CardTitle className="text-sm font-semibold">
-                      Program
-                    </CardTitle>
+                {unassignedCoordinators.length > 0 && (
+                  <div className="flex gap-1.5 items-end">
+                    <div className="flex-1 grid gap-1">
+                      <Label className="text-xs">Przypisz koordynatora</Label>
+                      <Select
+                        value={selectedCoordinatorId}
+                        onValueChange={setSelectedCoordinatorId}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Wybierz koordynatora" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {unassignedCoordinators.map((coordinator) => (
+                            <SelectItem
+                              key={coordinator.id}
+                              value={coordinator.id}
+                            >
+                              {coordinator.full_name ||
+                                "Brak imienia i nazwiska"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={assignCoordinator}
+                      disabled={!selectedCoordinatorId}
+                      size="sm"
+                      className="h-8 text-xs"
+                    >
+                      Przypisz
+                    </Button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={removeSection}
-                    className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </CardHeader>
-                <CardContent>
-                  <TripContentEditor
-                    content={programAtrakcje}
-                    onChange={setProgramAtrakcje}
-                    label=""
-                  />
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                )}
 
-        {/* Prawa kolumna – karta rezerwacji / tekst informacyjny (drag & drop) */}
-        <div className="xl:col-span-3 flex flex-col gap-4">
-          {rightSections.map((sectionId) => {
-            if (hiddenRightSections.includes(sectionId)) return null
-
-            const commonHeaderProps = {
-              className:
-                "relative flex items-center justify-between gap-1 cursor-move px-3 py-2",
-            }
-
-            const dragHandlers = {
-              draggable: true,
-              onDragStart: () => setDraggingRight(sectionId),
-              onDragOver: (e: React.DragEvent) => {
-                e.preventDefault()
-                if (!draggingRight || draggingRight === sectionId) return
-                setRightSections((prev) => {
-                  const fromIndex = prev.indexOf(draggingRight)
-                  const toIndex = prev.indexOf(sectionId)
-                  if (fromIndex === -1 || toIndex === -1) return prev
-                  const next = [...prev]
-                  next.splice(fromIndex, 1)
-                  next.splice(toIndex, 0, draggingRight)
-                  return next
-                })
-              },
-              onDragEnd: () => setDraggingRight(null),
-            }
-
-            const removeSection = () =>
-              setHiddenRightSections((prev) =>
-                prev.includes(sectionId) ? prev : [...prev, sectionId]
-              )
-
-            if (sectionId === "bookingPreview") {
-              return (
-                <Card key={sectionId} className="border-border">
-                  <CardHeader {...dragHandlers} {...commonHeaderProps}>
-                    <div className="flex items-center gap-2 pr-5">
-                      <GripVertical className="h-3 w-3 text-muted-foreground" />
-                      <CardTitle className="text-sm font-semibold">
-                        Podgląd karty rezerwacji
-                      </CardTitle>
+                {unassignedCoordinators.length === 0 &&
+                  coordinators.length > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      Wszyscy dostępni koordynatorzy są już przypisani do tej
+                      wycieczki
                     </div>
-                    <button
-                      type="button"
-                      onClick={removeSection}
-                      className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-muted-foreground">
-                    <div className="flex items-center justify-between">
-                      <span>Cena</span>
-                      <span className="font-semibold text-foreground">
-                        {priceDisplay} PLN
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Pozostało miejsc</span>
-                      <label className="inline-flex items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          className="h-3 w-3 rounded border border-muted-foreground/60"
-                          checked={showSeatsLeft}
-                          onChange={(e) => setShowSeatsLeft(e.target.checked)}
-                        />
-                        <span className="text-xs">Pokaż na stronie</span>
-                      </label>
-                    </div>
-                    {showSeatsLeft && (
-                      <div className="text-xs text-muted-foreground">
-                        Na stronie będzie widoczne: {seatsLeft} miejsc
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            }
+                  )}
+              </>
+            )}
+          </div>
 
-            if (sectionId === "includedInPrice") {
-              return (
-                <Card key={sectionId}>
-                  <CardHeader {...dragHandlers} {...commonHeaderProps}>
-                    <div className="flex items-center gap-2 pr-5">
-                      <GripVertical className="h-3 w-3 text-muted-foreground" />
-                      <CardTitle className="text-sm font-semibold">
-                        Świadczenia w cenie
-                      </CardTitle>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={removeSection}
-                      className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={includedInPriceText}
-                      onChange={(e) => setIncludedInPriceText(e.target.value)}
-                      placeholder="Wpisz świadczenia w cenie wycieczki..."
-                      className="min-h-[120px]"
-                    />
-                  </CardContent>
-                </Card>
-              )
-            }
-
-            if (sectionId === "additionalCosts") {
-              return (
-                <Card key={sectionId}>
-                  <CardHeader {...dragHandlers} {...commonHeaderProps}>
-                    <div className="flex items-center gap-2 pr-5">
-                      <GripVertical className="h-3 w-3 text-muted-foreground" />
-                      <CardTitle className="text-sm font-semibold">
-                        Dodatkowe koszty
-                      </CardTitle>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={removeSection}
-                      className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={additionalCostsText}
-                      onChange={(e) => setAdditionalCostsText(e.target.value)}
-                      placeholder="Wpisz dodatkowe koszty..."
-                      className="min-h-[120px]"
-                    />
-                  </CardContent>
-                </Card>
-              )
-            }
-
-            if (sectionId === "additionalService") {
-              return (
-                <Card key={sectionId}>
-                  <CardHeader {...dragHandlers} {...commonHeaderProps}>
-                    <div className="flex items-center gap-2 pr-5">
-                      <GripVertical className="h-3 w-3 text-muted-foreground" />
-                      <CardTitle className="text-sm font-semibold">
-                        Dodatkowe świadczenie
-                      </CardTitle>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={removeSection}
-                      className="absolute right-2 top-1.5 h-5 w-5 rounded-sm text-muted-foreground hover:text-destructive hover:bg-muted flex items-center justify-center"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={additionalServiceText}
-                      onChange={(e) => setAdditionalServiceText(e.target.value)}
-                      placeholder="Wpisz dodatkowe świadczenie (opcjonalne)..."
-                      className="min-h-[120px]"
-                    />
-                  </CardContent>
-                </Card>
-              )
-            }
-
-            return null
-          })}
-        </div>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => router.back()}>
-          Anuluj
-        </Button>
-        <Button onClick={handleSave} disabled={saving || !tripTitle || !slug}>
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Zapisywanie...
-            </>
-          ) : (
-            "Utwórz wycieczkę"
-          )}
-        </Button>
-      </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => router.back()}>
+              Anuluj
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || !tripTitle.trim() || !slug.trim()}
+              size="sm"
+              className="h-8 text-xs"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Zapisywanie...
+                </>
+              ) : (
+                "Zapisz i przejdź dalej"
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
-
