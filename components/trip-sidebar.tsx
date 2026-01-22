@@ -93,7 +93,7 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconFileDescription,
     },
     {
-      title: "Edycja publicznego wyglądu",
+      title: "Publiczny wygląd",
       url: "/trip-dashboard/publiczny-wyglad",
       icon: IconEdit,
     },

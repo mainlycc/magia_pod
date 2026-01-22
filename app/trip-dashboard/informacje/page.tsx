@@ -5,7 +5,6 @@ import { useTrip } from "@/contexts/trip-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
@@ -328,12 +327,11 @@ export default function TripGeneralInfoPage() {
 
                 <div className="grid gap-1">
                   <Label className="text-xs">Opis</Label>
-                  <Textarea
+                  <Input
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Opis wycieczki"
-                    rows={2}
-                    className="text-xs resize-none"
+                    className="h-8 text-xs"
                   />
                 </div>
 
