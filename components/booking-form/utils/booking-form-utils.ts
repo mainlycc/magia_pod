@@ -11,6 +11,7 @@ export async function submitBooking(
   applicantType: "individual" | "company",
   slug: string,
   router: ReturnType<typeof useRouter>,
+  tripSeatsTotal?: number | null,
   withPayment: boolean = false
 ): Promise<void> {
   const base = {
@@ -60,7 +61,7 @@ export async function submitBooking(
       if (applicantType === "company") {
         // Dla firmy: utwórz uczestników na podstawie usług lub participants_count
         const services = values.participant_services || [];
-        const participantsCount = values.participants_count || 0;
+        const participantsCount = (tripSeatsTotal ?? values.participants_count ?? 0) as number;
         const uniqueParticipants = new Map<string, { first_name: string; last_name: string; services: any[] }>();
         
         // Najpierw zbierz uczestników z usług
@@ -78,13 +79,25 @@ export async function submitBooking(
           }
         });
         
-        // Jeśli nie ma uczestników z usług, utwórz uczestników na podstawie participants_count
-        if (uniqueParticipants.size === 0 && participantsCount > 0) {
-          for (let i = 0; i < participantsCount; i++) {
-            const key = `participant_${i}`;
-            uniqueParticipants.set(key, {
-              first_name: "",
-              last_name: "",
+        // Jeśli nie ma uczestników z usług ani z participants_count,
+        // zwróć przynajmniej jednego domyślnego uczestnika aby spełnić walidację
+        // (użytkownik będzie musiał uzupełnić dane po stronie backoffice)
+        if (uniqueParticipants.size === 0) {
+          if (participantsCount > 0) {
+            // Jeśli podano liczbę uczestników, utwórz odpowiednią ilość z domyślnymi danymi
+            for (let i = 0; i < participantsCount; i++) {
+              const key = `participant_${i}`;
+              uniqueParticipants.set(key, {
+                first_name: `Uczestnik ${i + 1}`,
+                last_name: "(dane do uzupełnienia)",
+                services: [],
+              });
+            }
+          } else {
+            // Jeśli nie podano liczby uczestników, utwórz jednego domyślnego
+            uniqueParticipants.set('default_participant', {
+              first_name: "Uczestnik",
+              last_name: "(dane do uzupełnienia)",
               services: [],
             });
           }
@@ -179,7 +192,7 @@ export async function submitBooking(
           return {
             first_name: p.first_name,
             last_name: p.last_name,
-            pesel: p.pesel && p.pesel.toString().trim() !== "" ? p.pesel : undefined,
+            birth_date: p.birth_date,
             email: p.email && p.email.trim() !== "" ? p.email : undefined,
             phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
             gender_code: p.gender_code || undefined,
@@ -350,7 +363,6 @@ export function getFieldsToValidate(
     } else if (applicantType === "company") {
       return [
         "applicant_type",
-        "contact.pesel",
         "contact.email",
         "contact.phone",
         "company.name",
@@ -364,7 +376,7 @@ export function getFieldsToValidate(
   
   if (stepId === "participants") {
     if (applicantType === "company") {
-      return ["participants_count"];
+      return [];
     } else {
       return ["participants"];
     }

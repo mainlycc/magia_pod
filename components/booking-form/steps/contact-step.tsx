@@ -118,21 +118,23 @@ export function ContactStep({
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField
-            control={control}
-            name="contact.pesel"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>PESEL</FormLabel>
-                <FormControl>
-                  <Input placeholder="12345678901" {...field} maxLength={11} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        {applicantType === "individual" && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField
+              control={control}
+              name="contact.pesel"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>PESEL</FormLabel>
+                  <FormControl>
+                    <Input placeholder="12345678901" {...field} maxLength={11} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField
@@ -162,6 +164,20 @@ export function ContactStep({
             )}
           />
         </div>
+
+        <FormField
+          control={control}
+          name="contact.comment"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Komentarz</FormLabel>
+              <FormControl>
+                <Input placeholder="Komentarz" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <Separator />
 

@@ -247,7 +247,7 @@ const createBookingFormSchema = (requiredFields?: {
     }),
     company: companySchema.optional(),
     participants: z.array(participantSchema),
-    participants_count: z.number().min(1, "Liczba uczestników musi być większa od 0").optional(),
+  participants_count: z.number().optional(),
     participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
       rodo: z.literal(true),
@@ -448,7 +448,6 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
   contact: [
     "contact.first_name",
     "contact.last_name",
-    "contact.pesel",
     "contact.email",
     "contact.phone",
     "company.name",
@@ -617,12 +616,12 @@ export function BookingForm({ slug }: BookingFormProps) {
     setValue("applicant_type", applicantType);
   }, [applicantType, setValue]);
 
-  // Ustaw wartość domyślną dla participants_count z seats_total dla firmy
+  // Dla firmy: zawsze wymuś participants_count = seats_total (klient nie może tego zmienić)
   useEffect(() => {
-    if (applicantType === "company" && tripConfig?.seats_total && !form.getValues("participants_count")) {
-      setValue("participants_count", tripConfig.seats_total);
-    }
-  }, [applicantType, tripConfig?.seats_total, setValue, form]);
+    if (applicantType !== "company") return;
+    if (!tripConfig?.seats_total) return;
+    setValue("participants_count", tripConfig.seats_total, { shouldValidate: false, shouldDirty: false });
+  }, [applicantType, tripConfig?.seats_total, setValue]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -690,10 +689,9 @@ export function BookingForm({ slug }: BookingFormProps) {
           "contact.phone",
         ];
       } else if (applicantType === "company") {
-        // Dla firmy: first_name i last_name są opcjonalne, ale wymagaj pesel i pól firmy
+        // Dla firmy: first_name i last_name są opcjonalne, nie wymagaj pesel, ale wymagaj pól firmy
         return [
           "applicant_type",
-          "contact.pesel",
           "contact.email",
           "contact.phone",
           "company.name",
@@ -815,7 +813,7 @@ export function BookingForm({ slug }: BookingFormProps) {
           if (applicantType === "company") {
             // Dla firmy: utwórz uczestników na podstawie usług lub participants_count
             const services = values.participant_services || [];
-            const participantsCount = values.participants_count || 0;
+            const participantsCount = (tripConfig?.seats_total ?? values.participants_count ?? 0) as number;
             const uniqueParticipants = new Map<string, { first_name: string; last_name: string; services: any[] }>();
             
             // Najpierw zbierz uczestników z usług
@@ -833,13 +831,25 @@ export function BookingForm({ slug }: BookingFormProps) {
               }
             });
             
-            // Jeśli nie ma uczestników z usług, utwórz uczestników na podstawie participants_count
-            if (uniqueParticipants.size === 0 && participantsCount > 0) {
-              for (let i = 0; i < participantsCount; i++) {
-                const key = `participant_${i}`;
-                uniqueParticipants.set(key, {
-                  first_name: "",
-                  last_name: "",
+            // Jeśli nie ma uczestników z usług ani z participants_count,
+            // zwróć przynajmniej jednego domyślnego uczestnika aby spełnić walidację
+            // (użytkownik będzie musiał uzupełnić dane po stronie backoffice)
+            if (uniqueParticipants.size === 0) {
+              if (participantsCount > 0) {
+                // Jeśli podano liczbę uczestników, utwórz odpowiednią ilość z domyślnymi danymi
+                for (let i = 0; i < participantsCount; i++) {
+                  const key = `participant_${i}`;
+                  uniqueParticipants.set(key, {
+                    first_name: `Uczestnik ${i + 1}`,
+                    last_name: "(dane do uzupełnienia)",
+                    services: [],
+                  });
+                }
+              } else {
+                // Jeśli nie podano liczby uczestników, utwórz jednego domyślnego
+                uniqueParticipants.set('default_participant', {
+                  first_name: "Uczestnik",
+                  last_name: "(dane do uzupełnienia)",
                   services: [],
                 });
               }
@@ -1316,21 +1326,23 @@ export function BookingForm({ slug }: BookingFormProps) {
                     />
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <FormField
-                      control={control}
-                      name="contact.pesel"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>PESEL</FormLabel>
-                          <FormControl>
-                            <Input placeholder="12345678901" {...field} maxLength={11} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  {applicantType === "individual" && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        control={control}
+                        name="contact.pesel"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>PESEL</FormLabel>
+                            <FormControl>
+                              <Input placeholder="12345678901" {...field} maxLength={11} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField
@@ -1360,6 +1372,20 @@ export function BookingForm({ slug }: BookingFormProps) {
                       )}
                     />
                   </div>
+
+                  <FormField
+                    control={control}
+                    name={"contact.comment" as any}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Komentarz</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Komentarz" {...field} value={(field.value as string) || ""} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <Separator />
 
@@ -1717,34 +1743,17 @@ export function BookingForm({ slug }: BookingFormProps) {
                 <CardContent className="space-y-6">
                   {applicantType === "company" ? (
                     <div className="space-y-3">
-                      <FormField
-                        control={control}
-                        name="participants_count"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Liczba uczestników *</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                min="1"
-                                placeholder={tripConfig?.seats_total?.toString() || "1"}
-                                {...field}
-                                value={field.value || ""}
-                                onChange={(e) => {
-                                  const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
-                                  field.onChange(isNaN(value as number) ? undefined : value);
-                                }}
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {tripConfig?.seats_total
-                                ? `Liczba miejsc dostępnych: ${tripConfig.seats_total}`
-                                : "Podaj liczbę uczestników"}
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <div className="rounded-md border p-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-sm text-muted-foreground">Liczba uczestników</span>
+                          <span className="text-sm font-medium">
+                            {tripConfig?.seats_total ?? "—"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Liczba uczestników jest automatycznie ustawiona na maksymalną liczbę miejsc i nie można jej zmienić.
+                        </p>
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {tripConfig?.company_participants_info ||
                           "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista powinna zawierać imię i nazwisko oraz datę urodzenia każdego uczestnika."}
@@ -1809,14 +1818,17 @@ export function BookingForm({ slug }: BookingFormProps) {
                           <div className="grid gap-4 md:grid-cols-3 mt-6">
                             <FormField
                               control={control}
-                              name={`participants.${index}.pesel`}
+                              // Cast potrzebny, bo FieldPath<BookingFormValues> nie zna jeszcze zagnieżdżonego klucza birth_date
+                              name={`participants.${index}.birth_date` as any}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>
-                                    PESEL{tripConfig?.form_required_participant_fields?.pesel ? " *" : ""}
-                                  </FormLabel>
+                                  <FormLabel>Data urodzenia *</FormLabel>
                                   <FormControl>
-                                    <Input placeholder="12345678901" {...field} value={field.value || ""} maxLength={11} />
+                                    <Input
+                                      type="date"
+                                      {...field}
+                                      value={(field.value as string) || ""}
+                                    />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -1950,17 +1962,24 @@ export function BookingForm({ slug }: BookingFormProps) {
                       <Button
                         type="button"
                         variant="default"
-                        onClick={() =>
+                        onClick={() => {
+                          const currentCount = fields.length;
+                          const maxSeats = tripConfig?.seats_total ?? null;
+                          if (maxSeats && currentCount >= maxSeats) {
+                            // Blokada dodania większej liczby uczestników niż liczba miejsc w ofercie
+                            return;
+                          }
                           append({
                             first_name: "",
                             last_name: "",
-                            pesel: "",
+                            // birth_date jest wymagane w schemacie, ale inicjalnie puste – użytkownik musi je uzupełnić
+                            birth_date: "" as any,
                             email: "",
                             phone: "",
                             document_type: "ID",
                             document_number: "",
-                          })
-                        }
+                          } as any);
+                        }}
                       >
                         Dodaj kolejnego uczestnika
                       </Button>

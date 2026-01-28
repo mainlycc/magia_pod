@@ -42,6 +42,14 @@ export interface SaldeoResponse {
   rawResponse?: string;
 }
 
+export interface InvoicePdfResponse {
+  success: boolean;
+  pdfUrl?: string;
+  invoiceNumber?: string;
+  error?: string;
+  rawResponse?: string;
+}
+
 /**
  * Generuje sygnaturę żądania (req_sig) zgodnie z algorytmem Saldeo
  * 1. Zbierz parametry: req_id, username, company_program_id, command
@@ -250,3 +258,85 @@ function escapeCDATA(str: string): string {
   return str.replace(/]]>/g, "]]]]><![CDATA[>");
 }
 
+/**
+ * Pobiera URL do PDF faktury z Saldeo
+ * Operacja SSK08 - invoice.listbyid
+ */
+export async function getInvoicePdfUrl(
+  config: SaldeoConfig,
+  saldeoInvoiceId: string
+): Promise<InvoicePdfResponse> {
+  try {
+    // Przygotuj XML z ID faktury
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<REQUEST>
+  <INVOICES>
+    <INVOICE_ID>${escapeXML(saldeoInvoiceId)}</INVOICE_ID>
+  </INVOICES>
+</REQUEST>`;
+
+    const command = await compressAndEncodeXML(xml);    // Generuj unikalny req_id (timestamp + random)
+    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Generuj sygnaturę
+    const reqSig = generateRequestSignature(
+      reqId,
+      config.username,
+      config.companyProgramId,
+      command,
+      config.apiToken
+    );
+
+    // Przygotuj body żądania
+    const body = new URLSearchParams({
+      username: config.username,
+      req_id: reqId,
+      req_sig: reqSig,
+      company_program_id: config.companyProgramId,
+      command,
+    });
+
+    // Wyślij żądanie POST
+    const response = await fetch(`${config.apiUrl}/api/xml/3.0/invoice/listbyid`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${responseText}`,
+        rawResponse: responseText,
+      };
+    }
+
+    // Parsuj odpowiedź XML - szukamy <SOURCE> oraz <NUMBER>
+    const sourceMatch = responseText.match(/<SOURCE[^>]*>([^<]+)<\/SOURCE>/i);
+    const numberMatch = responseText.match(/<NUMBER[^>]*>([^<]+)<\/NUMBER>/i);
+
+    if (sourceMatch && sourceMatch[1]) {
+      return {
+        success: true,
+        pdfUrl: sourceMatch[1].trim(),
+        invoiceNumber: numberMatch ? numberMatch[1].trim() : undefined,
+        rawResponse: responseText,
+      };
+    } else {
+      return {
+        success: false,
+        error: "Nie znaleziono URL do PDF w odpowiedzi. Faktura może być jeszcze w trakcie generowania.",
+        rawResponse: responseText,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Nieznany błąd",
+    };
+  }
+}

@@ -43,6 +43,7 @@ export interface GalleryManagerProps {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>
   handleImageDelete: (url: string) => Promise<void>
   handleAddImageFromUrl: () => Promise<void>
+  onReorder: (urls: string[]) => void
 }
 
 export interface ToggleableCardProps {

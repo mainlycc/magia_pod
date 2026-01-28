@@ -68,12 +68,24 @@ type Booking = {
   }>;
 };
 
+type Invoice = {
+  id: string;
+  invoice_number: string;
+  amount_cents: number;
+  status: "wystawiona" | "wysłana" | "opłacona";
+  created_at: string;
+  saldeo_invoice_id: string | null;
+  saldeo_error: string | null;
+};
+
 export default function BookingDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [internalNotes, setInternalNotes] = useState("");
   const [agreementTab, setAgreementTab] = useState<"generated" | "signed">(
     "generated"
@@ -81,6 +93,7 @@ export default function BookingDetailsPage() {
 
   useEffect(() => {
     loadBooking();
+    loadInvoice();
   }, [bookingId]);
 
   const loadBooking = async () => {
@@ -109,6 +122,69 @@ export default function BookingDetailsPage() {
       toast.error("Nie udało się wczytać rezerwacji");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadInvoice = async () => {
+    try {
+      // Pobierz fakturę dla tej rezerwacji
+      const res = await fetch(`/api/admin/invoices`);
+      if (res.ok) {
+        const invoices: Invoice[] = await res.json();
+        const bookingInvoice = invoices.find((inv: any) => inv.booking_id === bookingId);
+        setInvoice(bookingInvoice || null);
+      }
+    } catch (err) {
+      console.error("Błąd podczas ładowania faktury:", err);
+    }
+  };
+
+  const handleGenerateInvoice = async () => {
+    try {
+      setGeneratingInvoice(true);
+      
+      // Sprawdź czy istnieje płatność dla tej rezerwacji
+      if (!booking?.payment_history || booking.payment_history.length === 0) {
+        toast.error("Nie można wygenerować faktury - brak płatności");
+        return;
+      }
+
+      const lastPayment = booking.payment_history[booking.payment_history.length - 1];
+      
+      const res = await fetch("/api/saldeo/invoice/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id: bookingId,
+          payment_id: lastPayment.id,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success === false && data.error === "Invoice already exists for this booking") {
+          toast.info("Faktura już istnieje dla tej rezerwacji");
+        } else if (data.saldeo_success === false && data.saldeo_error) {
+          // Faktura zapisana lokalnie, ale problem z Saldeo
+          toast.warning(
+            `Faktura zapisana lokalnie (${data.invoice_number}), ale wystąpił problem z Saldeo: ${data.saldeo_error}`,
+            { duration: 6000 }
+          );
+        } else if (data.saldeo_success === true) {
+          toast.success(`Faktura ${data.invoice_number} została wygenerowana i wysłana do Saldeo`);
+        } else {
+          toast.success(`Faktura ${data.invoice_number} została wygenerowana`);
+        }
+        await loadInvoice();
+      } else {
+        const errorData = await res.json().catch(() => ({ error: "Nieznany błąd" }));
+        toast.error(`Błąd: ${errorData.error || errorData.details || "Nie udało się wygenerować faktury"}`);
+      }
+    } catch (err) {
+      console.error("Error generating invoice:", err);
+      toast.error(`Błąd podczas generowania faktury: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setGeneratingInvoice(false);
     }
   };
 
@@ -460,6 +536,96 @@ export default function BookingDetailsPage() {
           enableRowSelection={false}
           emptyMessage="Brak płatności"
         />
+      </Card>
+
+      {/* Faktura */}
+      <Card className="p-4">
+        <h2 className="text-lg font-semibold mb-4">Faktura</h2>
+        {invoice ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+              <div>
+                <Label className="text-muted-foreground">Numer faktury</Label>
+                <div className="font-medium">{invoice.invoice_number}</div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Kwota</Label>
+                <div className="font-medium">
+                  {(invoice.amount_cents / 100).toFixed(2)} PLN
+                </div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Status</Label>
+                <div>
+                  <Badge
+                    variant={
+                      invoice.status === "opłacona"
+                        ? "default"
+                        : invoice.status === "wysłana"
+                        ? "secondary"
+                        : "outline"
+                    }
+                  >
+                    {invoice.status === "wystawiona"
+                      ? "Wystawiona"
+                      : invoice.status === "wysłana"
+                      ? "Wysłana"
+                      : "Opłacona"}
+                  </Badge>
+                </div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Data wystawienia</Label>
+                <div>
+                  {new Date(invoice.created_at).toLocaleDateString("pl-PL")}
+                </div>
+              </div>
+              {invoice.saldeo_invoice_id && (
+                <div className="col-span-2">
+                  <Label className="text-muted-foreground">ID Saldeo</Label>
+                  <div className="text-sm font-mono">{invoice.saldeo_invoice_id}</div>
+                </div>
+              )}
+              {invoice.saldeo_error && (
+                <div className="col-span-2">
+                  <Label className="text-muted-foreground text-red-600">Błąd Saldeo</Label>
+                  <div className="text-sm text-red-600">{invoice.saldeo_error}</div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => window.open(`https://saldeo.com`, "_blank")}
+              >
+                Zobacz w Saldeo
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Faktura nie została jeszcze wygenerowana.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleGenerateInvoice}
+                disabled={
+                  generatingInvoice ||
+                  !booking?.payment_history ||
+                  booking.payment_history.length === 0
+                }
+              >
+                {generatingInvoice ? "Generowanie..." : "Wygeneruj fakturę"}
+              </Button>
+              {booking?.payment_history && booking.payment_history.length === 0 && (
+                <p className="text-sm text-muted-foreground self-center">
+                  Brak płatności - dodaj płatność, aby wygenerować fakturę
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Umowy */}

@@ -40,6 +40,9 @@ type Trip = {
   section_poznaj_description: string | null
   location: string | null
   show_seats_left: boolean | null
+  show_trip_info_card?: boolean | null
+  show_baggage_card?: boolean | null
+  show_weather_card?: boolean | null
   included_in_price_text: string | null
   additional_costs_text: string | null
   additional_service_text: string | null
@@ -48,6 +51,11 @@ type Trip = {
   weather_text: string | null
   reservation_number: string | null
   duration_text: string | null
+  public_middle_sections?: string[] | null
+  public_right_sections?: string[] | null
+  public_hidden_middle_sections?: string[] | null
+  public_hidden_right_sections?: string[] | null
+  public_hidden_additional_sections?: string[] | null
 }
 
 function calculateDays(startDate: string | null, endDate: string | null): number {
@@ -114,7 +122,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
         try {
           const { data: contentData } = await supabase
             .from("trips")
-            .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,show_seats_left,included_in_price_text,additional_costs_text,additional_service_text,trip_info_text,baggage_text,weather_text,reservation_number,duration_text")
+            .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,show_seats_left,show_trip_info_card,show_baggage_card,show_weather_card,included_in_price_text,additional_costs_text,additional_service_text,trip_info_text,baggage_text,weather_text,reservation_number,duration_text,public_middle_sections,public_right_sections,public_hidden_middle_sections,public_hidden_right_sections,public_hidden_additional_sections")
             .eq("id", tripData.id)
             .maybeSingle()
           
@@ -194,6 +202,14 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
   const mainImage = galleryUrls[0] || "/placeholder.svg"
   // Maksymalnie 2 dodatkowe zdjęcia (tak jak w panelu edycji)
   const galleryImages = galleryUrls.slice(1, 3)
+
+  const rightSections: string[] =
+    (Array.isArray(trip.public_right_sections) && trip.public_right_sections.length > 0
+      ? trip.public_right_sections
+      : ["bookingPreview", "includedInPrice", "additionalCosts", "additionalService"])
+
+  const hiddenRightSections: string[] =
+    (Array.isArray(trip.public_hidden_right_sections) ? trip.public_hidden_right_sections : [])
 
   const openImage = (index: number) => setSelectedImage(index)
   const closeImage = () => setSelectedImage(null)
@@ -309,7 +325,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
             </Card>
 
             {/* Informacje o wyjeździe */}
-            {(() => {
+            {trip.show_trip_info_card !== false && (() => {
               if (!trip.trip_info_text) return null
               
               let hasWhatToBring = false
@@ -405,7 +421,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
             })()}
 
             {/* Bagaż */}
-            {trip.baggage_text && trip.baggage_text.trim() && (
+            {trip.baggage_text && trip.baggage_text.trim() && trip.show_baggage_card !== false && (
               <Card>
                 <CardHeader className="px-3 py-2">
                   <CardTitle className="text-sm font-semibold">Bagaż</CardTitle>
@@ -420,7 +436,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
             )}
 
             {/* Pogoda */}
-            {trip.weather_text && trip.weather_text.trim() && (
+            {trip.weather_text && trip.weather_text.trim() && trip.show_weather_card !== false && (
               <Card>
                 <CardHeader className="px-3 py-2">
                   <CardTitle className="text-sm font-semibold">Pogoda</CardTitle>
@@ -496,83 +512,98 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
             )}
           </div>
 
-          {/* Prawa kolumna – karta rezerwacji */}
+          {/* Prawa kolumna – karta rezerwacji i sekcje informacyjne (zgodnie z kolejnością z edytora) */}
           <div className="xl:col-span-3 flex flex-col gap-4">
-            {/* Podgląd karty rezerwacji */}
-            <Card className="border-border">
-              <CardHeader className="px-3 py-2">
-                <CardTitle className="text-sm font-semibold">
-                  Podgląd karty rezerwacji
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <div className="flex items-center justify-between">
-                  <span>Cena (z bazy)</span>
-                  <span className="font-semibold text-foreground">
-                    {price} PLN
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Pozostało miejsc</span>
-                  {trip.show_seats_left && (
-                    <span className="text-xs text-muted-foreground">
-                      Na stronie będzie widoczne: {seatsLeft} miejsc
-                    </span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            {rightSections.map((sectionId) => {
+              const isHidden = hiddenRightSections.includes(sectionId)
 
-            {/* Świadczenia w cenie */}
-            {trip.included_in_price_text && (
-              <Card>
-                <CardHeader className="px-3 py-2">
-                  <CardTitle className="text-sm font-semibold">
-                    Świadczenia w cenie
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div 
-                    className="prose prose-sm max-w-none text-sm text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: trip.included_in_price_text }}
-                  />
-                </CardContent>
-              </Card>
-            )}
+              if (sectionId === "bookingPreview") {
+                return (
+                  <Card key={sectionId} className="border-border">
+                    <CardHeader className="px-3 py-2">
+                      <CardTitle className="text-sm font-semibold">
+                        Podgląd karty rezerwacji
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm text-muted-foreground">
+                      <div className="flex items-center justify-between">
+                        <span>Cena (z bazy)</span>
+                        <span className="font-semibold text-foreground">
+                          {price} PLN
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Pozostało miejsc</span>
+                        {trip.show_seats_left && (
+                          <span className="text-xs text-muted-foreground">
+                            Na stronie będzie widoczne: {seatsLeft} miejsc
+                          </span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              }
 
-            {/* Dodatkowe koszty */}
-            {trip.additional_costs_text && (
-              <Card>
-                <CardHeader className="px-3 py-2">
-                  <CardTitle className="text-sm font-semibold">
-                    Dodatkowe koszty
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div 
-                    className="prose prose-sm max-w-none text-sm text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: trip.additional_costs_text }}
-                  />
-                </CardContent>
-              </Card>
-            )}
+              if (sectionId === "includedInPrice") {
+                if (!trip.included_in_price_text || isHidden) return null
+                return (
+                  <Card key={sectionId}>
+                    <CardHeader className="px-3 py-2">
+                      <CardTitle className="text-sm font-semibold">
+                        Świadczenia w cenie
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                        dangerouslySetInnerHTML={{ __html: trip.included_in_price_text }}
+                      />
+                    </CardContent>
+                  </Card>
+                )
+              }
 
-            {/* Dodatkowe świadczenie */}
-            {trip.additional_service_text && (
-              <Card>
-                <CardHeader className="px-3 py-2">
-                  <CardTitle className="text-sm font-semibold">
-                    Dodatkowe świadczenie
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div 
-                    className="prose prose-sm max-w-none text-sm text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: trip.additional_service_text }}
-                  />
-                </CardContent>
-              </Card>
-            )}
+              if (sectionId === "additionalCosts") {
+                if (!trip.additional_costs_text || isHidden) return null
+                return (
+                  <Card key={sectionId}>
+                    <CardHeader className="px-3 py-2">
+                      <CardTitle className="text-sm font-semibold">
+                        Dodatkowe koszty
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                        dangerouslySetInnerHTML={{ __html: trip.additional_costs_text }}
+                      />
+                    </CardContent>
+                  </Card>
+                )
+              }
+
+              if (sectionId === "additionalService") {
+                if (!trip.additional_service_text || isHidden) return null
+                return (
+                  <Card key={sectionId}>
+                    <CardHeader className="px-3 py-2">
+                      <CardTitle className="text-sm font-semibold">
+                        Dodatkowe świadczenie
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                        dangerouslySetInnerHTML={{ __html: trip.additional_service_text }}
+                      />
+                    </CardContent>
+                  </Card>
+                )
+              }
+
+              return null
+            })}
 
             {/* Karta rezerwacji z przyciskiem */}
             <Card className="border-border shadow-lg overflow-hidden flex flex-col self-start w-full">

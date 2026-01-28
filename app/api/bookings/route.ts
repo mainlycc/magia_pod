@@ -17,9 +17,12 @@ const participantSchema = z.object({
   last_name: z.string().min(2, "Podaj nazwisko"),
   pesel: z
     .string()
-    .regex(/^$|^\d{11}$/, "PESEL musi mieć 11 cyfr")
+    .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  birth_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data urodzenia w formacie RRRR-MM-DD"),
   email: z.string().email("Niepoprawny adres e-mail").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
@@ -77,10 +80,14 @@ const bookingPayloadSchema = z.object({
   slug: z.string().min(1, "Brak identyfikatora wycieczki"),
   contact_first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
   contact_last_name: z.string().min(2, "Podaj nazwisko").optional().or(z.literal("").transform(() => undefined)),
-  contact_pesel: z.string().regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr"),
+  contact_pesel: z
+    .string()
+    .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   contact_email: z.string().email("Niepoprawny adres e-mail"),
   contact_phone: z.string().min(7, "Podaj numer telefonu"),
-  address: addressSchema,
+  address: addressSchema.optional(),
   company_name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
   company_nip: z.string().regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr").optional().or(z.literal("").transform(() => undefined)),
   company_address: addressSchema.optional(),

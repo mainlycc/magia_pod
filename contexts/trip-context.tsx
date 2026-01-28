@@ -54,6 +54,7 @@ type TripContentData = {
   trip_info_text: string
   baggage_text: string
   weather_text: string
+  show_weather_card: boolean
   show_seats_left: boolean
   included_in_price_text: string
   additional_costs_text: string
@@ -65,6 +66,11 @@ type TripContentData = {
     sectionTitle: string
     fields: Array<{ title: string; value: string }>
   }>
+  public_middle_sections: string[] | null
+  public_right_sections: string[] | null
+  public_hidden_middle_sections: string[] | null
+  public_hidden_right_sections: string[] | null
+  public_hidden_additional_sections: string[] | null
 }
 
 type TripContextType = {

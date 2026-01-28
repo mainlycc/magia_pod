@@ -148,14 +148,16 @@ export function ParticipantsStep({
                 <div className="grid gap-4 md:grid-cols-3 mt-6">
                   <FormField
                     control={control}
-                    name={`participants.${index}.pesel`}
+                    name={`participants.${index}.birth_date`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
-                          PESEL{tripConfig?.form_required_participant_fields?.pesel ? " *" : ""}
-                        </FormLabel>
+                        <FormLabel>Data urodzenia *</FormLabel>
                         <FormControl>
-                          <Input placeholder="12345678901" {...field} value={field.value || ""} maxLength={11} />
+                          <Input
+                            type="date"
+                            {...field}
+                            value={field.value || ""}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -293,7 +295,7 @@ export function ParticipantsStep({
                 append({
                   first_name: "",
                   last_name: "",
-                  pesel: "",
+                  birth_date: "",
                   email: "",
                   phone: "",
                   document_type: "ID",

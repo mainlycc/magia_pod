@@ -129,6 +129,17 @@ function PublicznyWygladContent() {
             handleImageUpload={handleImageUpload}
             handleImageDelete={handleImageDelete}
             handleAddImageFromUrl={handleAddImageFromUrl}
+            onReorder={(urls) => {
+              setGalleryUrls(urls)
+              // W trybie edycji zapisz od razu nową kolejność do bazy
+              if (!isCreateMode && selectedTrip) {
+                void fetch(`/api/trips/${selectedTrip.id}/content`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ gallery_urls: urls }),
+                })
+              }
+            }}
           />
 
           <TripInfoCard

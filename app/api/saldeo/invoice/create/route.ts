@@ -183,40 +183,63 @@ export async function POST(request: NextRequest) {
     // Wyślij fakturę do Saldeo
     const saldeoResponse = await createInvoiceInSaldeo(saldeoConfig, invoiceData);
 
+    // Loguj szczegóły odpowiedzi Saldeo dla debugowania
+    console.log("[Invoice Create] Saldeo response:", {
+      success: saldeoResponse.success,
+      invoiceId: saldeoResponse.invoiceId,
+      error: saldeoResponse.error,
+      rawResponseLength: saldeoResponse.rawResponse?.length || 0,
+      rawResponsePreview: saldeoResponse.rawResponse?.substring(0, 500),
+    });
+
     // Zapisz fakturę w bazie danych
     const adminSupabase = createAdminClient();
     const invoiceAmountCents = Math.round(totalAmount * 100);
+
+    // Przygotuj komunikat błędu do zapisania
+    let errorMessage = saldeoResponse.error || null;
+    if (saldeoResponse.error && saldeoResponse.rawResponse) {
+      // Zapisz zarówno błąd jak i początek odpowiedzi dla debugowania
+      errorMessage = `${saldeoResponse.error} | Raw: ${saldeoResponse.rawResponse.substring(0, 200)}`;
+    }
 
     const { data: invoice, error: invoiceError } = await adminSupabase
       .from("invoices")
       .insert({
         booking_id: booking_id,
+        invoice_number: null as any, // Trigger automatycznie wygeneruje numer
         amount_cents: invoiceAmountCents,
-        status: saldeoResponse.success ? "wystawiona" : "wystawiona", // zawsze "wystawiona" nawet jeśli błąd
+        status: "wystawiona", // zawsze "wystawiona" - nawet jeśli Saldeo zwrócił błąd
         saldeo_invoice_id: saldeoResponse.invoiceId || null,
-        saldeo_error: saldeoResponse.error || null,
+        saldeo_error: errorMessage,
       })
       .select()
       .single();
 
     if (invoiceError) {
-      console.error("Error creating invoice:", invoiceError);
+      console.error("[Invoice Create] Error saving invoice to database:", invoiceError);
       return NextResponse.json(
         {
           success: false,
           error: "failed_to_create_invoice",
+          details: invoiceError.message,
           saldeo_response: saldeoResponse,
         },
         { status: 500 }
       );
     }
 
+    // Zwróć sukces nawet jeśli Saldeo nie zadziałało (faktura jest zapisana lokalnie)
     return NextResponse.json({
-      success: saldeoResponse.success,
+      success: true,
       invoice_id: invoice.id,
-      saldeo_invoice_id: saldeoResponse.invoiceId,
-      saldeo_error: saldeoResponse.error,
       invoice_number: invoice.invoice_number,
+      saldeo_invoice_id: saldeoResponse.invoiceId || null,
+      saldeo_success: saldeoResponse.success,
+      saldeo_error: saldeoResponse.error || null,
+      message: saldeoResponse.success
+        ? "Faktura została wygenerowana i zapisana w Saldeo"
+        : "Faktura została zapisana lokalnie, ale wystąpił problem z Saldeo",
     });
   } catch (error) {
     console.error("Error in POST /api/saldeo/invoice/create:", error);

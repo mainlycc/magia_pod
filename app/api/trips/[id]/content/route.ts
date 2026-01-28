@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
     const { data: trip, error } = await supabase
       .from("trips")
-      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, trip_info_text, baggage_text, weather_text, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text, additional_fields")
+      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, trip_info_text, baggage_text, weather_text, show_trip_info_card, show_baggage_card, show_weather_card, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text, additional_fields, public_middle_sections, public_right_sections, public_hidden_middle_sections, public_hidden_right_sections, public_hidden_additional_sections")
       .eq("id", id)
       .single();
 
@@ -45,6 +45,9 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       trip_info_text: trip.trip_info_text || "",
       baggage_text: trip.baggage_text || "",
       weather_text: trip.weather_text || "",
+      show_trip_info_card: trip.show_trip_info_card ?? true,
+      show_baggage_card: trip.show_baggage_card ?? true,
+      show_weather_card: trip.show_weather_card ?? true,
       show_seats_left: trip.show_seats_left ?? false,
       included_in_price_text: trip.included_in_price_text || "",
       additional_costs_text: trip.additional_costs_text || "",
@@ -52,6 +55,11 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       reservation_number: trip.reservation_number || "",
       duration_text: trip.duration_text || "",
       additional_fields: trip.additional_fields || [],
+      public_middle_sections: trip.public_middle_sections || null,
+      public_right_sections: trip.public_right_sections || null,
+      public_hidden_middle_sections: trip.public_hidden_middle_sections || null,
+      public_hidden_right_sections: trip.public_hidden_right_sections || null,
+      public_hidden_additional_sections: trip.public_hidden_additional_sections || null,
     });
   } catch {
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
@@ -78,13 +86,21 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       trip_info_text,
       baggage_text,
       weather_text,
+      show_trip_info_card,
+      show_baggage_card,
+      show_weather_card,
       show_seats_left,
       included_in_price_text,
       additional_costs_text,
       additional_service_text,
       reservation_number,
       duration_text,
-      additional_fields
+      additional_fields,
+      public_middle_sections,
+      public_right_sections,
+      public_hidden_middle_sections,
+      public_hidden_right_sections,
+      public_hidden_additional_sections,
     } = body as {
       program_atrakcje?: string;
       dodatkowe_swiadczenia?: string;
@@ -95,6 +111,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       trip_info_text?: string;
       baggage_text?: string;
       weather_text?: string;
+      show_trip_info_card?: boolean;
+      show_baggage_card?: boolean;
+      show_weather_card?: boolean;
       show_seats_left?: boolean;
       included_in_price_text?: string;
       additional_costs_text?: string;
@@ -106,6 +125,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         sectionTitle: string;
         fields: Array<{ title: string; value: string }>;
       }>;
+      public_middle_sections?: string[] | null;
+      public_right_sections?: string[] | null;
+      public_hidden_middle_sections?: string[] | null;
+      public_hidden_right_sections?: string[] | null;
+      public_hidden_additional_sections?: string[] | null;
     };
 
     const updateData: {
@@ -118,6 +142,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       trip_info_text?: string | null;
       baggage_text?: string | null;
       weather_text?: string | null;
+      show_trip_info_card?: boolean;
+      show_baggage_card?: boolean;
+      show_weather_card?: boolean;
       show_seats_left?: boolean;
       included_in_price_text?: string | null;
       additional_costs_text?: string | null;
@@ -129,6 +156,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         sectionTitle: string;
         fields: Array<{ title: string; value: string }>;
       }> | null;
+      public_middle_sections?: string[] | null;
+      public_right_sections?: string[] | null;
+      public_hidden_middle_sections?: string[] | null;
+      public_hidden_right_sections?: string[] | null;
+      public_hidden_additional_sections?: string[] | null;
     } = {};
 
     if ("program_atrakcje" in body) {
@@ -162,6 +194,15 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("weather_text" in body) {
       updateData.weather_text = weather_text ?? null;
     }
+    if ("show_trip_info_card" in body) {
+      updateData.show_trip_info_card = show_trip_info_card ?? true;
+    }
+    if ("show_baggage_card" in body) {
+      updateData.show_baggage_card = show_baggage_card ?? true;
+    }
+    if ("show_weather_card" in body) {
+      updateData.show_weather_card = show_weather_card ?? true;
+    }
     if ("show_seats_left" in body) {
       updateData.show_seats_left = show_seats_left ?? false;
     }
@@ -186,6 +227,21 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       } else if (additional_fields === null || additional_fields === undefined) {
         updateData.additional_fields = [];
       }
+    }
+    if ("public_middle_sections" in body) {
+      updateData.public_middle_sections = public_middle_sections ?? null;
+    }
+    if ("public_right_sections" in body) {
+      updateData.public_right_sections = public_right_sections ?? null;
+    }
+    if ("public_hidden_middle_sections" in body) {
+      updateData.public_hidden_middle_sections = public_hidden_middle_sections ?? null;
+    }
+    if ("public_hidden_right_sections" in body) {
+      updateData.public_hidden_right_sections = public_hidden_right_sections ?? null;
+    }
+    if ("public_hidden_additional_sections" in body) {
+      updateData.public_hidden_additional_sections = public_hidden_additional_sections ?? null;
     }
 
     // Jeśli nie ma żadnych danych do aktualizacji, zwróć sukces

@@ -74,11 +74,9 @@ export const companySchema = z
 export const participantSchema = z.object({
   first_name: z.string().min(2, "Podaj imię"),
   last_name: z.string().min(2, "Podaj nazwisko"),
-  pesel: z
+  birth_date: z
     .string()
-    .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Podaj datę urodzenia w formacie RRRR-MM-DD"),
   email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
@@ -184,6 +182,8 @@ export const createBookingFormSchema = (requiredFields?: {
 } | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
+    // seats_total pochodzi z konfiguracji wycieczki – używane tylko do walidacji maksymalnej liczby uczestników
+    seats_total: z.number().optional(),
     contact: z.object({
       first_name: z
         .string()
@@ -197,15 +197,17 @@ export const createBookingFormSchema = (requiredFields?: {
         .or(z.literal("").transform(() => undefined)),
       pesel: z
         .string()
-        .regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
-        .min(11, "PESEL jest wymagany"),
+        .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
       email: z.string().email("Podaj poprawny e-mail"),
       phone: z.string().min(7, "Podaj telefon"),
       address: optionalAddressSchema,
+      comment: z.string().max(1000, "Komentarz jest za długi").optional().or(z.literal("").transform(() => undefined)),
     }),
     company: companySchema.optional(),
     participants: z.array(participantSchema),
-    participants_count: z.number().min(1, "Liczba uczestników musi być większa od 0").optional(),
+    participants_count: z.number().optional(),
     participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
       rodo: z.literal(true),
@@ -232,11 +234,9 @@ export const createBookingFormSchema = (requiredFields?: {
           path: ["contact", "last_name"],
         });
       }
-      // Dla osoby fizycznej nie waliduj company - zakończ tutaj
-      return;
-    }
-    // Dla firmy wymagaj danych firmy
-    if (value.applicant_type === "company") {
+      // Dla osoby fizycznej nie waliduj company - przejdź dalej do walidacji uczestników
+    } else if (value.applicant_type === "company") {
+      // Dla firmy wymagaj danych firmy
       if (!value.company?.name || value.company.name.trim() === "") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -274,23 +274,17 @@ export const createBookingFormSchema = (requiredFields?: {
       }
     }
 
-    // Walidacja pól uczestników na podstawie konfiguracji
-    if (requiredFields && value.applicant_type !== "company") {
-      value.participants.forEach((participant, index) => {
-        if (requiredFields.pesel) {
-          if (!participant.pesel || participant.pesel.trim() === "") {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "PESEL jest wymagany",
-              path: ["participants", index, "pesel"],
-            });
-          } else if (!/^\d{11}$/.test(participant.pesel)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "PESEL musi mieć dokładnie 11 cyfr",
-              path: ["participants", index, "pesel"],
-            });
-          }
+    // Walidacja pól uczestników na podstawie konfiguracji (osoba fizyczna)
+    if (value.applicant_type === "individual") {
+      if (requiredFields) {
+        value.participants.forEach((participant, index) => {
+        // Data urodzenia zawsze wymagana
+        if (!participant.birth_date || participant.birth_date.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Data urodzenia jest wymagana",
+            path: ["participants", index, "birth_date"],
+          });
         }
         if (requiredFields.document) {
           if (!participant.document_type) {
@@ -333,5 +327,6 @@ export const createBookingFormSchema = (requiredFields?: {
           }
         }
       });
+      }
     }
   });

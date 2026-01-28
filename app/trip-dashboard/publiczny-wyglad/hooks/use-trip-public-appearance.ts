@@ -107,7 +107,16 @@ export function useTripPublicAppearance() {
     }
 
     if (tripFullData && tripContentData && tripFullData.id === selectedTrip.id) {
-      const content = tripContentData
+      const content = tripContentData as typeof tripContentData & {
+        public_middle_sections?: MiddleSectionId[] | null
+        public_right_sections?: RightSectionId[] | null
+        public_hidden_middle_sections?: MiddleSectionId[] | null
+        public_hidden_right_sections?: RightSectionId[] | null
+        public_hidden_additional_sections?: string[] | null
+        show_trip_info_card?: boolean | null
+        show_baggage_card?: boolean | null
+        show_weather_card?: boolean | null
+      }
       const trip = tripFullData
       
       setProgramAtrakcje(content.program_atrakcje || "")
@@ -119,6 +128,9 @@ export function useTripPublicAppearance() {
       setTripInfoText(content.trip_info_text || "")
       setBaggageText(content.baggage_text || "")
       setWeatherText(content.weather_text || "")
+      setShowTripInfoConfigCard(content.show_trip_info_card ?? true)
+      setShowBaggageCard(content.show_baggage_card ?? true)
+      setShowWeatherCard(content.show_weather_card ?? true)
       setShowSeatsLeft(content.show_seats_left ?? false)
       setIncludedInPriceText(content.included_in_price_text || "")
       setAdditionalCostsText(content.additional_costs_text || "")
@@ -144,6 +156,26 @@ export function useTripPublicAppearance() {
       } else {
         setAdditionalFieldSections([])
       }
+
+      // Layout i widoczność sekcji (z bazy lub domyślne)
+      setMiddleSections(
+        (content.public_middle_sections as MiddleSectionId[] | null) ?? ["program"]
+      )
+      setRightSections(
+        (content.public_right_sections as RightSectionId[] | null) ?? [
+          "bookingPreview",
+          "includedInPrice",
+          "additionalCosts",
+          "additionalService",
+        ]
+      )
+      setHiddenMiddleSections(
+        (content.public_hidden_middle_sections as MiddleSectionId[] | null) ?? []
+      )
+      setHiddenRightSections(
+        (content.public_hidden_right_sections as RightSectionId[] | null) ?? []
+      )
+      setHiddenAdditionalSections(content.public_hidden_additional_sections ?? [])
       
       setTripTitle(trip.title || "")
       setTripData({
@@ -179,6 +211,9 @@ export function useTripPublicAppearance() {
           tripInfoText,
           baggageText,
           weatherText,
+          showTripInfoConfigCard,
+          showBaggageCard,
+        showWeatherCard,
           showSeatsLeft,
           includedInPriceText,
           additionalCostsText,
@@ -214,6 +249,9 @@ export function useTripPublicAppearance() {
           trip_info_text: tripInfoText,
           baggage_text: baggageText,
           weather_text: weatherText,
+          show_trip_info_card: showTripInfoConfigCard,
+          show_baggage_card: showBaggageCard,
+          show_weather_card: showWeatherCard,
           show_seats_left: showSeatsLeft,
           included_in_price_text: includedInPriceText,
           additional_costs_text: additionalCostsText,
@@ -221,6 +259,11 @@ export function useTripPublicAppearance() {
           reservation_number: reservationNumber,
           duration_text: durationText,
           additional_fields: additionalFieldSections,
+          public_middle_sections: middleSections,
+          public_right_sections: rightSections,
+          public_hidden_middle_sections: hiddenMiddleSections,
+          public_hidden_right_sections: hiddenRightSections,
+          public_hidden_additional_sections: hiddenAdditionalSections,
         }),
       })
 

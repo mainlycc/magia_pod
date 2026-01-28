@@ -19,9 +19,18 @@ export function GalleryManager({
   handleImageUpload,
   handleImageDelete,
   handleAddImageFromUrl,
+  onReorder,
 }: GalleryManagerProps) {
   const mainImage = galleryUrls[0] || "/placeholder.svg"
   const galleryImages = galleryUrls.slice(1, 3)
+
+  const handleReorder = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    const next = [...galleryUrls]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    onReorder(next)
+  }
 
   return (
     <Card className="bg-green-50/50 border-green-200">
@@ -35,7 +44,25 @@ export function GalleryManager({
       </CardHeader>
       <CardContent className="space-y-4 pt-2">
         <div className="grid grid-cols-2 gap-2">
-          <div className="col-span-2 relative rounded-xl overflow-hidden group h-[200px] border-2 border-dashed border-muted-foreground/20">
+          <div
+            className="col-span-2 relative rounded-xl overflow-hidden group h-[200px] border-2 border-dashed border-muted-foreground/20"
+            draggable={!!galleryUrls[0] && galleryUrls.length > 1}
+            onDragStart={(e) => {
+              if (!galleryUrls[0]) return
+              e.dataTransfer.setData("text/plain", "0")
+            }}
+            onDragOver={(e) => {
+              if (!galleryUrls[0]) return
+              e.preventDefault()
+            }}
+            onDrop={(e) => {
+              if (!galleryUrls[0]) return
+              e.preventDefault()
+              const fromIndex = parseInt(e.dataTransfer.getData("text/plain"), 10)
+              if (Number.isNaN(fromIndex)) return
+              handleReorder(fromIndex, 0)
+            }}
+          >
             {mainImage && mainImage !== "/placeholder.svg" ? (
               <>
                 <Image
@@ -75,10 +102,27 @@ export function GalleryManager({
 
           {Array.from({ length: 2 }).map((_, index) => {
             const url = galleryImages[index]
+            const targetIndex = index + 1
             return (
               <div
                 key={index}
                 className="relative rounded-lg overflow-hidden border-2 border-dashed border-muted-foreground/20 h-[100px] group"
+                draggable={!!url}
+                onDragStart={(e) => {
+                  if (!url) return
+                  e.dataTransfer.setData("text/plain", String(targetIndex))
+                }}
+                onDragOver={(e) => {
+                  if (!url) return
+                  e.preventDefault()
+                }}
+                onDrop={(e) => {
+                  if (!url) return
+                  e.preventDefault()
+                  const fromIndex = parseInt(e.dataTransfer.getData("text/plain"), 10)
+                  if (Number.isNaN(fromIndex)) return
+                  handleReorder(fromIndex, targetIndex)
+                }}
               >
                 {url ? (
                   <>

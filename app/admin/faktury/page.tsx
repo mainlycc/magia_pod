@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ReusableTable } from "@/components/reusable-table";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Eye } from "lucide-react";
 
 type InvoiceStatus = "wystawiona" | "wysłana" | "opłacona";
 
@@ -77,6 +80,7 @@ const getInvoiceStatusBadgeVariant = (status: InvoiceStatus): "default" | "secon
 };
 
 export default function AdminInvoicesPage() {
+  const router = useRouter();
   const [invoices, setInvoices] = useState<InvoiceWithBooking[]>([]);
   const [bookings, setBookings] = useState<BookingOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -268,8 +272,26 @@ export default function AdminInvoicesPage() {
         ),
         enableSorting: true,
       },
+      {
+        id: "actions",
+        header: "Akcje",
+        cell: ({ row }) => (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/admin/faktury/${row.original.id}`);
+            }}
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            Podgląd
+          </Button>
+        ),
+        enableSorting: false,
+      },
     ],
-    []
+    [router]
   );
 
   const handleConfirmAdd = async (formData: Record<string, string>) => {
@@ -411,6 +433,7 @@ export default function AdminInvoicesPage() {
         enableDeleteDialog={true}
         onConfirmAdd={handleConfirmAdd}
         onConfirmDelete={handleConfirmDelete}
+        onRowClick={(invoice) => router.push(`/admin/faktury/${invoice.id}`)}
         addButtonLabel="Dodaj fakturę"
         deleteButtonLabel="Usuń"
         addDialogTitle="Dodaj nową fakturę"
