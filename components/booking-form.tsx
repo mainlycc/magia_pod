@@ -458,7 +458,16 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
   ],
   participants: ["participants"],
   services: ["participant_services"],
-  summary: ["consents.rodo", "consents.terms", "consents.conditions"],
+  summary: [
+    "consents.agreement_consent",
+    "consents.conditions_de_pl_consent",
+    "consents.standard_form_consent",
+    "consents.electronic_services_consent",
+    "consents.rodo_info_consent",
+    "consents.insurance_terms_consent",
+    "consents.insurance_data_consent",
+    "consents.insurance_other_person_consent",
+  ],
 };
 
 interface BookingFormProps {
@@ -480,6 +489,12 @@ export function BookingForm({ slug }: BookingFormProps) {
     rodo?: { file_name: string; url?: string };
     terms?: { file_name: string; url?: string };
     conditions?: { file_name: string; url?: string };
+    agreement?: { file_name: string; url?: string };
+    conditions_de_pl?: { file_name: string; url?: string };
+    standard_form?: { file_name: string; url?: string };
+    electronic_services?: { file_name: string; url?: string };
+    rodo_info?: { file_name: string; url?: string };
+    insurance_terms?: { file_name: string; url?: string };
   }>({});
 
   useEffect(() => {
@@ -541,8 +556,13 @@ export function BookingForm({ slug }: BookingFormProps) {
               const docsData = await docsRes.json();
               const docsMap: typeof documents = {};
               docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
-                if (doc.document_type === "rodo" || doc.document_type === "terms" || doc.document_type === "conditions") {
-                  docsMap[doc.document_type] = {
+                const validTypes = [
+                  "rodo", "terms", "conditions",
+                  "agreement", "conditions_de_pl", "standard_form",
+                  "electronic_services", "rodo_info", "insurance_terms"
+                ];
+                if (validTypes.includes(doc.document_type)) {
+                  docsMap[doc.document_type as keyof typeof docsMap] = {
                     file_name: doc.file_name,
                     url: doc.url,
                   };
@@ -598,6 +618,14 @@ export function BookingForm({ slug }: BookingFormProps) {
         rodo: true,
         terms: true,
         conditions: true,
+        agreement_consent: true,
+        conditions_de_pl_consent: true,
+        standard_form_consent: true,
+        electronic_services_consent: true,
+        rodo_info_consent: true,
+        insurance_terms_consent: true,
+        insurance_data_consent: true,
+        insurance_other_person_consent: true,
       },
       invoice: {
         use_other_data: false,
@@ -2986,100 +3014,247 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   <section className="space-y-4">
                     <h3 className="font-medium text-sm uppercase text-muted-foreground">Zgody</h3>
-                    <div className="space-y-3">
-                      <FormField
-                        control={control}
-                        name="consents.rodo"
-                        render={({ field }) => (
-                          <FormItem className="flex items-start gap-3">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 flex-1">
-                              <FormLabel className="text-sm font-medium leading-none">
-                                Zgoda na przetwarzanie danych osobowych (RODO)
-                              </FormLabel>
-                              {documents.rodo && (
-                                <a
-                                  href={documents.rodo.url || `/api/documents/file/${documents.rodo.file_name}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  Przeczytaj dokument RODO
-                                </a>
-                              )}
-                              <FormMessage />
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={control}
-                        name="consents.terms"
-                        render={({ field }) => (
-                          <FormItem className="flex items-start gap-3">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 flex-1">
-                              <FormLabel className="text-sm font-medium leading-none">
-                                Zapoznałem się z regulaminem i go akceptuję
-                              </FormLabel>
-                              {documents.terms && (
-                                <a
-                                  href={documents.terms.url || `/api/documents/file/${documents.terms.file_name}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  Przeczytaj regulamin
-                                </a>
-                              )}
-                              <FormMessage />
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={control}
-                        name="consents.conditions"
-                        render={({ field }) => (
-                          <FormItem className="flex items-start gap-3">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 flex-1">
-                              <FormLabel className="text-sm font-medium leading-none">
-                                Potwierdzam znajomość warunków udziału w wycieczce
-                              </FormLabel>
-                              {documents.conditions && (
-                                <a
-                                  href={documents.conditions.url || `/api/documents/file/${documents.conditions.file_name}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  Przeczytaj warunki udziału
-                                </a>
-                              )}
-                              <FormMessage />
-                            </div>
-                          </FormItem>
-                        )}
-                      />
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-medium mb-3">Zapoznałem się i akceptuję:</p>
+                        <div className="space-y-3 pl-4">
+                          <FormField
+                            control={control}
+                            name="consents.agreement_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Umową o udział w imprezie turystycznej oraz programem imprezy turystycznej
+                                  </FormLabel>
+                                  {documents.agreement && (
+                                    <a
+                                      href={documents.agreement.url || `/api/documents/file/${documents.agreement.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.conditions_de_pl_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Warunkami Udziału w Imprezach Turystycznych GRUPY DE-PL
+                                  </FormLabel>
+                                  {documents.conditions_de_pl && (
+                                    <a
+                                      href={documents.conditions_de_pl.url || `/api/documents/file/${documents.conditions_de_pl.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.standard_form_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Standardowym Formularzem Informacyjnym
+                                  </FormLabel>
+                                  {documents.standard_form && (
+                                    <a
+                                      href={documents.standard_form.url || `/api/documents/file/${documents.standard_form.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.electronic_services_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Regulaminem Świadczenia Usług Drogą Elektroniczną
+                                  </FormLabel>
+                                  {documents.electronic_services && (
+                                    <a
+                                      href={documents.electronic_services.url || `/api/documents/file/${documents.electronic_services.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.rodo_info_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Informację nt przetwarzania danych osobowych
+                                  </FormLabel>
+                                  {documents.rodo_info && (
+                                    <a
+                                      href={documents.rodo_info.url || `/api/documents/file/${documents.rodo_info.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div>
+                        <p className="text-sm font-medium mb-3">UBEZPIECZENIE</p>
+                        <div className="space-y-3 pl-4">
+                          <FormField
+                            control={control}
+                            name="consents.insurance_terms_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Zapoznałem się z treścią Ogólnych Warunków Ubezpieczenia, jakie obowiązywać będą po zawarciu przez Organizatora Imprezy Turystycznej umowy ubezpieczenia na rzecz uczestnika/uczestników wyjazdu
+                                  </FormLabel>
+                                  {documents.insurance_terms && (
+                                    <a
+                                      href={documents.insurance_terms.url || `/api/documents/file/${documents.insurance_terms.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.insurance_data_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § Wyrażam zgodę na przetwarzanie moich danych osobowych oraz danych osób objętych niniejszą umową w zakresie: imię, nazwisko, adres oraz datę urodzenia, przez wskazanego w umowie ubezpieczyciela jako administratora danych osobowych, w celu zawarcia i wykonania umowy ubezpieczenia na mój rachunek i rachunek ww. osób.
+                                  </FormLabel>
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.insurance_other_person_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="text-sm font-medium leading-none">
+                                    § W przypadku zawarcia umowy na rzecz innej osoby oświadczam, że doręczyłem tej osobie na piśmie lub za ich zgodą na innym trwałym nośniku Ogólne Warunki Ubezpieczenia
+                                  </FormLabel>
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </section>
                 </CardContent>

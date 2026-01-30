@@ -56,7 +56,12 @@ export async function DELETE(
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    if (!["rodo", "terms", "conditions"].includes(type)) {
+    const validDocumentTypes = [
+      "rodo", "terms", "conditions",
+      "agreement", "conditions_de_pl", "standard_form",
+      "electronic_services", "rodo_info", "insurance_terms"
+    ];
+    if (!validDocumentTypes.includes(type)) {
       return NextResponse.json({ error: "invalid_document_type" }, { status: 400 });
     }
 

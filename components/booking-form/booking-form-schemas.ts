@@ -210,9 +210,20 @@ export const createBookingFormSchema = (requiredFields?: {
     participants_count: z.number().optional(),
     participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
-      rodo: z.literal(true),
-      terms: z.literal(true),
-      conditions: z.literal(true),
+      // Stare zgody - zachowane dla kompatybilności wstecznej
+      rodo: z.literal(true).optional(),
+      terms: z.literal(true).optional(),
+      conditions: z.literal(true).optional(),
+      // Nowe zgody - sekcja "Zapoznałem się i akceptuję"
+      agreement_consent: z.literal(true),
+      conditions_de_pl_consent: z.literal(true),
+      standard_form_consent: z.literal(true),
+      electronic_services_consent: z.literal(true),
+      rodo_info_consent: z.literal(true),
+      // Nowe zgody - sekcja "UBEZPIECZENIE"
+      insurance_terms_consent: z.literal(true),
+      insurance_data_consent: z.literal(true),
+      insurance_other_person_consent: z.literal(true),
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,

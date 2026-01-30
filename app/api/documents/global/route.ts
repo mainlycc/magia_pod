@@ -55,7 +55,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "no_file" }, { status: 400 });
     }
 
-    if (!documentType || !["rodo", "terms", "conditions"].includes(documentType)) {
+    const validDocumentTypes = [
+      "rodo", "terms", "conditions",
+      "agreement", "conditions_de_pl", "standard_form",
+      "electronic_services", "rodo_info", "insurance_terms"
+    ];
+    if (!documentType || !validDocumentTypes.includes(documentType)) {
       return NextResponse.json({ error: "invalid_document_type" }, { status: 400 });
     }
 

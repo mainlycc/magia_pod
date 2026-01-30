@@ -12,7 +12,16 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-type DocumentType = "rodo" | "terms" | "conditions"
+type DocumentType = 
+  | "rodo" 
+  | "terms" 
+  | "conditions"
+  | "agreement"
+  | "conditions_de_pl"
+  | "standard_form"
+  | "electronic_services"
+  | "rodo_info"
+  | "insurance_terms"
 
 type Document = {
   id: string
@@ -40,6 +49,36 @@ const documentTypes: { type: DocumentType; label: string; description: string }[
     type: "conditions",
     label: "Warunki udziału",
     description: "Warunki udziału w wycieczce",
+  },
+  {
+    type: "agreement",
+    label: "Umowa o udział w imprezie turystycznej",
+    description: "Umowa o udział w imprezie turystycznej oraz programem imprezy turystycznej",
+  },
+  {
+    type: "conditions_de_pl",
+    label: "Warunki Udziału w Imprezach Turystycznych GRUPY DE-PL",
+    description: "Warunki Udziału w Imprezach Turystycznych GRUPY DE-PL",
+  },
+  {
+    type: "standard_form",
+    label: "Standardowy Formularz Informacyjny",
+    description: "Standardowy Formularz Informacyjny",
+  },
+  {
+    type: "electronic_services",
+    label: "Regulamin Świadczenia Usług Drogą Elektroniczną",
+    description: "Regulamin Świadczenia Usług Drogą Elektroniczną",
+  },
+  {
+    type: "rodo_info",
+    label: "Informacja nt przetwarzania danych osobowych",
+    description: "Informacja nt przetwarzania danych osobowych",
+  },
+  {
+    type: "insurance_terms",
+    label: "Ogólne Warunki Ubezpieczenia",
+    description: "Ogólne Warunki Ubezpieczenia",
   },
 ]
 

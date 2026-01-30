@@ -12,6 +12,12 @@ export function useTripConfig(slug: string) {
     rodo?: { file_name: string; url?: string };
     terms?: { file_name: string; url?: string };
     conditions?: { file_name: string; url?: string };
+    agreement?: { file_name: string; url?: string };
+    conditions_de_pl?: { file_name: string; url?: string };
+    standard_form?: { file_name: string; url?: string };
+    electronic_services?: { file_name: string; url?: string };
+    rodo_info?: { file_name: string; url?: string };
+    insurance_terms?: { file_name: string; url?: string };
   }>({});
   const [loading, setLoading] = useState(true);
 
@@ -75,8 +81,13 @@ export function useTripConfig(slug: string) {
               const docsData = await docsRes.json();
               const docsMap: typeof documents = {};
               docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
-                if (doc.document_type === "rodo" || doc.document_type === "terms" || doc.document_type === "conditions") {
-                  docsMap[doc.document_type] = {
+                const validTypes = [
+                  "rodo", "terms", "conditions",
+                  "agreement", "conditions_de_pl", "standard_form",
+                  "electronic_services", "rodo_info", "insurance_terms"
+                ];
+                if (validTypes.includes(doc.document_type)) {
+                  docsMap[doc.document_type as keyof typeof docsMap] = {
                     file_name: doc.file_name,
                     url: doc.url,
                   };
