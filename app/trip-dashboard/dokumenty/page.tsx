@@ -85,6 +85,12 @@ export default function DokumentyPage() {
     rodo: false,
     terms: false,
     conditions: false,
+    agreement: false,
+    conditions_de_pl: false,
+    standard_form: false,
+    electronic_services: false,
+    rodo_info: false,
+    insurance_terms: false,
   })
 
   useEffect(() => {

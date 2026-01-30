@@ -250,9 +250,20 @@ const createBookingFormSchema = (requiredFields?: {
   participants_count: z.number().optional(),
     participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
-      rodo: z.literal(true),
-      terms: z.literal(true),
-      conditions: z.literal(true),
+      // Stare zgody - zachowane dla kompatybilności wstecznej
+      rodo: z.literal(true).optional(),
+      terms: z.literal(true).optional(),
+      conditions: z.literal(true).optional(),
+      // Nowe zgody - sekcja "Zapoznałem się i akceptuję"
+      agreement_consent: z.literal(true),
+      conditions_de_pl_consent: z.literal(true),
+      standard_form_consent: z.literal(true),
+      electronic_services_consent: z.literal(true),
+      rodo_info_consent: z.literal(true),
+      // Nowe zgody - sekcja "UBEZPIECZENIE"
+      insurance_terms_consent: z.literal(true),
+      insurance_data_consent: z.literal(true),
+      insurance_other_person_consent: z.literal(true),
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,
@@ -378,9 +389,9 @@ const createBookingFormSchema = (requiredFields?: {
     }
   });
 
-const bookingFormSchema = createBookingFormSchema();
-
-type BookingFormValues = z.infer<typeof bookingFormSchema>;
+// Typ pomocniczy dla wartości formularza - używamy createBookingFormSchema() bez parametrów dla typu
+const bookingFormSchemaForType = createBookingFormSchema();
+type BookingFormValues = z.infer<typeof bookingFormSchemaForType>;
 
 type RegistrationMode = "individual" | "company" | "both";
 
@@ -459,14 +470,14 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
   participants: ["participants"],
   services: ["participant_services"],
   summary: [
-    "consents.agreement_consent",
-    "consents.conditions_de_pl_consent",
-    "consents.standard_form_consent",
-    "consents.electronic_services_consent",
-    "consents.rodo_info_consent",
-    "consents.insurance_terms_consent",
-    "consents.insurance_data_consent",
-    "consents.insurance_other_person_consent",
+    "consents.agreement_consent" as FieldPath<BookingFormValues>,
+    "consents.conditions_de_pl_consent" as FieldPath<BookingFormValues>,
+    "consents.standard_form_consent" as FieldPath<BookingFormValues>,
+    "consents.electronic_services_consent" as FieldPath<BookingFormValues>,
+    "consents.rodo_info_consent" as FieldPath<BookingFormValues>,
+    "consents.insurance_terms_consent" as FieldPath<BookingFormValues>,
+    "consents.insurance_data_consent" as FieldPath<BookingFormValues>,
+    "consents.insurance_other_person_consent" as FieldPath<BookingFormValues>,
   ],
 };
 
@@ -626,7 +637,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         insurance_terms_consent: true,
         insurance_data_consent: true,
         insurance_other_person_consent: true,
-      },
+      } as any,
       invoice: {
         use_other_data: false,
         type: undefined,
