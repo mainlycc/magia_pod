@@ -81,7 +81,11 @@ export async function GET(
     );
 
     // Zwróć dokumenty z fallbackiem: jeśli jest dokument dla wycieczki, użyj go, w przeciwnym razie użyj globalnego
-    const documentTypes = ["rodo", "terms", "conditions"];
+    const documentTypes = [
+      "rodo", "terms", "conditions",
+      "agreement", "conditions_de_pl", "standard_form",
+      "electronic_services", "rodo_info", "insurance_terms"
+    ];
     const result = documentTypes.map((type) => {
       const tripDoc = tripDocsMap.get(type);
       const globalDoc = globalDocsMap.get(type);

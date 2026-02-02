@@ -3043,7 +3043,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Umową o udział w imprezie turystycznej oraz programem imprezy turystycznej
+                                    Umową o udział w imprezie turystycznej oraz programem imprezy turystycznej
                                   </FormLabel>
                                   {documents.agreement && (
                                     <a
@@ -3074,7 +3074,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Warunkami Udziału w Imprezach Turystycznych GRUPY DE-PL
+                                    Warunkami Udziału w Imprezach Turystycznych GRUPY DE-PL
                                   </FormLabel>
                                   {documents.conditions_de_pl && (
                                     <a
@@ -3105,7 +3105,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Standardowym Formularzem Informacyjnym
+                                    Standardowym Formularzem Informacyjnym
                                   </FormLabel>
                                   {documents.standard_form && (
                                     <a
@@ -3136,7 +3136,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Regulaminem Świadczenia Usług Drogą Elektroniczną
+                                    Regulaminem Świadczenia Usług Drogą Elektroniczną
                                   </FormLabel>
                                   {documents.electronic_services && (
                                     <a
@@ -3167,7 +3167,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Informację nt przetwarzania danych osobowych
+                                    Informację nt przetwarzania danych osobowych
                                   </FormLabel>
                                   {documents.rodo_info && (
                                     <a
@@ -3206,7 +3206,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Zapoznałem się z treścią Ogólnych Warunków Ubezpieczenia, jakie obowiązywać będą po zawarciu przez Organizatora Imprezy Turystycznej umowy ubezpieczenia na rzecz uczestnika/uczestników wyjazdu
+                                    Zapoznałem się z treścią Ogólnych Warunków Ubezpieczenia, jakie obowiązywać będą po zawarciu przez Organizatora Imprezy Turystycznej umowy ubezpieczenia na rzecz uczestnika/uczestników wyjazdu
                                   </FormLabel>
                                   {documents.insurance_terms && (
                                     <a
@@ -3237,7 +3237,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § Wyrażam zgodę na przetwarzanie moich danych osobowych oraz danych osób objętych niniejszą umową w zakresie: imię, nazwisko, adres oraz datę urodzenia, przez wskazanego w umowie ubezpieczyciela jako administratora danych osobowych, w celu zawarcia i wykonania umowy ubezpieczenia na mój rachunek i rachunek ww. osób.
+                                    Wyrażam zgodę na przetwarzanie moich danych osobowych oraz danych osób objętych niniejszą umową w zakresie: imię, nazwisko, adres oraz datę urodzenia, przez wskazanego w umowie ubezpieczyciela jako administratora danych osobowych, w celu zawarcia i wykonania umowy ubezpieczenia na mój rachunek i rachunek ww. osób.
                                   </FormLabel>
                                   <FormMessage />
                                 </div>
@@ -3257,7 +3257,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="text-sm font-medium leading-none">
-                                    § W przypadku zawarcia umowy na rzecz innej osoby oświadczam, że doręczyłem tej osobie na piśmie lub za ich zgodą na innym trwałym nośniku Ogólne Warunki Ubezpieczenia
+                                    W przypadku zawarcia umowy na rzecz innej osoby oświadczam, że doręczyłem tej osobie na piśmie lub za ich zgodą na innym trwałym nośniku Ogólne Warunki Ubezpieczenia
                                   </FormLabel>
                                   <FormMessage />
                                 </div>

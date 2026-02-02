@@ -10,9 +10,6 @@ import { Upload, FileText, Trash2, Loader2, ExternalLink } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 
 type DocumentType = 
-  | "rodo" 
-  | "terms" 
-  | "conditions"
   | "agreement"
   | "conditions_de_pl"
   | "standard_form"
@@ -31,21 +28,6 @@ type Document = {
 }
 
 const documentTypes: { type: DocumentType; label: string; description: string }[] = [
-  {
-    type: "rodo",
-    label: "RODO",
-    description: "Zgoda na przetwarzanie danych osobowych",
-  },
-  {
-    type: "terms",
-    label: "Regulamin",
-    description: "Regulamin wycieczek",
-  },
-  {
-    type: "conditions",
-    label: "Warunki udziału",
-    description: "Warunki udziału w wycieczce",
-  },
   {
     type: "agreement",
     label: "Umowa o udział w imprezie turystycznej",
@@ -82,9 +64,6 @@ export default function DokumentyPage() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState<Record<DocumentType, boolean>>({
-    rodo: false,
-    terms: false,
-    conditions: false,
     agreement: false,
     conditions_de_pl: false,
     standard_form: false,

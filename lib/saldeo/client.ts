@@ -285,18 +285,14 @@ export async function getInvoicePdfUrl(
       config.companyProgramId,
       command,
       config.apiToken
-    );
-
-    // Przygotuj body żądania
+    );    // Przygotuj body żądania
     const body = new URLSearchParams({
       username: config.username,
       req_id: reqId,
       req_sig: reqSig,
       company_program_id: config.companyProgramId,
       command,
-    });
-
-    // Wyślij żądanie POST
+    });    // Wyślij żądanie POST
     const response = await fetch(`${config.apiUrl}/api/xml/3.0/invoice/listbyid`, {
       method: "POST",
       headers: {
