@@ -69,6 +69,7 @@ export async function POST(
       start_date: trip.start_date ?? null,
       end_date: trip.end_date ?? null,
       price_cents: trip.price_cents ?? null,
+      location: (trip as any).location ?? null,
     };
 
     // Pobierz reservation_number z wycieczki i policz numer kolejny umowy dla tej wycieczki
@@ -95,12 +96,17 @@ export async function POST(
       }
     }
 
+    // Określ typ rejestracji na podstawie applicant_type lub company_name
+    const applicantType = (booking as any).applicant_type || (booking.company_name ? "company" : "individual");
+
     // Przygotuj dane do generowania PDF
     const pdfPayload = {
       booking_ref: booking.booking_ref,
       reservation_number: reservationNumber,
       agreement_number: agreementNumber,
       trip: tripInfo,
+      trip_id: trip.id,
+      applicant_type: applicantType,
       contact_email: booking.contact_email,
       contact_first_name: booking.contact_first_name || null,
       contact_last_name: booking.contact_last_name || null,

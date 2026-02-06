@@ -41,6 +41,182 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { ExternalLink, X } from "lucide-react";
+import { AgreementPreview } from "@/components/agreement-preview";
+import { parseHtmlToTemplate, type AgreementTemplate } from "@/lib/agreement-template-parser";
+import type { TripFullData, TripContentData } from "@/contexts/trip-context";
+
+const DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">
+<p style="margin: 0;">ORGANIZATOR IMPREZY TURYSTYCZNEJ:</p>
+<p style="margin: 0; font-weight: bold;">"GRUPA DE-PL" Szymon Kurkiewicz</p>
+<p style="margin: 0;">ul. Szczepankowo 37, 61-311 Poznań, tel: 530 76 77 76, NIP: 6981710393, wpis do Rejestru Organizatorów Turystyki i Pośredników Turystyki Marszałka Województwa Wielkopolskiego, numer 605, Numer konta w Santander Bank: 36 1090 1274 0000 0001 3192 8094</p>
+</div>
+
+<h1>UMOWA O UDZIAŁ W IMPREZIE TURYSTYCZNEJ</h1>
+
+<h2>Dane Zgłaszającego</h2>
+<table>
+  <tr>
+    <td>Imię Nazwisko:</td>
+    <td>{{contact_full_name}}</td>
+  </tr>
+  <tr>
+    <td>Adres:</td>
+    <td>{{contact_address}}</td>
+  </tr>
+  <tr>
+    <td>PESEL:</td>
+    <td>{{contact_pesel}}</td>
+  </tr>
+  <tr>
+    <td>Telefon:</td>
+    <td>{{contact_phone}}</td>
+  </tr>
+  <tr>
+    <td>E-mail:</td>
+    <td>{{contact_email}}</td>
+  </tr>
+</table>
+
+<h2>Dane uczestników</h2>
+<table>
+  <tr>
+    <td>Liczba uczestników:</td>
+    <td>{{participants_count}}</td>
+  </tr>
+  <tr>
+    <td>Dane uczestników:</td>
+    <td>{{participants_list}}</td>
+  </tr>
+</table>
+
+<h2>Informacje o imprezie turystycznej</h2>
+<table>
+  <tr>
+    <td>Nazwa imprezy turystycznej:</td>
+    <td>{{trip_title}}</td>
+  </tr>
+  <tr>
+    <td>Numer rezerwacji:</td>
+    <td>{{reservation_number}}</td>
+  </tr>
+  <tr>
+    <td>Trasa/miejsce pobytu:</td>
+    <td>Wg programu stanowiącego załącznik nr 1 do umowy</td>
+  </tr>
+  <tr>
+    <td>Data:</td>
+    <td>{{trip_start_date}}</td>
+  </tr>
+  <tr>
+    <td>Czas trwania imprezy turystycznej:</td>
+    <td>{{trip_duration}}</td>
+  </tr>
+  <tr>
+    <td>Liczba noclegów:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Lokalizacja, rodzaj, kategoria obiektu zakwaterowania:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Rodzaj, typ pokoju:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Ilość, rodzaj posiłków:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Rodzaj kategoria środka transportu:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Przelot liniami na trasie:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Bagaż:</td>
+    <td>Bagaż podręczny (wymiary) oraz bagaż rejestrowany (wymiary) o wadze do kg.</td>
+  </tr>
+  <tr>
+    <td>Transfery:</td>
+    <td></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td>Dodatkowe świadczenia:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Usługi dodatkowe:</td>
+    <td>{{selected_services}}</td>
+  </tr>
+  <tr>
+    <td>Zakres ubezpieczenia:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Cena imprezy turystycznej:</td>
+    <td>{{trip_price_per_person}} zł/os. brutto na podstawie faktury VAT Marża</td>
+  </tr>
+  <tr>
+    <td>Dodatkowe koszty:</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Zwyczajowe napiwki, wydatki własne i inne koszty nieobjęte programem</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Przedpłata:</td>
+    <td>{{trip_deposit_amount}} zł/os. płatne do {{trip_deposit_deadline}}</td>
+  </tr>
+  <tr>
+    <td>Turystyczny Fundusz Gwarancyjny:</td>
+    <td>Wliczony w cenę imprezy turystycznej</td>
+  </tr>
+  <tr>
+    <td>Turystyczny Fundusz Pomocowy:</td>
+    <td>Wliczony w cenę imprezy turystycznej</td>
+  </tr>
+  <tr>
+    <td>Termin zapłaty całości:</td>
+    <td>Płatne do {{trip_final_payment_deadline}}</td>
+  </tr>
+</table>
+
+<p>Zgłaszający oświadcza w imieniu własnym oraz uczestników imprezy turystycznej, na rzecz których podpisuje umowę, iż:</p>
+<ul>
+  <li>Zapoznałem się z Umową o udział w imprezie turystycznej oraz stanowiącymi integralną jej część Warunkami Udziału w Imprezach Turystycznych GRUPY DE-PL oraz zobowiązuję się do ich przestrzegania i przyjmuję je do wiadomości.</li>
+  <li>Zapoznałem się ze Standardowym Formularzem Informacyjnym do umów o udział w imprezie turystycznej</li>
+</ul>
+
+<p>................................<br/>Podpis Klienta</p>
+
+<div style="page-break-before: always; margin-top: 2rem;">
+<div style="text-align: center; font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">
+<p style="margin: 0;">ORGANIZATOR IMPREZY TURYSTYCZNEJ:</p>
+<p style="margin: 0; font-weight: bold;">"GRUPA DE-PL" Szymon Kurkiewicz</p>
+<p style="margin: 0;">ul. Szczepankowo 37, 61-311 Poznań, tel: 530 76 77 76, NIP: 6981710393, wpis do Rejestru Organizatorów Turystyki i Pośredników Turystyki Marszałka Województwa Wielkopolskiego, numer 605, Numer konta w Santander Bank: 36 1090 1274 0000 0001 3192 8094</p>
+</div>
+
+<h2>IMPREZY SAMOLOTOWE</h2>
+<ul>
+<li>W przypadku imprez samolotowych GRUPA DE-PL działa w charakterze pośrednika dokonującego w liniach lotniczych czynności faktycznych, związanych z realizacją i doręczeniem biletu zamówionego w liniach lotniczych ściśle według wskazań klienta na rzecz i w jego imieniu, a przekazywanych drogą e-mailową pod adresem: office@grupa-depl.com. Realizacja usługi, jak i rozpatrzenie procedury reklamacyjnej, podlega ogólnym warunkom linii lotniczych.</li>
+<li>W przypadku imprez samolotowych, realizowanych rejsowymi liniami lotniczymi, tzw. „ Low Cost" tj. Ryanair, Wizz Air, Easy Jet, Sky Express
+<ul>
+<li>wszystkie rezerwacje tworzone są „na zapytanie/ do potwierdzenia", w celu zweryfikowania aktualnego stanu miejsc i ceny. Ważność oferty uzależniona jest od wybranej linii lotniczej. Każdorazowo klient zostanie poinformowany o warunkach wstępnej rezerwacji.</li>
+<li>Brak możliwości zwrotu biletów</li>
+<li>Konieczność podania listy uczestników z następującymi danymi: imiona, nazwiska, daty urodzenia oraz jeśli wymagane przez linię dane dokumentu podróży: dowód osobisty/paszport (seria, numer, data wydania, data ważności) każdego uczestnika przesłanej na adres mailowy: office@grupa-depl.com lub za pośrednictwem dedykowanej platformy online w terminie wskazanym w umowie</li>
+<li>Koszt zmiany na liście uczestników podlega opłacenia wycenianej zgodnie z cennikiem danej linii</li>
+<li>Ogólne warunki przewozu dostępne na stronie linii lotniczych - Ogólne Warunki Przewozu Pasażerów i Bagażu</li>
+</ul>
+</li>
+</ul>
+</div>`;
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -116,6 +292,11 @@ const companySchema = z
 const participantSchema = z.object({
   first_name: z.string().min(2, "Podaj imię"),
   last_name: z.string().min(2, "Podaj nazwisko"),
+  birth_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Podaj datę urodzenia w formacie RRRR-MM-DD")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   pesel: z
     .string()
     .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
@@ -209,7 +390,7 @@ const participantServiceSchema = z.object({
   service_id: z.string(),
   variant_id: z.string().optional(),
   price_cents: z.number().nullable().optional(),
-  currency: z.enum(["PLN", "EUR"]).optional(),
+  currency: z.enum(["PLN", "EUR", "CZK", "USD", "HUF", "GBP", "DKK"]).optional(),
   include_in_contract: z.boolean().optional(),
   // Dla osoby fizycznej: indeks uczestnika z listy
   participant_index: z.number().optional(),
@@ -223,7 +404,7 @@ const createBookingFormSchema = (requiredFields?: {
   document?: boolean;
   gender?: boolean;
   phone?: boolean;
-} | null) => z
+} | null, requirePesel?: boolean | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
     contact: z.object({
@@ -239,8 +420,9 @@ const createBookingFormSchema = (requiredFields?: {
         .or(z.literal("").transform(() => undefined)),
       pesel: z
         .string()
-        .regex(/^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
-        .min(11, "PESEL jest wymagany"),
+        .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
       email: z.string().email("Podaj poprawny e-mail"),
       phone: z.string().min(7, "Podaj telefon"),
       address: optionalAddressSchema,
@@ -284,6 +466,22 @@ const createBookingFormSchema = (requiredFields?: {
           message: "Podaj nazwisko",
           path: ["contact", "last_name"],
         });
+      }
+      // Walidacja PESEL w kontakcie dla osoby fizycznej, jeśli jest wymagany
+      if (requirePesel) {
+        if (!value.contact.pesel || value.contact.pesel.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL jest wymagany",
+            path: ["contact", "pesel"],
+          });
+        } else if (!/^\d{11}$/.test(value.contact.pesel)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL musi mieć dokładnie 11 cyfr",
+            path: ["contact", "pesel"],
+          });
+        }
       }
       // Dla osoby fizycznej nie waliduj company - zakończ tutaj
       return;
@@ -330,6 +528,20 @@ const createBookingFormSchema = (requiredFields?: {
     // Walidacja pól uczestników na podstawie konfiguracji
     if (requiredFields && value.applicant_type !== "company") {
       value.participants.forEach((participant, index) => {
+        // Data urodzenia zawsze wymagana dla osoby fizycznej
+        if (!participant.birth_date || participant.birth_date.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Data urodzenia jest wymagana",
+            path: ["participants", index, "birth_date"],
+          });
+        } else if (!/^\d{4}-\d{2}-\d{2}$/.test(participant.birth_date)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Data urodzenia musi być w formacie RRRR-MM-DD",
+            path: ["participants", index, "birth_date"],
+          });
+        }
         if (requiredFields.pesel) {
           if (!participant.pesel || participant.pesel.trim() === "") {
             ctx.addIssue({
@@ -407,7 +619,7 @@ type TripConfig = {
     description: string; 
     price_cents: number | null;
     include_in_contract?: boolean;
-    currency?: "PLN" | "EUR";
+    currency?: "PLN" | "EUR" | "CZK" | "USD" | "HUF" | "GBP" | "DKK";
   }[];
   diets?: { 
     id: string; 
@@ -485,6 +697,81 @@ interface BookingFormProps {
   slug: string;
 }
 
+// Funkcja pomocnicza do formatowania błędów walidacji
+const formatValidationErrors = (errors: any): string => {
+  const errorMessages: string[] = [];
+  const collectErrors = (obj: any, path: string = "") => {
+    Object.keys(obj).forEach((key) => {
+      const currentPath = path ? `${path}.${key}` : key;
+      if (obj[key]?.message) {
+        const readablePath = currentPath
+          .replace("company.address.street", "Ulica firmy")
+          .replace("company.address.city", "Miasto firmy")
+          .replace("company.address.zip", "Kod pocztowy firmy")
+          .replace("company.name", "Nazwa firmy")
+          .replace("company.nip", "NIP/KRS firmy")
+          .replace("contact.first_name", "Imię")
+          .replace("contact.last_name", "Nazwisko")
+          .replace("contact.email", "E-mail")
+          .replace("contact.phone", "Telefon")
+          .replace("contact.pesel", "PESEL")
+          .replace("contact.address.street", "Ulica")
+          .replace("contact.address.city", "Miasto")
+          .replace("contact.address.zip", "Kod pocztowy")
+          .replace(/^participants\.(\d+)\.(.+)$/, (_, index, field) => {
+            const fieldNames: Record<string, string> = {
+              first_name: "Imię uczestnika",
+              last_name: "Nazwisko uczestnika",
+              birth_date: "Data urodzenia",
+              pesel: "PESEL",
+              document_type: "Typ dokumentu",
+              document_number: "Numer dokumentu",
+              gender_code: "Płeć",
+              phone: "Telefon"
+            };
+            return `Uczestnik ${parseInt(index) + 1} - ${fieldNames[field] || field}`;
+          })
+          .replace(/^consents\.(.+)$/, (_, consent) => {
+            const consentNames: Record<string, string> = {
+              agreement_consent: "Zgoda na umowę",
+              conditions_de_pl_consent: "Zgoda na warunki",
+              standard_form_consent: "Zgoda na formularz standardowy",
+              electronic_services_consent: "Zgoda na usługi elektroniczne",
+              rodo_info_consent: "Zgoda RODO",
+              insurance_terms_consent: "Zgoda na warunki ubezpieczenia",
+              insurance_data_consent: "Zgoda na przetwarzanie danych ubezpieczenia",
+              insurance_other_person_consent: "Zgoda na ubezpieczenie innych osób"
+            };
+            return consentNames[consent] || consent;
+          })
+          .replace(/^invoice\.(.+)$/, (_, field) => {
+            const invoiceFields: Record<string, string> = {
+              type: "Typ faktury",
+              "person.first_name": "Imię na fakturze",
+              "person.last_name": "Nazwisko na fakturze",
+              "company.name": "Nazwa firmy na fakturze",
+              "company.nip": "NIP/KRS na fakturze"
+            };
+            return invoiceFields[field] || `Faktura - ${field}`;
+          });
+        errorMessages.push(`${readablePath}: ${obj[key].message}`);
+      } else if (typeof obj[key] === "object" && obj[key] !== null && !Array.isArray(obj[key])) {
+        collectErrors(obj[key], currentPath);
+      } else if (Array.isArray(obj[key])) {
+        obj[key].forEach((item: any, index: number) => {
+          if (item && typeof item === "object") {
+            collectErrors(item, `${currentPath}.${index}`);
+          }
+        });
+      }
+    });
+  };
+  collectErrors(errors);
+  return errorMessages.length > 0 
+    ? errorMessages.slice(0, 5).join("\n") + (errorMessages.length > 5 ? `\n... i ${errorMessages.length - 5} więcej` : "")
+    : "Sprawdź formularz i popraw błędy przed wysłaniem rezerwacji.";
+};
+
 export function BookingForm({ slug }: BookingFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -492,6 +779,7 @@ export function BookingForm({ slug }: BookingFormProps) {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
+  const [reservationInfoText, setReservationInfoText] = useState<string | null>(null);
   const [applicantType, setApplicantType] = useState<"individual" | "company">("individual");
   const [tripPrice, setTripPrice] = useState<number | null>(null);
   const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState<number>(30);
@@ -507,6 +795,15 @@ export function BookingForm({ slug }: BookingFormProps) {
     rodo_info?: { file_name: string; url?: string };
     insurance_terms?: { file_name: string; url?: string };
   }>({});
+  const [agreementTemplateIndividual, setAgreementTemplateIndividual] = useState<AgreementTemplate | null>(null);
+  const [agreementTemplateCompany, setAgreementTemplateCompany] = useState<AgreementTemplate | null>(null);
+  const [tripFullData, setTripFullData] = useState<TripFullData | null>(null);
+  const [tripContentData, setTripContentData] = useState<TripContentData | null>(null);
+  
+  // Wybierz odpowiedni szablon w zależności od typu zgłaszającego
+  const agreementTemplate = applicantType === "company" && agreementTemplateCompany 
+    ? agreementTemplateCompany 
+    : agreementTemplateIndividual;
 
   useEffect(() => {
     const loadTripConfig = async () => {
@@ -514,9 +811,9 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,seats_total")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,seats_total,reservation_info_text")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
-          .maybeSingle<TripConfig & { slug: string; public_slug: string | null; price_cents: number | null; payment_split_enabled: boolean | null; payment_split_first_percent: number | null; id: string; seats_total: number | null; form_additional_attractions?: unknown; form_diets?: unknown; form_extra_insurances?: unknown; form_required_participant_fields?: unknown }>();
+          .maybeSingle<any>();
 
         if (tripError) {
           console.error("Error loading trip config:", tripError);
@@ -546,6 +843,8 @@ export function BookingForm({ slug }: BookingFormProps) {
               ? trip.form_required_participant_fields as TripConfig["form_required_participant_fields"]
               : null,
           });
+
+          setReservationInfoText(trip.reservation_info_text ?? null);
 
           if (trip.registration_mode === "company") {
             setApplicantType("company");
@@ -585,6 +884,107 @@ export function BookingForm({ slug }: BookingFormProps) {
             console.error("Error loading documents:", docsErr);
             // Nie przerywamy - dokumenty są opcjonalne
           }
+
+          // Pobierz pełne dane wycieczki dla umowy
+          try {
+            const { data: fullTripData } = await supabase
+              .from("trips")
+              .select("id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,location,is_public,public_slug,registration_mode")
+              .eq("id", trip.id)
+              .maybeSingle();
+
+            if (fullTripData) {
+              const fullData: TripFullData = {
+                id: fullTripData.id,
+                title: fullTripData.title,
+                slug: fullTripData.slug,
+                description: fullTripData.description,
+                start_date: fullTripData.start_date,
+                end_date: fullTripData.end_date,
+                price_cents: fullTripData.price_cents,
+                seats_total: fullTripData.seats_total,
+                seats_reserved: fullTripData.seats_reserved,
+                is_active: fullTripData.is_active,
+                category: null,
+                location: fullTripData.location,
+                is_public: fullTripData.is_public,
+                public_slug: fullTripData.public_slug,
+                registration_mode: fullTripData.registration_mode,
+                require_pesel: null,
+                form_show_additional_services: null,
+                company_participants_info: null,
+                form_additional_attractions: null,
+                form_diets: null,
+                form_extra_insurances: null,
+                form_required_participant_fields: null,
+                payment_split_enabled: null,
+                payment_split_first_percent: null,
+                payment_split_second_percent: null,
+                payment_reminder_enabled: null,
+                payment_reminder_days_before: null,
+              };
+              setTripFullData(fullData);
+
+              // Pobierz dane content wycieczki
+              const { data: contentData } = await supabase
+                .from("trips")
+                .select("program_atrakcje,dodatkowe_swiadczenia,reservation_number,duration_text,additional_costs_text")
+                .eq("id", trip.id)
+                .maybeSingle();
+
+              if (contentData) {
+                const content: TripContentData = {
+                  program_atrakcje: contentData.program_atrakcje || "",
+                  dodatkowe_swiadczenia: contentData.dodatkowe_swiadczenia || "",
+                  gallery_urls: [],
+                  intro_text: "",
+                  section_poznaj_title: "",
+                  section_poznaj_description: "",
+                  reservation_info_text: "",
+                  trip_info_text: "",
+                  baggage_text: "",
+                  weather_text: "",
+                  show_weather_card: false,
+                  show_seats_left: false,
+                  included_in_price_text: "",
+                  additional_costs_text: contentData.additional_costs_text || "",
+                  additional_service_text: "",
+                  reservation_number: contentData.reservation_number || "",
+                  duration_text: contentData.duration_text || "",
+                  additional_fields: [],
+                  public_middle_sections: null,
+                  public_right_sections: null,
+                  public_hidden_middle_sections: null,
+                  public_hidden_right_sections: null,
+                  public_hidden_additional_sections: null,
+                };
+                setTripContentData(content);
+              }
+            }
+          } catch (err) {
+            console.error("Error loading trip full data:", err);
+          }
+
+          // Pobierz szablony umów
+          try {
+            const templatesRes = await fetch(`/api/trips/by-slug/${slug}/agreement-templates`);
+            if (templatesRes.ok) {
+              const templates = await templatesRes.json();
+              const htmlIndividual = templates.individual || DEFAULT_TEMPLATE;
+              const htmlCompany = templates.company || DEFAULT_TEMPLATE;
+              setAgreementTemplateIndividual(parseHtmlToTemplate(htmlIndividual));
+              setAgreementTemplateCompany(parseHtmlToTemplate(htmlCompany));
+            } else {
+              // Użyj domyślnego szablonu jeśli nie ma zapisanego
+              setAgreementTemplateIndividual(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+              setAgreementTemplateCompany(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+            }
+          } catch (err) {
+            console.error("Error loading agreement template:", err);
+            // Użyj domyślnego szablonu w przypadku błędu
+            setAgreementTemplateIndividual(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+            setAgreementTemplateCompany(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+          }
         }
       } catch (e) {
         console.error("Failed to load trip config", e);
@@ -595,8 +995,11 @@ export function BookingForm({ slug }: BookingFormProps) {
   }, [slug]);
 
   const bookingFormSchemaWithConfig = useMemo(() => {
-    return createBookingFormSchema(tripConfig?.form_required_participant_fields ?? null);
-  }, [tripConfig?.form_required_participant_fields]);
+    return createBookingFormSchema(
+      tripConfig?.form_required_participant_fields ?? null,
+      tripConfig?.require_pesel ?? null
+    );
+  }, [tripConfig?.form_required_participant_fields, tripConfig?.require_pesel]);
 
   const form = useForm({
     resolver: zodResolver(bookingFormSchemaWithConfig),
@@ -655,12 +1058,16 @@ export function BookingForm({ slug }: BookingFormProps) {
     setValue("applicant_type", applicantType);
   }, [applicantType, setValue]);
 
-  // Dla firmy: zawsze wymuś participants_count = seats_total (klient nie może tego zmienić)
+  // Dla firmy: ustaw domyślną wartość participants_count na seats_total tylko jeśli nie jest jeszcze ustawione
   useEffect(() => {
     if (applicantType !== "company") return;
     if (!tripConfig?.seats_total) return;
-    setValue("participants_count", tripConfig.seats_total, { shouldValidate: false, shouldDirty: false });
-  }, [applicantType, tripConfig?.seats_total, setValue]);
+    // Ustaw tylko jeśli participants_count nie jest jeszcze ustawione
+    const currentValue = form.getValues("participants_count");
+    if (currentValue === undefined || currentValue === null) {
+      setValue("participants_count", tripConfig.seats_total, { shouldValidate: false, shouldDirty: false });
+    }
+  }, [applicantType, tripConfig?.seats_total, setValue, form]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -852,7 +1259,9 @@ export function BookingForm({ slug }: BookingFormProps) {
           if (applicantType === "company") {
             // Dla firmy: utwórz uczestników na podstawie usług lub participants_count
             const services = values.participant_services || [];
-            const participantsCount = (tripConfig?.seats_total ?? values.participants_count ?? 0) as number;
+            // Użyj participants_count z formularza (który jest ustawiony na seats_total dla firmy)
+            // Ale jeśli użytkownik podał mniejszą liczbę w usługach, użyj tej liczby
+            const participantsCount = values.participants_count ?? 0;
             const uniqueParticipants = new Map<string, { first_name: string; last_name: string; services: any[] }>();
             
             // Najpierw zbierz uczestników z usług
@@ -870,12 +1279,11 @@ export function BookingForm({ slug }: BookingFormProps) {
               }
             });
             
-            // Jeśli nie ma uczestników z usług ani z participants_count,
-            // zwróć przynajmniej jednego domyślnego uczestnika aby spełnić walidację
-            // (użytkownik będzie musiał uzupełnić dane po stronie backoffice)
+            // Jeśli nie ma uczestników z usług, użyj participants_count
+            // (dla firmy participants_count jest ustawiony na seats_total)
             if (uniqueParticipants.size === 0) {
               if (participantsCount > 0) {
-                // Jeśli podano liczbę uczestników, utwórz odpowiednią ilość z domyślnymi danymi
+                // Utwórz odpowiednią ilość uczestników z domyślnymi danymi
                 for (let i = 0; i < participantsCount; i++) {
                   const key = `participant_${i}`;
                   uniqueParticipants.set(key, {
@@ -930,6 +1338,7 @@ export function BookingForm({ slug }: BookingFormProps) {
               return {
                 first_name: participantData.first_name,
                 last_name: participantData.last_name,
+                birth_date: "1900-01-01", // Dla firmy birth_date - domyślna data, dane będą uzupełnione później w backoffice
                 pesel: undefined,
                 email: undefined,
                 phone: undefined,
@@ -980,9 +1389,25 @@ export function BookingForm({ slug }: BookingFormProps) {
                 }
               });
               
+              // Upewnij się, że birth_date jest w formacie YYYY-MM-DD
+              let birthDate = p.birth_date || "";
+              if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+                // Jeśli data jest w innym formacie, spróbuj przekonwertować
+                try {
+                  const date = new Date(birthDate);
+                  if (!isNaN(date.getTime())) {
+                    birthDate = date.toISOString().split('T')[0];
+                  }
+                } catch (e) {
+                  // Jeśli konwersja się nie powiodła, użyj pustego stringa
+                  birthDate = "";
+                }
+              }
+              
               return {
                 first_name: p.first_name,
                 last_name: p.last_name,
+                birth_date: birthDate,
                 pesel: p.pesel && p.pesel.toString().trim() !== "" ? p.pesel : undefined,
                 email: p.email && p.email.trim() !== "" ? p.email : undefined,
                 phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
@@ -992,6 +1417,8 @@ export function BookingForm({ slug }: BookingFormProps) {
                   p.document_number && p.document_number.trim() !== ""
                     ? p.document_number
                     : undefined,
+                document_issue_date: p.document_issue_date && p.document_issue_date.trim() !== "" ? p.document_issue_date : undefined,
+                document_expiry_date: p.document_expiry_date && p.document_expiry_date.trim() !== "" ? p.document_expiry_date : undefined,
                 selected_services: Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
               };
             });
@@ -1412,22 +1839,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                     />
                   </div>
 
-                  <FormField
-                    control={control}
-                    name={"contact.comment" as any}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Komentarz</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Komentarz" {...field} value={(field.value as string) || ""} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Separator />
-
                   {applicantType === "company" && (
                     <div className="space-y-4">
                       <FormField
@@ -1775,6 +2186,13 @@ export function BookingForm({ slug }: BookingFormProps) {
             </TabsContent>
 
             <TabsContent value="participants" className="mt-6 space-y-6">
+              {applicantType === "company" && reservationInfoText && (
+                <Alert>
+                  <AlertTitle>Ważna informacja dotycząca rezerwacji</AlertTitle>
+                  <AlertDescription>{reservationInfoText}</AlertDescription>
+                </Alert>
+              )}
+
               <Card>
                 <CardHeader>
                   <CardTitle>{applicantType === "company" ? "Liczba uczestników" : "Uczestnicy"}</CardTitle>
@@ -2497,7 +2915,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                             {(attraction.price_cents / 100).toFixed(2)} {attraction.currency || "PLN"}
                                           </span>
                                         )}
-                                        {attraction.currency === "EUR" && (
+                                        {attraction.currency && attraction.currency !== "PLN" && (
                                           <span className="text-xs text-muted-foreground">
                                             (nie wlicza się do umowy)
                                           </span>
@@ -2851,7 +3269,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                               (+{((service.price_cents || 0) / 100).toFixed(2)} {service.currency || "PLN"})
                                             </span>
                                           )}
-                                          {service.currency === "EUR" && (
+                                          {service.currency && service.currency !== "PLN" && (
                                             <span className="ml-2 text-xs">(nie wlicza się do umowy)</span>
                                           )}
                                         </div>
@@ -2881,9 +3299,9 @@ export function BookingForm({ slug }: BookingFormProps) {
                               {(() => {
                                 const participantsCount = form.watch("participants_count") || tripConfig?.seats_total || 0;
                                 const allServices = form.watch("participant_services") || [];
-                                // Oblicz sumę usług dodatkowych (tylko PLN, bez EUR)
+                                // Oblicz sumę usług dodatkowych (tylko PLN, inne waluty nie wliczają się do umowy)
                                 const additionalServicesTotal = allServices.reduce((sum: number, service: any) => {
-                                  if (service.currency === "EUR") return sum; // EUR nie wlicza się do umowy
+                                  if (service.currency && service.currency !== "PLN") return sum; // Waluty inne niż PLN nie wliczają się do umowy
                                   if (service.price_cents !== null && service.price_cents > 0) {
                                     return sum + (service.price_cents || 0);
                                   }
@@ -3004,21 +3422,57 @@ export function BookingForm({ slug }: BookingFormProps) {
                   )}
 
                   <section className="space-y-4">
-                    <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
-                    </p>
-                    <Card>
-                      <CardContent className="p-0">
-                        <div className="w-full overflow-hidden rounded-lg border">
-                          <iframe
-                            src="/api/pdf/preview"
-                            className="h-[400px] w-full border-0 md:h-[600px]"
-                            title="Podgląd umowy"
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <div>
+                      <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
+                      </p>
+                    </div>
+                    {agreementTemplate && (() => {
+                      // Mapuj participant_services do odpowiedniego formatu
+                      const participantServices = form.watch("participant_services") || [];
+                      const mappedServices = participantServices.map((service: any) => {
+                        // Znajdź tytuł usługi z konfiguracji wycieczki
+                        let serviceTitle = service.service_id;
+                        
+                        if (service.type === "attraction" && tripConfig?.additional_attractions) {
+                          const attraction = tripConfig.additional_attractions.find((a: any) => a.id === service.service_id);
+                          if (attraction) serviceTitle = attraction.title;
+                        } else if (service.type === "diet" && tripConfig?.diets) {
+                          const diet = tripConfig.diets.find((d: any) => d.id === service.service_id);
+                          if (diet) serviceTitle = diet.title;
+                        } else if (service.type === "insurance" && tripConfig?.extra_insurances) {
+                          const insurance = tripConfig.extra_insurances.find((i: any) => i.id === service.service_id);
+                          if (insurance) serviceTitle = insurance.title;
+                        }
+
+                        return {
+                          service_type: service.type,
+                          service_title: serviceTitle,
+                        };
+                      });
+
+                      return (
+                        <AgreementPreview 
+                          template={agreementTemplate} 
+                          tripFullData={tripFullData}
+                          tripContentData={tripContentData}
+                          formData={{
+                            contact: {
+                              first_name: form.watch("contact.first_name"),
+                              last_name: form.watch("contact.last_name"),
+                              email: form.watch("contact.email"),
+                              phone: form.watch("contact.phone"),
+                              pesel: form.watch("contact.pesel"),
+                              address: form.watch("contact.address"),
+                            },
+                            company: applicantType === "company" ? form.watch("company") : undefined,
+                            participants: form.watch("participants"),
+                            participant_services: mappedServices as Array<{ service_type?: string; service_title?: string }>,
+                          }}
+                        />
+                      );
+                    })()}
                   </section>
 
                   <Separator />
@@ -3279,9 +3733,35 @@ export function BookingForm({ slug }: BookingFormProps) {
                       <Button 
                         type="button"
                         disabled={isSubmitting}
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.preventDefault();
-                          form.handleSubmit((values) => onSubmit(values, false))();
+                          console.log("ZAREZERWUJ button clicked");
+                          const result = await form.trigger();
+                          console.log("Form validation result:", result);
+                          if (!result) {
+                            const errors = form.formState.errors;
+                            console.log("Form validation errors:", errors);
+                            const errorDescription = formatValidationErrors(errors);
+                            toast.error("Proszę wypełnić wszystkie wymagane pola", {
+                              description: errorDescription,
+                              duration: 5000,
+                            });
+                            return;
+                          }
+                          form.handleSubmit(
+                            (values) => {
+                              console.log("Form validation passed, calling onSubmit");
+                              onSubmit(values, false);
+                            },
+                            (errors) => {
+                              console.log("Form validation failed in handleSubmit:", errors);
+                              const errorDescription = formatValidationErrors(errors);
+                              toast.error("Proszę wypełnić wszystkie wymagane pola", {
+                                description: errorDescription,
+                                duration: 5000,
+                              });
+                            }
+                          )();
                         }}
                       >
                         {isSubmitting ? "Wysyłanie..." : "ZAREZERWUJ"}
@@ -3293,9 +3773,33 @@ export function BookingForm({ slug }: BookingFormProps) {
                           type="button" 
                           variant="outline"
                           disabled={isSubmitting}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.preventDefault();
-                            form.handleSubmit((values) => onSubmit(values, false))();
+                            console.log("Rezerwuj button clicked");
+                            const result = await form.trigger();
+                            console.log("Form validation result:", result);
+                            if (!result) {
+                              const errors = form.formState.errors;
+                              console.log("Form validation errors:", errors);
+                              const errorDescription = formatValidationErrors(errors);
+                              toast.error("Proszę wypełnić wszystkie wymagane pola", {
+                                description: errorDescription,
+                                duration: 5000,
+                              });
+                              return;
+                            }
+                            form.handleSubmit(
+                              (values) => {
+                                console.log("Form validation passed, calling onSubmit");
+                                onSubmit(values, false);
+                              },
+                              (errors) => {
+                                console.log("Form validation failed in handleSubmit:", errors);
+                                toast.error("Proszę wypełnić wszystkie wymagane pola", {
+                                  description: "Sprawdź formularz i popraw błędy przed wysłaniem rezerwacji.",
+                                });
+                              }
+                            )();
                           }}
                         >
                           {isSubmitting ? "Wysyłanie..." : "Rezerwuj"}
@@ -3303,9 +3807,33 @@ export function BookingForm({ slug }: BookingFormProps) {
                         <Button 
                           type="button"
                           disabled={isSubmitting}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.preventDefault();
-                            form.handleSubmit((values) => onSubmit(values, true))();
+                            console.log("Rezerwuj i Zapłać button clicked");
+                            const result = await form.trigger();
+                            console.log("Form validation result:", result);
+                            if (!result) {
+                              const errors = form.formState.errors;
+                              console.log("Form validation errors:", errors);
+                              const errorDescription = formatValidationErrors(errors);
+                              toast.error("Proszę wypełnić wszystkie wymagane pola", {
+                                description: errorDescription,
+                                duration: 5000,
+                              });
+                              return;
+                            }
+                            form.handleSubmit(
+                              (values) => {
+                                console.log("Form validation passed, calling onSubmit");
+                                onSubmit(values, true);
+                              },
+                              (errors) => {
+                                console.log("Form validation failed in handleSubmit:", errors);
+                                toast.error("Proszę wypełnić wszystkie wymagane pola", {
+                                  description: "Sprawdź formularz i popraw błędy przed wysłaniem rezerwacji.",
+                                });
+                              }
+                            )();
                           }}
                         >
                           {isSubmitting ? "Wysyłanie..." : "Rezerwuj i Zapłać"}

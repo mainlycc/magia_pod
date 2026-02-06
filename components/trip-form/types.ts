@@ -13,7 +13,7 @@ export interface AdditionalAttraction {
   description: string
   price_cents: number | null
   include_in_contract?: boolean
-  currency?: "PLN" | "EUR"
+  currency?: "PLN" | "EUR" | "CZK" | "USD" | "HUF" | "GBP" | "DKK"
   enabled?: boolean
 }
 

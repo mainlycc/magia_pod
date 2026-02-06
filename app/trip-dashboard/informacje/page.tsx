@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
@@ -40,15 +39,12 @@ export default function TripGeneralInfoPage() {
   const [endDate, setEndDate] = useState("")
   const [price, setPrice] = useState("")
   const [seatsTotal, setSeatsTotal] = useState("")
-  const [category, setCategory] = useState("")
   const [location, setLocation] = useState("")
   const [paymentSplitEnabled, setPaymentSplitEnabled] = useState(true)
   const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState("30")
   const [paymentSplitSecondPercent, setPaymentSplitSecondPercent] = useState("70")
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
-  const [isPublic, setIsPublic] = useState(false)
-  const [publicSlug, setPublicSlug] = useState("")
 
   const [coordinators, setCoordinators] = useState<Coordinator[]>([])
   const [availableCoordinators, setAvailableCoordinators] = useState<
@@ -93,10 +89,7 @@ export default function TripGeneralInfoPage() {
       setSeatsTotal(
         typeof trip.seats_total === "number" ? String(trip.seats_total) : ""
       )
-      setCategory(trip.category || "")
       setLocation(trip.location || "")
-      setIsPublic(Boolean(trip.is_public))
-      setPublicSlug(trip.public_slug || "")
       setPaymentSplitEnabled(
         typeof trip.payment_split_enabled === "boolean"
           ? trip.payment_split_enabled
@@ -187,10 +180,7 @@ export default function TripGeneralInfoPage() {
           end_date: endDate || null,
           price_cents: priceNumber,
           seats_total: seatsNumber,
-          category: category || null,
           location: location || null,
-          is_public: isPublic,
-          public_slug: publicSlug || null,
           payment_split_enabled: paymentSplitEnabled,
           payment_split_first_percent: paymentSplitEnabled
             ? parseInt(paymentSplitFirstPercent, 10)
@@ -241,8 +231,6 @@ export default function TripGeneralInfoPage() {
       </div>
     )
   }
-
-  const effectivePublicSlug = publicSlug || selectedTrip.slug
 
   const unassignedCoordinators = availableCoordinators.filter(
     (c) => !coordinators.some((assigned) => assigned.id === c.id)
@@ -488,39 +476,6 @@ export default function TripGeneralInfoPage() {
                     </div>
                   )}
                 </div>
-
-                <div className="grid gap-1">
-                  <div className="flex items-center gap-2 pt-1">
-                    <Checkbox
-                      id="is-public"
-                      checked={isPublic}
-                      onCheckedChange={(checked) => setIsPublic(Boolean(checked))}
-                      className="h-4 w-4"
-                    />
-                    <Label
-                      htmlFor="is-public"
-                      className="text-xs cursor-pointer"
-                    >
-                      Publiczna strona wycieczki
-                    </Label>
-                  </div>
-                  {isPublic && (
-                    <div className="grid gap-1 pl-6">
-                      <Input
-                        placeholder="np. magicka-wycieczka-wlochy"
-                        value={publicSlug}
-                        onChange={(e) => setPublicSlug(e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                      <p className="text-[10px] text-muted-foreground">
-                        URL:{" "}
-                        <span className="font-mono">
-                          /trip/{effectivePublicSlug || "twoj-slug"}
-                        </span>
-                      </p>
-                    </div>
-                  )}
-                </div>
               </div>
 
               <Separator className="my-2" />
@@ -561,7 +516,7 @@ export default function TripGeneralInfoPage() {
                     )}
 
                     {unassignedCoordinators.length > 0 && (
-                      <div className="flex gap-1.5 items-end">
+                      <div className="flex gap-1.5 items-end w-1/2">
                         <div className="flex-1 grid gap-1">
                           <Label className="text-xs">Przypisz koordynatora</Label>
                           <Select

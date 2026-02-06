@@ -8,6 +8,9 @@
 - **`navigation.spec.ts`** - Testy nawigacji i responsywności
 - **`auth.spec.ts`** - Testy autentykacji (logowanie, rejestracja, resetowanie hasła)
 - **`trips-public.spec.ts`** - Testy publicznych stron wycieczek
+- **`trip-dashboard.spec.ts`** - Testy trip-dashboard - tworzenie i edycja wycieczek
+- **`admin-trips.spec.ts`** - Testy panelu admina - tworzenie i edycja wycieczek (stary dashboard)
+- **`admin-bookings.spec.ts`** - Testy panelu admina - zarządzanie rezerwacjami
 - **`accessibility.spec.ts`** - Testy dostępności (a11y)
 - **`performance.spec.ts`** - Testy wydajności
 - **`helpers/auth.ts`** - Helpery do testów autentykacji
@@ -32,6 +35,30 @@ pnpm exec playwright test --project=firefox
 ### Konkretny plik testowy
 ```bash
 pnpm exec playwright test tests/home.spec.ts
+```
+
+### Testy trip-dashboard
+```bash
+# Wszystkie testy trip-dashboard
+pnpm exec playwright test tests/trip-dashboard.spec.ts
+
+# Tylko test tworzenia wycieczki
+pnpm exec playwright test tests/trip-dashboard.spec.ts -g "powinien utworzyć nową wycieczkę"
+
+# Tylko test edycji
+pnpm exec playwright test tests/trip-dashboard.spec.ts -g "powinien edytować"
+```
+
+### Testy panelu admina
+```bash
+# Wszystkie testy admina
+pnpm exec playwright test tests/admin-trips.spec.ts tests/admin-bookings.spec.ts
+
+# Tylko testy wycieczek
+pnpm exec playwright test tests/admin-trips.spec.ts
+
+# Tylko testy rezerwacji
+pnpm exec playwright test tests/admin-bookings.spec.ts
 ```
 
 ### Z interfejsem UI
@@ -129,6 +156,33 @@ test.describe('Dashboard', () => {
 });
 ```
 
+## Weryfikacja logowania
+
+Testy automatycznie weryfikują czy logowanie się powiodło. W konsoli zobaczysz komunikaty:
+
+```
+[TEST] Próba logowania jako: twoj-email@example.com
+[TEST] Zalogowano pomyślnie, przekierowano do: http://localhost:3000/admin/trips
+[TEST] Dostęp do panelu admina potwierdzony
+```
+
+Jeśli logowanie się nie powiedzie, test zatrzyma się z odpowiednim komunikatem błędu.
+
+### Test logowania
+
+Możesz uruchomić dedykowany test sprawdzający logowanie:
+
+```bash
+pnpm exec playwright test tests/admin-trips.spec.ts -g "powinien się zalogować jako admin"
+```
+
+### Sprawdzanie dostępu admina
+
+Helper `verifyAdminAccess` automatycznie sprawdza:
+- Czy użytkownik nie został przekierowany do logowania
+- Czy strona admina się załadowała
+- Czy widoczne są elementy panelu admina (np. przycisk "Dodaj wycieczkę")
+
 ## Debugowanie
 
 ### 1. Playwright Inspector
@@ -143,6 +197,11 @@ Automatycznie zapisywane przy niepowodzeniu testu w folderze `test-results/`
 ```bash
 pnpm exec playwright show-trace test-results/<ścieżka-do-trace.zip>
 ```
+
+### 4. Logi w konsoli
+Testy wypisują szczegółowe logi w konsoli, które pomagają zrozumieć co się dzieje:
+- `[TEST]` - komunikaty z testów
+- Automatyczne logowanie z Playwright (można włączyć przez `--verbose`)
 
 ## CI/CD
 

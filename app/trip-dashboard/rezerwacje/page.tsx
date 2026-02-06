@@ -183,7 +183,7 @@ export default function RezerwacjePage() {
         header: "Akcje",
         cell: ({ row }) => (
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/admin/bookings/${row.original.id}`}>
+            <Link href={`/trip-dashboard/rezerwacje/${row.original.id}`}>
               Szczegóły
             </Link>
           </Button>

@@ -72,7 +72,6 @@ export default function EditTripPage() {
   }, [startDateOpen, endDateOpen]);
   const [price, setPrice] = useState<string>("");
   const [seats, setSeats] = useState<string>("");
-  const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
@@ -129,7 +128,6 @@ export default function EditTripPage() {
           setEndDate(t.end_date ? new Date(t.end_date) : undefined);
           setPrice(t.price_cents != null ? String(t.price_cents / 100) : "");
           setSeats(t.seats_total != null ? String(t.seats_total) : "");
-          setCategory(t.category || "");
           setLocation(t.location || "");
           setIsPublic(Boolean(t.is_public));
           setPublicSlug(t.public_slug || "");
@@ -170,7 +168,6 @@ export default function EditTripPage() {
           end_date: endDate ? endDate.toISOString().split("T")[0] : null,
           price_cents: price ? Math.round(parseFloat(price) * 100) : null,
           seats_total: seats ? parseInt(seats) : null,
-          category: category || null,
           location: location || null,
           is_public: isPublic,
           public_slug: isPublic ? (publicSlug || null) : null,
@@ -350,14 +347,6 @@ export default function EditTripPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>Kategoria</Label>
-              <Input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="np. Wycieczki górskie"
-              />
-            </div>
             <div className="grid gap-2">
               <Label>Miejsce</Label>
               <Input

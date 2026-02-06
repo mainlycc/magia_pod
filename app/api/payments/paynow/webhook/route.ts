@@ -24,7 +24,7 @@ function getSignatureKey() {
   return signatureKey;
 }
 
-function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
+export function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
   if (!signatureHeader) {
     console.error("[Paynow Webhook] Missing signature header");
     return false;

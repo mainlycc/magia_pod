@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +27,8 @@ export function DietsSection({
   expandedIds,
   setExpandedIds,
 }: DietsSectionProps) {
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
+
   return (
     <Card className="p-3 space-y-2 mt-2">
       <CardHeader className="px-0 pt-0 pb-1">
@@ -55,6 +58,11 @@ export function DietsSection({
             const isExpanded = expandedIds.has(item.id)
             const isEnabled = item.enabled !== false
             const hasVariants = item.variants && item.variants.length > 0
+            const currentPriceInput =
+              priceInputs[item.id] ??
+              (item.price_cents != null
+                ? String(item.price_cents / 100).replace(".", ",")
+                : "")
             const displayPrice = hasVariants
               ? `od ${(Math.min(...item.variants!.map(v => v.price_cents || 0)) / 100).toFixed(2)} PLN`
               : item.price_cents != null && item.price_cents > 0
@@ -157,18 +165,36 @@ export function DietsSection({
                       <div className="grid gap-1">
                         <Label className="text-xs">Cena (PLN)</Label>
                         <Input
-                          type="number"
-                          value={
-                            item.price_cents != null
-                              ? (item.price_cents / 100).toFixed(2)
-                              : ""
-                          }
+                          type="text"
+                          inputMode="decimal"
+                          value={currentPriceInput}
                           onChange={(e) => {
-                            const value = e.target.value
-                            const cents =
-                              value.trim() === ""
-                                ? null
-                                : Math.round(parseFloat(value) * 100)
+                            const raw = e.target.value
+                            setPriceInputs((prev) => ({
+                              ...prev,
+                              [item.id]: raw,
+                            }))
+                          }}
+                          onBlur={() => {
+                            const raw =
+                              priceInputs[item.id] ??
+                              (item.price_cents != null
+                                ? String(item.price_cents / 100).replace(".", ",")
+                                : "")
+                            const normalized = raw.replace(",", ".").replace(/\s/g, "")
+                            if (normalized.trim() === "") {
+                              setDiets((prev) =>
+                                prev.map((diet, i) =>
+                                  i === index
+                                    ? { ...diet, price_cents: null }
+                                    : diet
+                                )
+                              )
+                              return
+                            }
+                            const num = Number(normalized)
+                            if (Number.isNaN(num)) return
+                            const cents = Math.round(num * 100)
                             setDiets((prev) =>
                               prev.map((diet, i) =>
                                 i === index

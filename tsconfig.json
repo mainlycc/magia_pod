@@ -22,6 +22,7 @@
       "./types",
       "./node_modules/@types"
     ],
+    "types": ["jest", "node"],
     "plugins": [
       {
         "name": "next"
@@ -41,6 +42,10 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "tests",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__"
   ]
 }

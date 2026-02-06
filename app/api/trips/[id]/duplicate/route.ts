@@ -11,7 +11,34 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     .single();
   if (!trip) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const newSlug = `${trip.slug}-${Math.random().toString(36).slice(2, 6)}`;
+  // Generuj automatycznie numeryczny slug (tak jak przy tworzeniu nowej wycieczki)
+  const { data: existingTrips, error: fetchError } = await supabase
+    .from("trips")
+    .select("slug");
+
+  if (fetchError) {
+    console.error("Error fetching existing trips:", fetchError);
+    return NextResponse.json({ error: "fetch_failed", details: fetchError.message }, { status: 500 });
+  }
+
+  // Znajdź najwyższy numeryczny slug
+  let maxNumericSlug = 0;
+  if (existingTrips) {
+    for (const existingTrip of existingTrips) {
+      const slug = existingTrip.slug;
+      // Sprawdź czy slug jest czysto numeryczny
+      if (slug && /^\d+$/.test(slug)) {
+        const numericValue = parseInt(slug, 10);
+        if (!isNaN(numericValue) && numericValue > maxNumericSlug) {
+          maxNumericSlug = numericValue;
+        }
+      }
+    }
+  }
+
+  // Wygeneruj nowy numeryczny slug (następny numer)
+  const newSlug = String(maxNumericSlug + 1);
+
   const { error } = await supabase.from("trips").insert({
     title: `${trip.title} (kopiuj)`,
     slug: newSlug,

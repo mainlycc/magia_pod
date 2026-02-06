@@ -19,13 +19,11 @@ export default function NewTripPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
-  const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [price, setPrice] = useState("");
   const [seats, setSeats] = useState("");
-  const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
@@ -34,7 +32,7 @@ export default function NewTripPage() {
   const [selectedCoordinators, setSelectedCoordinators] = useState<Set<string>>(new Set());
   const [loadingCoordinators, setLoadingCoordinators] = useState(true);
 
-  const effectivePublicSlug = isPublic ? (publicSlug || slug) : "";
+  const effectivePublicSlug = isPublic ? publicSlug : "";
 
   useEffect(() => {
     const loadCoordinators = async () => {
@@ -66,8 +64,8 @@ export default function NewTripPage() {
   };
 
   const save = async () => {
-    if (!title || !slug) {
-      setError("Nazwa i slug są wymagane");
+    if (!title) {
+      setError("Nazwa jest wymagana");
       return;
     }
 
@@ -80,7 +78,6 @@ export default function NewTripPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          slug,
           description: description || null,
           start_date: startDate || null,
           end_date: endDate || null,
@@ -89,7 +86,6 @@ export default function NewTripPage() {
           is_active: true,
           is_public: isPublic,
           public_slug: effectivePublicSlug || null,
-          category: category || null,
           location: location || null,
         }),
       });
@@ -146,10 +142,6 @@ export default function NewTripPage() {
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nazwa wycieczki" />
           </div>
           <div className="grid gap-2">
-            <Label>Slug *</Label>
-            <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="slug-wycieczki" />
-          </div>
-          <div className="grid gap-2">
             <Label>Opis</Label>
             <Textarea
               value={description}
@@ -177,14 +169,6 @@ export default function NewTripPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>Kategoria</Label>
-              <Input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="np. Wycieczki górskie"
-              />
-            </div>
             <div className="grid gap-2">
               <Label>Miejsce</Label>
               <Input
@@ -237,7 +221,7 @@ export default function NewTripPage() {
                   onChange={(e) => setPublicSlug(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  URL: <span className="font-mono">/trip/{effectivePublicSlug || slug || "twoj-slug"}</span>
+                  URL: <span className="font-mono">/trip/{effectivePublicSlug || "twoj-slug"}</span>
                 </p>
               </div>
             )}
@@ -278,7 +262,7 @@ export default function NewTripPage() {
         {error && <div className="text-sm text-red-600">{error}</div>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => router.back()}>Anuluj</Button>
-          <Button disabled={saving || !title || !slug} onClick={save}>
+          <Button disabled={saving || !title} onClick={save}>
             {saving ? "Zapisywanie..." : "Zapisz i przejdź do treści"}
           </Button>
         </div>

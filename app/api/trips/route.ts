@@ -16,12 +16,40 @@ async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): P
   return profile?.role === "admin";
 }
 
+export async function GET(req: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: claims } = await supabase.auth.getClaims();
+    const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
+    const isAdmin = userId ? await checkAdmin(supabase) : false;
+
+    let query = supabase.from("trips").select("*");
+
+    // Jeśli użytkownik nie jest adminem, zwróć tylko aktywne wycieczki
+    if (!isAdmin) {
+      query = query.eq("is_active", true);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error fetching trips:", error);
+      return NextResponse.json({ error: "fetch_failed", details: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data || []);
+  } catch (err) {
+    console.error("Error in GET /api/trips:", err);
+    return NextResponse.json({ error: "internal_error", details: String(err) }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
       title,
-      slug,
+      slug: providedSlug, // Ignorujemy podany slug, generujemy automatycznie
       description,
       start_date,
       end_date,
@@ -36,7 +64,7 @@ export async function POST(req: Request) {
       require_pesel,
       company_participants_info,
     } = body ?? {};
-    if (!title || !slug) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+    if (!title) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
     const supabase = await createClient();
     
@@ -46,11 +74,40 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
+    // Generuj automatycznie numeryczny slug
+    // Pobierz wszystkie slugi i znajdź najwyższy numeryczny
+    const { data: existingTrips, error: fetchError } = await supabase
+      .from("trips")
+      .select("slug");
+
+    if (fetchError) {
+      console.error("Error fetching existing trips:", fetchError);
+      return NextResponse.json({ error: "fetch_failed", details: fetchError.message }, { status: 500 });
+    }
+
+    // Znajdź najwyższy numeryczny slug
+    let maxNumericSlug = 0;
+    if (existingTrips) {
+      for (const trip of existingTrips) {
+        const slug = trip.slug;
+        // Sprawdź czy slug jest czysto numeryczny
+        if (slug && /^\d+$/.test(slug)) {
+          const numericValue = parseInt(slug, 10);
+          if (!isNaN(numericValue) && numericValue > maxNumericSlug) {
+            maxNumericSlug = numericValue;
+          }
+        }
+      }
+    }
+
+    // Wygeneruj nowy numeryczny slug (następny numer)
+    const newSlug = String(maxNumericSlug + 1);
+
     const { data, error } = await supabase
       .from("trips")
       .insert({
         title,
-        slug,
+        slug: newSlug,
         description: description ?? null,
         start_date: start_date ?? null,
         end_date: end_date ?? null,
@@ -65,7 +122,7 @@ export async function POST(req: Request) {
         require_pesel: typeof require_pesel === "boolean" ? require_pesel : true,
         company_participants_info: company_participants_info ?? null,
       })
-      .select("id")
+      .select("id, slug")
       .single();
     
     if (error) {
@@ -73,7 +130,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "insert_failed", details: error.message }, { status: 500 });
     }
     
-    return NextResponse.json({ ok: true, id: data?.id });
+    return NextResponse.json({ ok: true, id: data?.id, slug: data?.slug });
   } catch (err) {
     console.error("Error in POST /api/trips:", err);
     return NextResponse.json({ error: "bad_request" }, { status: 400 });

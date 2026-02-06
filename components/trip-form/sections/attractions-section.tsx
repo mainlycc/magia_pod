@@ -34,6 +34,8 @@ export function AttractionsSection({
   expandedIds,
   setExpandedIds,
 }: AttractionsSectionProps) {
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
+
   return (
     <Card className="p-3 space-y-2 mt-2">
       <CardHeader className="px-0 pt-0 pb-1">
@@ -62,6 +64,11 @@ export function AttractionsSection({
           {attractions.map((item, index) => {
             const isExpanded = expandedIds.has(item.id)
             const isEnabled = item.enabled !== false
+            const currentPriceInput =
+              priceInputs[item.id] ??
+              (item.price_cents != null
+                ? String(item.price_cents / 100).replace(".", ",")
+                : "")
             return (
               <div
                 key={item.id || index}
@@ -167,18 +174,36 @@ export function AttractionsSection({
                       <Label className="text-xs">Cena</Label>
                       <div className="flex gap-2">
                         <Input
-                          type="number"
-                          value={
-                            item.price_cents != null
-                              ? (item.price_cents / 100).toFixed(2)
-                              : ""
-                          }
+                          type="text"
+                          inputMode="decimal"
+                          value={currentPriceInput}
                           onChange={(e) => {
-                            const value = e.target.value
-                            const cents =
-                              value.trim() === ""
-                                ? null
-                                : Math.round(parseFloat(value) * 100)
+                            const raw = e.target.value
+                            setPriceInputs((prev) => ({
+                              ...prev,
+                              [item.id]: raw,
+                            }))
+                          }}
+                          onBlur={() => {
+                            const raw =
+                              priceInputs[item.id] ??
+                              (item.price_cents != null
+                                ? String(item.price_cents / 100).replace(".", ",")
+                                : "")
+                            const normalized = raw.replace(",", ".").replace(/\s/g, "")
+                            if (normalized.trim() === "") {
+                              setAttractions((prev) =>
+                                prev.map((attraction, i) =>
+                                  i === index
+                                    ? { ...attraction, price_cents: null }
+                                    : attraction
+                                )
+                              )
+                              return
+                            }
+                            const num = Number(normalized)
+                            if (Number.isNaN(num)) return
+                            const cents = Math.round(num * 100)
                             setAttractions((prev) =>
                               prev.map((attraction, i) =>
                                 i === index
@@ -192,7 +217,7 @@ export function AttractionsSection({
                         />
                         <Select
                           value={item.currency || "PLN"}
-                          onValueChange={(value: "PLN" | "EUR") => {
+                          onValueChange={(value: "PLN" | "EUR" | "CZK" | "USD" | "HUF" | "GBP" | "DKK") => {
                             setAttractions((prev) =>
                               prev.map((attraction, i) =>
                                 i === index
@@ -208,6 +233,11 @@ export function AttractionsSection({
                           <SelectContent>
                             <SelectItem value="PLN">PLN</SelectItem>
                             <SelectItem value="EUR">EUR</SelectItem>
+                            <SelectItem value="CZK">CZK</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                            <SelectItem value="HUF">HUF</SelectItem>
+                            <SelectItem value="GBP">GBP</SelectItem>
+                            <SelectItem value="DKK">DKK</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -234,9 +264,9 @@ export function AttractionsSection({
                         Wliczać do ceny w umowie (tylko dla PLN)
                       </Label>
                     </div>
-                    {item.currency === "EUR" && (
+                    {item.currency && item.currency !== "PLN" && (
                       <p className="text-[10px] text-muted-foreground">
-                        Atrakcje w EUR nie są wliczane do umowy
+                        Atrakcje w {item.currency} nie są wliczane do umowy
                       </p>
                     )}
                   </div>

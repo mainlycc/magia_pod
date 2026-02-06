@@ -12,7 +12,7 @@ type Trip = {
 }
 
 // Pełne dane wycieczki z API
-type TripFullData = {
+export type TripFullData = {
   id: string
   title: string
   slug: string
@@ -43,7 +43,7 @@ type TripFullData = {
 }
 
 // Dane content wycieczki
-type TripContentData = {
+export type TripContentData = {
   program_atrakcje: string
   dodatkowe_swiadczenia: string
   gallery_urls: string[]

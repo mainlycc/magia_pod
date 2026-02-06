@@ -165,22 +165,6 @@ export function ContactStep({
           />
         </div>
 
-        <FormField
-          control={control}
-          name="contact.comment"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Komentarz</FormLabel>
-              <FormControl>
-                <Input placeholder="Komentarz" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <Separator />
-
         {applicantType === "company" && (
           <div className="space-y-4">
             <FormField

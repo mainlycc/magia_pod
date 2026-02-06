@@ -13,7 +13,9 @@ export type PdfPayload = {
   booking_ref: string;
   reservation_number?: string | null; // 6-cyfrowy numer rezerwacji z wycieczki
   agreement_number?: number | null; // Numer kolejny umowy (1, 2, 3...)
-  trip: { title: string; start_date?: string | null; end_date?: string | null; price_cents?: number | null };
+  trip: { title: string; start_date?: string | null; end_date?: string | null; price_cents?: number | null; location?: string | null };
+  trip_id?: string; // ID wycieczki do pobrania szablonu
+  applicant_type?: "individual" | "company"; // Typ rejestracji
   contact_email: string;
   contact_first_name?: string | null;
   contact_last_name?: string | null;
@@ -100,7 +102,89 @@ function generateAgreementFilename(reservationNumber: string | null | undefined,
   return `${bookingRef}.pdf`;
 }
 
-export function generatePdf(data: PdfPayload): Buffer {
+/**
+ * Zamienia placeholdery w szablonie HTML na rzeczywiste dane
+ */
+function replacePlaceholders(template: string, data: PdfPayload): string {
+  const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
+  const totalPrice = data.trip.price_cents
+    ? ((data.trip.price_cents * data.participants.length) / 100).toFixed(2)
+    : "-";
+  const depositAmount = totalPrice !== "-" && data.trip.price_cents
+    ? ((data.trip.price_cents * data.participants.length * 0.3) / 100).toFixed(2)
+    : "-";
+  
+  const contactFullName = [data.contact_first_name, data.contact_last_name]
+    .filter(Boolean)
+    .join(" ") || "-";
+  const contactAddress = data.address
+    ? `${data.address.street}, ${data.address.zip} ${data.address.city}`
+    : "-";
+  const companyAddress = data.company_address
+    ? `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`
+    : "-";
+  
+  const participantsList = data.participants
+    .map((p) => `${p.first_name} ${p.last_name}`)
+    .join(", ");
+  
+  const tripDuration = data.trip.start_date && data.trip.end_date
+    ? (() => {
+        const start = new Date(data.trip.start_date);
+        const end = new Date(data.trip.end_date);
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        return `${diffDays} dni`;
+      })()
+    : "-";
+  
+  const depositDeadline = data.trip.start_date
+    ? formatDate(new Date(new Date(data.trip.start_date).getTime() - 14 * 24 * 60 * 60 * 1000).toISOString())
+    : "-";
+  const finalPaymentDeadline = data.trip.start_date
+    ? formatDate(new Date(new Date(data.trip.start_date).getTime() - 14 * 24 * 60 * 60 * 1000).toISOString())
+    : "-";
+
+  let result = template;
+  
+  // Dane zgłaszającego
+  result = result.replace(/\{\{contact_first_name\}\}/g, data.contact_first_name || "-");
+  result = result.replace(/\{\{contact_last_name\}\}/g, data.contact_last_name || "-");
+  result = result.replace(/\{\{contact_full_name\}\}/g, contactFullName);
+  result = result.replace(/\{\{contact_address\}\}/g, contactAddress);
+  result = result.replace(/\{\{contact_street\}\}/g, data.address?.street || "-");
+  result = result.replace(/\{\{contact_city\}\}/g, data.address?.city || "-");
+  result = result.replace(/\{\{contact_zip\}\}/g, data.address?.zip || "-");
+  result = result.replace(/\{\{contact_pesel\}\}/g, data.participants[0]?.pesel || "-");
+  result = result.replace(/\{\{contact_phone\}\}/g, data.contact_phone || "-");
+  result = result.replace(/\{\{contact_email\}\}/g, data.contact_email || "-");
+  
+  // Dane firmy
+  result = result.replace(/\{\{company_name\}\}/g, data.company_name || "-");
+  result = result.replace(/\{\{company_nip\}\}/g, data.company_nip || "-");
+  result = result.replace(/\{\{company_address\}\}/g, companyAddress);
+  
+  // Dane uczestników
+  result = result.replace(/\{\{participants_count\}\}/g, String(data.participants.length));
+  result = result.replace(/\{\{participants_list\}\}/g, participantsList);
+  
+  // Informacje o wycieczce
+  result = result.replace(/\{\{trip_title\}\}/g, data.trip.title || "-");
+  result = result.replace(/\{\{reservation_number\}\}/g, data.reservation_number || "-");
+  result = result.replace(/\{\{trip_location\}\}/g, data.trip.location || "-");
+  result = result.replace(/\{\{trip_start_date\}\}/g, formatDate(data.trip.start_date || null));
+  result = result.replace(/\{\{trip_end_date\}\}/g, formatDate(data.trip.end_date || null));
+  result = result.replace(/\{\{trip_duration\}\}/g, tripDuration);
+  result = result.replace(/\{\{trip_price_per_person\}\}/g, price);
+  result = result.replace(/\{\{trip_total_price\}\}/g, totalPrice);
+  result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
+  result = result.replace(/\{\{trip_deposit_deadline\}\}/g, depositDeadline);
+  result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, finalPaymentDeadline);
+  
+  return result;
+}
+
+export function generatePdf(data: PdfPayload, customTemplate?: string | null): Buffer {
   // Inicjalizacja jsPDF z domyślnymi ustawieniami
   // jsPDF 2.x automatycznie obsługuje UTF-8, więc polskie znaki powinny działać poprawnie
   const doc = new jsPDF({
@@ -109,8 +193,7 @@ export function generatePdf(data: PdfPayload): Buffer {
     format: "a4",
   });
   
-  doc.setCharSpace(0);
-  doc.setLineHeightFactor(1.0);
+  // setCharSpace i setLineHeightFactor nie istnieją w jsPDF 2.x - usunięte
   
   const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
   const totalPrice = data.trip.price_cents
@@ -510,8 +593,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
-    // Generowanie PDF
-    const buf = generatePdf(body);
+    // Pobierz szablon umowy z bazy jeśli trip_id i applicant_type są dostępne
+    let customTemplate: string | null = null;
+    if (body.trip_id && body.applicant_type) {
+      const supabaseAdmin = createAdminClient();
+      const { data: template, error: templateError } = await supabaseAdmin
+        .from("trip_agreement_templates")
+        .select("template_html")
+        .eq("trip_id", body.trip_id)
+        .eq("registration_type", body.applicant_type)
+        .maybeSingle();
+      
+      if (!templateError && template?.template_html) {
+        customTemplate = template.template_html;
+      }
+    }
+
+    // Generowanie PDF (na razie używamy obecnej implementacji, szablon będzie używany w przyszłości)
+    const buf = generatePdf(body, customTemplate);
 
     // Walidacja, że Buffer został poprawnie utworzony
     if (!Buffer.isBuffer(buf)) {
@@ -533,7 +632,7 @@ export async function POST(req: Request) {
 
     // Jeśli upload się nie powiódł, zwracamy PDF jako base64 (fallback)
     if (upErr) {
-      console.warn("Failed to upload PDF to storage:", upErr.message);
+      console.warn("Failed to upload PDF to storage:", upErr?.message || String(upErr));
       const base64 = buf.toString("base64");
       return NextResponse.json({ 
         base64, 

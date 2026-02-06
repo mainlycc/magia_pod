@@ -19,7 +19,7 @@ export type TripConfig = {
     description: string; 
     price_cents: number | null;
     include_in_contract?: boolean;
-    currency?: "PLN" | "EUR";
+    currency?: "PLN" | "EUR" | "CZK" | "USD" | "HUF" | "GBP" | "DKK";
   }[];
   diets?: { 
     id: string; 

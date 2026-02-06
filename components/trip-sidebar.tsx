@@ -103,6 +103,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconFileDescription,
     },
     {
+      title: "Umowa",
+      url: "/trip-dashboard/umowa",
+      icon: IconFileText,
+    },
+    {
       title: "Płatności",
       url: "/trip-dashboard/platnosci",
       icon: IconWallet,

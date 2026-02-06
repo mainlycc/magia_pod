@@ -273,9 +273,7 @@ export async function getInvoicePdfUrl(
   <INVOICES>
     <INVOICE_ID>${escapeXML(saldeoInvoiceId)}</INVOICE_ID>
   </INVOICES>
-</REQUEST>`;
-
-    const command = await compressAndEncodeXML(xml);    // Generuj unikalny req_id (timestamp + random)
+</REQUEST>`;    const command = await compressAndEncodeXML(xml);    // Generuj unikalny req_id (timestamp + random)
     const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
     // Generuj sygnaturę

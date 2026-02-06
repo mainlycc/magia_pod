@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { TripCreationProgress } from "@/components/trip-creation-progress"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
@@ -25,7 +27,7 @@ function TripFormContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isCreateMode = searchParams.get("mode") === "create"
-  const { selectedTrip, tripFullData, isLoadingTripData, invalidateTripCache, setSelectedTrip, setTrips } = useTrip()
+  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData, invalidateTripCache, setSelectedTrip, setTrips } = useTrip()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -45,6 +47,7 @@ function TripFormContent() {
   const [expandedDiets, setExpandedDiets] = useState<Set<string>>(new Set())
   const [extraInsurances, setExtraInsurances] = useState<ExtraInsurance[]>([])
   const [expandedInsurances, setExpandedInsurances] = useState<Set<string>>(new Set())
+  const [reservationInfoText, setReservationInfoText] = useState<string>("")
 
   // W trybie tworzenia sprawdź czy są dane z kroku 1 i 2
   useEffect(() => {
@@ -156,13 +159,21 @@ function TripFormContent() {
               phone: false,
             }
       )
+
+      // Wczytaj tekst informacyjny o rezerwacji z treści wycieczki (content)
+      if (tripContentData) {
+        setReservationInfoText(tripContentData.reservation_info_text || "")
+      } else {
+        setReservationInfoText("")
+      }
+
       setLoading(false)
     } else if (isLoadingTripData) {
       // Czekaj na załadowanie danych
       setLoading(true)
       return
     }
-  }, [selectedTrip, tripFullData, isLoadingTripData, isCreateMode])
+  }, [selectedTrip, tripFullData, tripContentData, isLoadingTripData, isCreateMode])
 
   const handleSave = async () => {
     if (isCreateMode) {
@@ -183,7 +194,7 @@ function TripFormContent() {
         const step1Data = JSON.parse(step1DataStr)
         const step2Data = JSON.parse(step2DataStr)
 
-        const effectivePublicSlug = step1Data.isPublic ? (step1Data.publicSlug || step1Data.slug) : ""
+        const effectivePublicSlug = step1Data.isPublic ? step1Data.publicSlug : ""
 
         // 1. Utwórz wycieczkę z danymi z kroku 1
         const tripRes = await fetch("/api/trips", {
@@ -191,7 +202,6 @@ function TripFormContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: step1Data.tripTitle,
-            slug: step1Data.slug,
             description: step1Data.description || null,
             start_date: step1Data.startDate || null,
             end_date: step1Data.endDate || null,
@@ -200,7 +210,6 @@ function TripFormContent() {
             is_active: true,
             is_public: step1Data.isPublic,
             public_slug: effectivePublicSlug || null,
-            category: step1Data.category || null,
             location: step1Data.location || null,
             payment_split_enabled: step1Data.paymentSplitEnabled !== undefined ? step1Data.paymentSplitEnabled : true,
             payment_split_first_percent: step1Data.paymentSplitEnabled
@@ -249,6 +258,7 @@ function TripFormContent() {
             reservation_number: step2Data.reservationNumber || "",
             duration_text: step2Data.durationText || "",
             additional_fields: step2Data.additionalFieldSections || [],
+            reservation_info_text: reservationInfoText || "",
           }),
         })
 
@@ -343,6 +353,23 @@ function TripFormContent() {
         return
       }
 
+      // Zapisz tekst informacyjny o rezerwacji w treści wycieczki
+      try {
+        const contentRes = await fetch(`/api/trips/${selectedTrip.id}/content`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reservation_info_text: reservationInfoText || "",
+          }),
+        })
+
+        if (!contentRes.ok) {
+          toast.error("Nie udało się zapisać tekstu informacyjnego o rezerwacji")
+        }
+      } catch (err) {
+        toast.error("Nie udało się zapisać tekstu informacyjnego o rezerwacji")
+      }
+
       // Invaliduj cache, żeby dane zostały przeładowane
       invalidateTripCache()
       toast.success("Ustawienia formularza zostały zapisane")
@@ -391,6 +418,24 @@ function TripFormContent() {
         setCompanyParticipantsInfo={setCompanyParticipantsInfo}
         registrationMode={registrationMode}
       />
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Komunikat w panelu rejestracji</CardTitle>
+        </CardHeader>
+        <div className="px-4 pb-4 space-y-2">
+          <Label htmlFor="reservation-info" className="text-xs font-semibold">
+            Tekst informacyjny o rezerwacji
+          </Label>
+          <Textarea
+            id="reservation-info"
+            value={reservationInfoText}
+            onChange={(e) => setReservationInfoText(e.target.value)}
+            placeholder="Ten tekst pojawi się nad formularzem rezerwacji wycieczki na stronie dla klientów."
+            className="min-h-[80px] text-xs"
+          />
+        </div>
+      </Card>
 
       {showAdditionalServices && (
         <>

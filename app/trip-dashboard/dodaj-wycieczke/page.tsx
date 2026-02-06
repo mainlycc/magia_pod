@@ -32,13 +32,11 @@ export default function DodajWycieczkePage() {
   const [saving, setSaving] = useState(false)
 
   const [tripTitle, setTripTitle] = useState("")
-  const [slug, setSlug] = useState("")
   const [description, setDescription] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [price, setPrice] = useState("")
   const [seats, setSeats] = useState("")
-  const [category, setCategory] = useState("")
   const [location, setLocation] = useState("")
   const [paymentSplitEnabled, setPaymentSplitEnabled] = useState(true)
   const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState("30")
@@ -53,7 +51,7 @@ export default function DodajWycieczkePage() {
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("")
   const [loadingCoordinators, setLoadingCoordinators] = useState(true)
 
-  const effectivePublicSlug = isPublic ? (publicSlug || slug) : ""
+  const effectivePublicSlug = isPublic ? publicSlug : ""
 
   // Wczytaj dane z localStorage jeśli istnieją (gdy użytkownik wraca)
   useEffect(() => {
@@ -63,13 +61,11 @@ export default function DodajWycieczkePage() {
         try {
           const data = JSON.parse(savedData)
           setTripTitle(data.tripTitle || "")
-          setSlug(data.slug || "")
           setDescription(data.description || "")
           setStartDate(data.startDate || "")
           setEndDate(data.endDate || "")
           setPrice(data.price || "")
           setSeats(data.seats || "")
-          setCategory(data.category || "")
           setLocation(data.location || "")
           setIsPublic(data.isPublic || false)
           setPublicSlug(data.publicSlug || "")
@@ -125,8 +121,8 @@ export default function DodajWycieczkePage() {
   }
 
   const handleSave = async () => {
-    if (!tripTitle || !slug) {
-      toast.error("Tytuł i slug są wymagane")
+    if (!tripTitle) {
+      toast.error("Tytuł jest wymagany")
       return
     }
 
@@ -146,13 +142,11 @@ export default function DodajWycieczkePage() {
       // Zapisz tylko podstawowe informacje do localStorage
       const step1Data = {
         tripTitle,
-        slug,
         description,
         startDate,
         endDate,
         price,
         seats,
-        category,
         location,
         isPublic,
         publicSlug,
@@ -196,16 +190,6 @@ export default function DodajWycieczkePage() {
             </div>
 
             <div className="grid gap-1">
-              <Label className="text-xs">Slug *</Label>
-              <Input
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="np. magiczna-wycieczka-wlochy"
-                className="h-8 text-xs"
-              />
-            </div>
-
-            <div className="grid gap-1">
               <Label className="text-xs">Opis</Label>
               <Textarea
                 value={description}
@@ -213,16 +197,6 @@ export default function DodajWycieczkePage() {
                 placeholder="Opis wycieczki"
                 rows={2}
                 className="text-xs resize-none"
-              />
-            </div>
-
-            <div className="grid gap-1">
-              <Label className="text-xs">Kategoria</Label>
-              <Input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="np. Wycieczki górskie"
-                className="h-8 text-xs"
               />
             </div>
 
@@ -503,7 +477,7 @@ export default function DodajWycieczkePage() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving || !tripTitle.trim() || !slug.trim()}
+              disabled={saving || !tripTitle.trim()}
               size="sm"
               className="h-8 text-xs"
             >

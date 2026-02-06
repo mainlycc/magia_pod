@@ -22,6 +22,18 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Ignoruj opcjonalne zależności podczas builda
+      config.externals = config.externals || [];
+      config.externals.push({
+        "puppeteer-core": "commonjs puppeteer-core",
+        "@sparticuz/chromium": "commonjs @sparticuz/chromium",
+        playwright: "commonjs playwright",
+      });
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

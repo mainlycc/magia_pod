@@ -165,7 +165,7 @@ export const participantServiceSchema = z.object({
   service_id: z.string(),
   variant_id: z.string().optional(),
   price_cents: z.number().nullable().optional(),
-  currency: z.enum(["PLN", "EUR"]).optional(),
+  currency: z.enum(["PLN", "EUR", "CZK", "USD", "HUF", "GBP", "DKK"]).optional(),
   include_in_contract: z.boolean().optional(),
   // Dla osoby fizycznej: indeks uczestnika z listy
   participant_index: z.number().optional(),
