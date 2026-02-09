@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readFile } from "fs/promises";
+import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createPaynowPayment } from "@/lib/paynow";
@@ -627,17 +628,38 @@ export async function POST(req: Request) {
         
         textContent = textContentBase;
 
-        await fetch(`${baseUrl}/api/email`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: payload.contact_email,
-            subject: `Potwierdzenie rezerwacji ${booking.booking_ref}`,
-            html: emailHtml,
-            text: textContent,
-            attachment,
-          }),
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży";
+        const envFrom = process.env.RESEND_FROM;
+        let emailAddress = "noreply@mail.mainly.pl";
+        if (envFrom && envFrom.includes("@")) {
+          const emailMatch = envFrom.match(/<([^>]+)>/) || envFrom.match(/([^\s<]+@[^\s>]+)/);
+          if (emailMatch) {
+            const localPart = (emailMatch[1] || emailMatch[0]).split("@")[0];
+            emailAddress = `${localPart}@mail.mainly.pl`;
+          } else {
+            emailAddress = `${envFrom.split("@")[0]}@mail.mainly.pl`;
+          }
+        }
+
+        const attachments = attachment
+          ? [{ filename: attachment.filename, content: attachment.base64, encoding: "base64" as const }]
+          : undefined;
+
+        const { error: emailError } = await resend.emails.send({
+          from: `${senderName} <${emailAddress}>`,
+          to: payload.contact_email,
+          subject: `Potwierdzenie rezerwacji ${booking.booking_ref}`,
+          html: emailHtml,
+          text: textContent,
+          attachments,
         });
+
+        if (emailError) {
+          console.error("Resend error sending booking confirmation:", emailError);
+        } else {
+          console.log("✅ Booking confirmation email sent to:", payload.contact_email);
+        }
       } catch (err) {
         console.error("Error sending email:", err);
         // ignorujemy błąd wysyłki maila, rezerwacja już zapisana
