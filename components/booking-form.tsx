@@ -1632,11 +1632,10 @@ export function BookingForm({ slug }: BookingFormProps) {
               <TabsTrigger
                 key={step.id}
                 value={step.id}
-                className={cn("flex flex-col gap-1 text-left", originalIndex > maxAvailableStep && "cursor-not-allowed opacity-50")}
+                className={cn("text-left", originalIndex > maxAvailableStep && "cursor-not-allowed opacity-50")}
                 disabled={originalIndex > maxAvailableStep + 1}
               >
                 <span className="text-sm font-semibold">{index + 1}. {stepLabel}</span>
-                <span className="text-muted-foreground text-xs">{step.description}</span>
               </TabsTrigger>
             );
           })}
