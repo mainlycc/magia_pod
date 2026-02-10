@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
     const { data: trip, error } = await supabase
       .from("trips")
-      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, trip_info_text, baggage_text, weather_text, show_trip_info_card, show_baggage_card, show_weather_card, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text, additional_fields, public_middle_sections, public_right_sections, public_hidden_middle_sections, public_hidden_right_sections, public_hidden_additional_sections")
+      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, reservation_info_text, trip_info_text, baggage_text, weather_text, show_trip_info_card, show_baggage_card, show_weather_card, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text, additional_fields, public_middle_sections, public_right_sections, public_hidden_middle_sections, public_hidden_right_sections, public_hidden_additional_sections")
       .eq("id", id)
       .single();
 
@@ -42,6 +42,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       intro_text: trip.intro_text || "",
       section_poznaj_title: trip.section_poznaj_title || "",
       section_poznaj_description: trip.section_poznaj_description || "",
+      reservation_info_text: trip.reservation_info_text || "",
       trip_info_text: trip.trip_info_text || "",
       baggage_text: trip.baggage_text || "",
       weather_text: trip.weather_text || "",
@@ -83,6 +84,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       intro_text,
       section_poznaj_title,
       section_poznaj_description,
+      reservation_info_text,
       trip_info_text,
       baggage_text,
       weather_text,
@@ -108,6 +110,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       intro_text?: string;
       section_poznaj_title?: string;
       section_poznaj_description?: string;
+      reservation_info_text?: string;
       trip_info_text?: string;
       baggage_text?: string;
       weather_text?: string;
@@ -139,6 +142,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       intro_text?: string | null;
       section_poznaj_title?: string | null;
       section_poznaj_description?: string | null;
+      reservation_info_text?: string | null;
       trip_info_text?: string | null;
       baggage_text?: string | null;
       weather_text?: string | null;
@@ -184,6 +188,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
     if ("section_poznaj_description" in body) {
       updateData.section_poznaj_description = section_poznaj_description ?? null;
+    }
+    if ("reservation_info_text" in body) {
+      updateData.reservation_info_text = reservation_info_text ?? null;
     }
     if ("trip_info_text" in body) {
       updateData.trip_info_text = trip_info_text ?? null;

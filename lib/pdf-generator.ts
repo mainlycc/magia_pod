@@ -201,17 +201,31 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
   if (process.env.NODE_ENV === "development") {
     try {
       // Dynamiczny import z użyciem eval aby uniknąć sprawdzania przez TypeScript podczas kompilacji
+      // Najpierw spróbuj załadować pakiet "playwright", a jeśli go nie ma,
+      // spróbuj użyć "@playwright/test" (często instalowany tylko do testów)
       // eslint-disable-next-line no-eval
-      const playwrightModule = await eval('import("playwright")').catch(() => null);
-      if (playwrightModule) {
+      let playwrightModule: any = await eval('import("playwright")').catch(() => null);
+      if (!playwrightModule) {
+        // eslint-disable-next-line no-eval
+        playwrightModule = await eval('import("@playwright/test")').catch(() => null);
+      }
+
+      if (playwrightModule && playwrightModule.chromium) {
         const { chromium } = playwrightModule;
         const browser = await chromium.launch({ headless: true });
         const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: "networkidle" });
+        // Ustaw kodowanie UTF-8 dla poprawnego wyświetlania polskich znaków
+        await page.setContent(html, { 
+          waitUntil: "networkidle",
+          timeout: 30000 
+        });
+        // Czekaj na załadowanie fontów
+        await page.waitForTimeout(500);
         const pdfBuffer = await page.pdf({
           format: "A4",
           printBackground: true,
           margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
+          preferCSSPageSize: false,
         });
         await browser.close();
         const base64 = Buffer.from(pdfBuffer).toString("base64");
@@ -241,11 +255,18 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
       });
 
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle" });
+      // Ustaw kodowanie UTF-8 dla poprawnego wyświetlania polskich znaków
+      await page.setContent(html, { 
+        waitUntil: "networkidle",
+        timeout: 30000 
+      });
+      // Czekaj na załadowanie fontów
+      await page.waitForTimeout(500);
       const pdfBuffer = await page.pdf({
         format: "A4",
         printBackground: true,
         margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
+        preferCSSPageSize: false,
       });
       await browser.close();
       

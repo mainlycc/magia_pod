@@ -295,9 +295,7 @@ export async function getInvoicePdfUrl(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: body.toString(),
-    });
-
-    const responseText = await response.text();
+    });    const responseText = await response.text();
 
     if (!response.ok) {
       return {

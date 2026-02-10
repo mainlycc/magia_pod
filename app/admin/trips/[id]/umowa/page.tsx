@@ -400,7 +400,7 @@ export default function AgreementPage() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Umowa</BreadcrumbPage>
+            <BreadcrumbPage>Wzór umowy</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>

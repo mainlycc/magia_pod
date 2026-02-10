@@ -224,6 +224,8 @@ function TripFormContent() {
                   ? parseInt(step1Data.paymentReminderDaysBefore, 10)
                   : null)
               : null,
+            // Ustaw również wymaganie PESEL na podstawie konfiguracji pól uczestników
+            require_pesel: requiredParticipantFields.pesel ?? false,
           }),
         })
 
@@ -277,7 +279,9 @@ function TripFormContent() {
             form_additional_attractions: additionalAttractions,
             form_diets: diets,
             form_extra_insurances: extraInsurances,
+            // Te pola sterują widocznością i wymaganiem danych uczestników oraz PESEL zgłaszającego
             form_required_participant_fields: requiredParticipantFields,
+            require_pesel: requiredParticipantFields.pesel ?? false,
           }),
         })
 
@@ -344,7 +348,9 @@ function TripFormContent() {
           form_additional_attractions: additionalAttractions,
           form_diets: diets,
           form_extra_insurances: extraInsurances,
+          // Te pola sterują widocznością i wymaganiem danych uczestników oraz PESEL zgłaszającego
           form_required_participant_fields: requiredParticipantFields,
+          require_pesel: requiredParticipantFields.pesel ?? false,
         }),
       })
 

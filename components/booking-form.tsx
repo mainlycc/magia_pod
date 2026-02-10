@@ -1791,7 +1791,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                     />
                   </div>
 
-                  {applicantType === "individual" && (
+                  {applicantType === "individual" && tripConfig?.require_pesel && (
                     <div className="grid gap-4 md:grid-cols-2">
                       <FormField
                         control={control}
@@ -1966,6 +1966,13 @@ export function BookingForm({ slug }: BookingFormProps) {
                         />
                       </div>
                     </div>
+                  )}
+
+                  {reservationInfoText && (
+                    <Alert>
+                      <AlertTitle>Ważna informacja dotycząca rezerwacji</AlertTitle>
+                      <AlertDescription>{reservationInfoText}</AlertDescription>
+                    </Alert>
                   )}
 
                   <Separator />
@@ -2185,13 +2192,6 @@ export function BookingForm({ slug }: BookingFormProps) {
             </TabsContent>
 
             <TabsContent value="participants" className="mt-6 space-y-6">
-              {applicantType === "company" && reservationInfoText && (
-                <Alert>
-                  <AlertTitle>Ważna informacja dotycząca rezerwacji</AlertTitle>
-                  <AlertDescription>{reservationInfoText}</AlertDescription>
-                </Alert>
-              )}
-
               <Card>
                 <CardHeader>
                   <CardTitle>{applicantType === "company" ? "Liczba uczestników" : "Uczestnicy"}</CardTitle>
@@ -2290,129 +2290,137 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 </FormItem>
                               )}
                             />
-                            <FormField
-                              control={control}
-                              name={`participants.${index}.gender_code`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    Płeć{tripConfig?.form_required_participant_fields?.gender ? " *" : ""}
-                                  </FormLabel>
-                                  <Select
-                                    onValueChange={field.onChange}
-                                    defaultValue={field.value}
-                                  >
+                            {tripConfig?.form_required_participant_fields?.gender && (
+                              <FormField
+                                control={control}
+                                name={`participants.${index}.gender_code`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      Płeć{tripConfig?.form_required_participant_fields?.gender ? " *" : ""}
+                                    </FormLabel>
+                                    <Select
+                                      onValueChange={field.onChange}
+                                      defaultValue={field.value}
+                                    >
+                                      <FormControl>
+                                        <SelectTrigger className="w-full">
+                                          <SelectValue placeholder="Wybierz płeć" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        <SelectItem value="F">Kobieta</SelectItem>
+                                        <SelectItem value="M">Mężczyzna</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+                            {tripConfig?.form_required_participant_fields?.phone && (
+                              <FormField
+                                control={control}
+                                name={`participants.${index}.phone`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      Telefon{tripConfig?.form_required_participant_fields?.phone ? " *" : ""}
+                                    </FormLabel>
                                     <FormControl>
-                                      <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Wybierz płeć" />
-                                      </SelectTrigger>
+                                      <Input placeholder="+48 600 000 000" {...field} />
                                     </FormControl>
-                                    <SelectContent>
-                                      <SelectItem value="F">Kobieta</SelectItem>
-                                      <SelectItem value="M">Mężczyzna</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={control}
-                              name={`participants.${index}.phone`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    Telefon{tripConfig?.form_required_participant_fields?.phone ? " *" : ""}
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="+48 600 000 000" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                           </div>
 
-                          <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
-                            <FormField
-                              control={control}
-                              name={`participants.${index}.document_type`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    Dokument{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
-                                  </FormLabel>
-                                  <Select
-                                    onValueChange={field.onChange}
-                                    defaultValue={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Wybierz dokument" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      <SelectItem value="ID">Dowód osobisty</SelectItem>
-                                      <SelectItem value="PASSPORT">Paszport</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={control}
-                              name={`participants.${index}.document_number`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    Seria i numer dokumentu{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="ABC123456" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
+                          {tripConfig?.form_required_participant_fields?.document && (
+                            <>
+                              <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
+                                <FormField
+                                  control={control}
+                                  name={`participants.${index}.document_type`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>
+                                        Dokument{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
+                                      </FormLabel>
+                                      <Select
+                                        onValueChange={field.onChange}
+                                        defaultValue={field.value}
+                                      >
+                                        <FormControl>
+                                          <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Wybierz dokument" />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          <SelectItem value="ID">Dowód osobisty</SelectItem>
+                                          <SelectItem value="PASSPORT">Paszport</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={control}
+                                  name={`participants.${index}.document_number`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>
+                                        Seria i numer dokumentu{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Input placeholder="ABC123456" {...field} />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
 
-                          <div className="grid gap-4 md:grid-cols-3 mt-4">
-                            <FormField
-                              control={control}
-                              name={`participants.${index}.document_issue_date`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Data wydania</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="date"
-                                      {...field}
-                                      value={field.value || ""}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={control}
-                              name={`participants.${index}.document_expiry_date`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Data ważności</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="date"
-                                      {...field}
-                                      value={field.value || ""}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
+                              <div className="grid gap-4 md:grid-cols-3 mt-4">
+                                <FormField
+                                  control={control}
+                                  name={`participants.${index}.document_issue_date`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Data wydania</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type="date"
+                                          {...field}
+                                          value={field.value || ""}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={control}
+                                  name={`participants.${index}.document_expiry_date`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Data ważności</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type="date"
+                                          {...field}
+                                          value={field.value || ""}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </>
+                          )}
                         </div>
                       ))}
                       <Button

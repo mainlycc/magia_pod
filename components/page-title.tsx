@@ -21,7 +21,7 @@ const pageTitles: Record<string, string> = {
   "/trip-dashboard/informacje/formularz": "Formularz zgłoszeń",
   "/trip-dashboard/publiczny-wyglad": "Publiczny wygląd",
   "/trip-dashboard/rezerwacje": "Rezerwacje i umowy",
-  "/trip-dashboard/umowa": "Umowa",
+  "/trip-dashboard/umowa": "Wzór umowy",
   "/trip-dashboard/platnosci": "Płatności",
   "/trip-dashboard/faktury": "Faktury",
   "/trip-dashboard/ubezpieczenia": "Ubezpieczenia",
