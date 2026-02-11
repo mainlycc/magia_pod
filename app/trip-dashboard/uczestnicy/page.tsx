@@ -248,7 +248,7 @@ export default function UczestnicyPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => router.push(`/admin/uczestnicy/${row.original.id}`)}
+            onClick={() => router.push(`/trip-dashboard/uczestnicy/${row.original.id}`)}
           >
             Szczegóły
           </Button>
