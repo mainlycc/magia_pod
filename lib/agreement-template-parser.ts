@@ -206,8 +206,11 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
 export function templateToHtml(template: AgreementTemplate): string {
   let html = '';
   
-  // Sprawdź czy pierwsza sekcja to paragraf (organizator) - powinien być przed H1
-  const firstSection = template.sections[0];
+  // Sortuj sekcje według order przed renderowaniem (zachowaj kolejność po drag & drop)
+  const sortedSections = [...template.sections].sort((a, b) => a.order - b.order);
+  
+  // Sprawdź czy pierwsza sekcja po sortowaniu to paragraf (organizator) - powinien być przed H1
+  const firstSection = sortedSections[0];
   if (firstSection && firstSection.type === 'paragraph' && firstSection.content) {
     // Jeśli zawiera HTML (DIV z paragrafami), użyj go bezpośrednio
     const organizerContent = firstSection.content;
@@ -224,9 +227,9 @@ export function templateToHtml(template: AgreementTemplate): string {
   
   html += `<h1>${escapeHtml(template.title)}</h1>\n\n`;
   
-  // Renderuj pozostałe sekcje (pomijając pierwszą jeśli była paragrafem)
+  // Renderuj sekcje (pomijając pierwszą jeśli była paragrafem organizatora)
   const startIndex = (firstSection && firstSection.type === 'paragraph') ? 1 : 0;
-  template.sections.slice(startIndex).forEach((section) => {
+  sortedSections.slice(startIndex).forEach((section) => {
     // Wyświetl tytuł sekcji jeśli istnieje
     if (section.title) {
       html += `<h2>${escapeHtml(section.title)}</h2>\n`;
@@ -240,19 +243,31 @@ export function templateToHtml(template: AgreementTemplate): string {
       });
       html += '</table>\n\n';
     } else if (section.type === 'paragraph' && section.content) {
-      // Jeśli zawartość to HTML (zawiera tagi), użyj bezpośrednio (np. DIV z page-break)
-      if (section.content.includes('<div') || section.content.includes('<p') || section.content.includes('<h2') || section.content.includes('<ul')) {
+      // Jeśli zawartość to HTML (zawiera tagi HTML), użyj bezpośrednio
+      // Sprawdź czy zawiera jakiekolwiek tagi HTML (np. z edytora Tiptap)
+      const hasHtmlTags = /<[a-z][\s\S]*>/i.test(section.content);
+      if (hasHtmlTags) {
+        // To jest HTML - użyj bezpośrednio (np. DIV z page-break, HTML z Tiptap)
         html += section.content + '\n\n';
       } else {
+        // Zwykły tekst - owinij w paragraf
         html += `<p>${escapeHtml(section.content)}</p>\n\n`;
       }
     } else if (section.type === 'list' && section.content) {
-      const items = section.content.split('\n').filter(item => item.trim());
-      html += '<ul>\n';
-      items.forEach((item) => {
-        html += `  <li>${escapeHtml(item.trim())}</li>\n`;
-      });
-      html += '</ul>\n\n';
+      // Sprawdź czy zawartość to HTML (np. z edytora Tiptap)
+      const hasHtmlTags = /<[a-z][\s\S]*>/i.test(section.content);
+      if (hasHtmlTags) {
+        // To jest HTML - użyj bezpośrednio (np. HTML z Tiptap)
+        html += section.content + '\n\n';
+      } else {
+        // Zwykły tekst - parsuj jako listę
+        const items = section.content.split('\n').filter(item => item.trim());
+        html += '<ul>\n';
+        items.forEach((item) => {
+          html += `  <li>${escapeHtml(item.trim())}</li>\n`;
+        });
+        html += '</ul>\n\n';
+      }
     }
   });
   

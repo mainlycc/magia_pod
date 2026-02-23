@@ -30,6 +30,8 @@ import { toast } from "sonner";
 import { X, CalendarIcon } from "lucide-react";
 import { format } from "date-fns/format";
 import { pl } from "date-fns/locale";
+import { PaymentScheduleEditor } from "@/components/payment-schedule-editor";
+import { PaymentScheduleItem } from "@/contexts/trip-context";
 
 type Coordinator = {
   id: string;
@@ -80,6 +82,7 @@ export default function EditTripPage() {
   const [availableCoordinators, setAvailableCoordinators] = useState<Coordinator[]>([]);
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState<string>("");
   const [loadingCoordinators, setLoadingCoordinators] = useState(true);
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([]);
 
   const loadCoordinators = async (tripId: string) => {
     if (!tripId) return;
@@ -131,6 +134,38 @@ export default function EditTripPage() {
           setLocation(t.location || "");
           setIsPublic(Boolean(t.is_public));
           setPublicSlug(t.public_slug || "");
+          // Załaduj harmonogram płatności
+          if (t.payment_schedule && Array.isArray(t.payment_schedule)) {
+            setPaymentSchedule(t.payment_schedule);
+          } else {
+            // Fallback: utwórz harmonogram z starych danych lub domyślny
+            const firstPercent = t.payment_split_first_percent ?? 30;
+            const secondPercent = t.payment_split_second_percent ?? 70;
+            const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .split("T")[0];
+            const defaultDate2 = t.start_date
+              ? new Date(
+                  new Date(t.start_date).getTime() - 14 * 24 * 60 * 60 * 1000
+                )
+                  .toISOString()
+                  .split("T")[0]
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                  .toISOString()
+                  .split("T")[0];
+            setPaymentSchedule([
+              {
+                installment_number: 1,
+                percent: firstPercent,
+                due_date: defaultDate1,
+              },
+              {
+                installment_number: 2,
+                percent: secondPercent,
+                due_date: defaultDate2,
+              },
+            ]);
+          }
         } else {
           const errorText = await res.text();
           console.error("Failed to load trip:", res.status, errorText);
@@ -154,6 +189,20 @@ export default function EditTripPage() {
       return;
     }
 
+    // Walidacja harmonogramu płatności
+    const totalPercent = paymentSchedule.reduce(
+      (sum, item) => sum + item.percent,
+      0
+    );
+    if (totalPercent !== 100) {
+      setError("Suma procentów w harmonogramie musi równać się 100%");
+      return;
+    }
+    if (paymentSchedule.length === 0) {
+      setError("Musisz dodać przynajmniej jedną ratę");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     
@@ -171,6 +220,7 @@ export default function EditTripPage() {
           location: location || null,
           is_public: isPublic,
           public_slug: isPublic ? (publicSlug || null) : null,
+          payment_schedule: paymentSchedule,
         }),
       });
       
@@ -372,6 +422,14 @@ export default function EditTripPage() {
               value={seats}
               onChange={(e) => setSeats(e.target.value)}
               placeholder="0"
+            />
+          </div>
+
+          <div className="mt-2 space-y-3 rounded-md border p-3">
+            <PaymentScheduleEditor
+              schedule={paymentSchedule}
+              onChange={setPaymentSchedule}
+              tripStartDate={startDate ? startDate.toISOString().split("T")[0] : null}
             />
           </div>
 

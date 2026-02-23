@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { UseFormReturn, useFieldArray } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +49,21 @@ export function ParticipantsStep({
     name: "participants",
   });
 
+  // Automatycznie dodaj pierwszego uczestnika z pustymi polami, jeśli nie ma żadnego (tylko dla osób fizycznych)
+  useEffect(() => {
+    if (applicantType === "individual" && fields.length === 0) {
+      append({
+        first_name: "",
+        last_name: "",
+        birth_date: "",
+        email: "",
+        phone: "",
+        document_type: "ID",
+        document_number: "",
+      });
+    }
+  }, [applicantType, fields.length, append]);
+
   return (
     <Card>
       <CardHeader>
@@ -91,11 +107,6 @@ export function ParticipantsStep({
           </div>
         ) : (
           <>
-            {fields.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Brak uczestników. Dodaj co najmniej jednego uczestnika, aby wysłać rezerwację.
-              </p>
-            )}
             {fields.map((field, index) => (
               <div
                 key={field.id}

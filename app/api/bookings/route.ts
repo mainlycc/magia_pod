@@ -140,7 +140,7 @@ export async function POST(req: Request) {
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent, reservation_number",
+        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent, payment_schedule, reservation_number",
       )
       .or(`slug.eq.${payload.slug},public_slug.eq.${payload.slug}`)
       .eq("is_active", true)
@@ -671,18 +671,39 @@ export async function POST(req: Request) {
     const unitPrice = trip.price_cents ?? 0;
     const totalAmountCents = unitPrice * seatsRequested;
     
-    // Oblicz kwotę zaliczki i reszty na podstawie ustawień wycieczki
-    const paymentSplitEnabled = trip.payment_split_enabled ?? true;
-    const paymentSplitFirstPercent = trip.payment_split_first_percent ?? 30;
+    // Oblicz kwoty rat na podstawie harmonogramu lub starych ustawień
+    const paymentSchedule = trip.payment_schedule && Array.isArray(trip.payment_schedule) && trip.payment_schedule.length > 0
+      ? trip.payment_schedule
+      : null;
     
     let firstPaymentAmountCents = totalAmountCents;
     let secondPaymentAmountCents = 0;
+    let firstInstallmentPercent = 100; // procent pierwszej raty (do logowania)
     
-    if (paymentSplitEnabled) {
-      // Oblicz zaliczkę (np. 30% z pełnej kwoty)
-      firstPaymentAmountCents = Math.round((totalAmountCents * paymentSplitFirstPercent) / 100);
-      // Reszta to pozostała kwota
-      secondPaymentAmountCents = totalAmountCents - firstPaymentAmountCents;
+    if (paymentSchedule && paymentSchedule.length > 0) {
+      // Nowy system: użyj harmonogramu
+      const firstInstallment = paymentSchedule[0];
+      firstInstallmentPercent = firstInstallment.percent;
+      firstPaymentAmountCents = Math.round((totalAmountCents * firstInstallment.percent) / 100);
+      
+      if (paymentSchedule.length > 1) {
+        const secondInstallment = paymentSchedule[1];
+        secondPaymentAmountCents = Math.round((totalAmountCents * secondInstallment.percent) / 100);
+      } else {
+        // Tylko jedna rata - reszta to 0
+        secondPaymentAmountCents = 0;
+      }
+    } else {
+      // Stary system: użyj payment_split_first_percent
+      const paymentSplitEnabled = trip.payment_split_enabled ?? true;
+      firstInstallmentPercent = trip.payment_split_first_percent ?? 30;
+      
+      if (paymentSplitEnabled) {
+        // Oblicz zaliczkę (np. 30% z pełnej kwoty)
+        firstPaymentAmountCents = Math.round((totalAmountCents * firstInstallmentPercent) / 100);
+        // Reszta to pozostała kwota
+        secondPaymentAmountCents = totalAmountCents - firstPaymentAmountCents;
+      }
     }
     
     // Zapisz kwoty w booking
@@ -700,7 +721,7 @@ export async function POST(req: Request) {
       // Nie blokujemy rezerwacji jeśli aktualizacja się nie powiedzie
     }
 
-    console.log(`[Bookings POST] Creating Paynow payment: total=${totalAmountCents}, first_payment=${firstPaymentAmountCents} (${paymentSplitFirstPercent}%), second_payment=${secondPaymentAmountCents}, booking_ref=${booking.booking_ref}, with_payment=${payload.with_payment}`);
+    console.log(`[Bookings POST] Creating Paynow payment: total=${totalAmountCents}, first_payment=${firstPaymentAmountCents} (${firstInstallmentPercent}%), second_payment=${secondPaymentAmountCents}, booking_ref=${booking.booking_ref}, with_payment=${payload.with_payment}`);
 
     // Tworzenie płatności Paynow tylko gdy with_payment=true
     if (firstPaymentAmountCents > 0 && payload.with_payment) {
@@ -715,7 +736,7 @@ export async function POST(req: Request) {
         const payment = await createPaynowPayment({
           amountCents: firstPaymentAmountCents, // Używamy kwoty zaliczki zamiast pełnej kwoty
           externalId: booking.booking_ref,
-          description: `Rezerwacja ${booking.booking_ref} - ${trip.title} (zaliczka ${paymentSplitFirstPercent}%)`,
+          description: `Rezerwacja ${booking.booking_ref} - ${trip.title} (zaliczka ${firstInstallmentPercent}%)`,
           buyerEmail: payload.contact_email,
           continueUrl: returnUrl,
           notificationUrl: `${baseUrl}/api/payments/paynow/webhook`,
@@ -758,7 +779,7 @@ export async function POST(req: Request) {
                   booking_id: booking.id,
                   amount_cents: firstPaymentAmountCents,
                   payment_method: "paynow",
-                  notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized) - zaliczka ${paymentSplitFirstPercent}%`,
+                  notes: `Paynow payment ${payment.paymentId} - status: PENDING (initialized) - zaliczka ${firstInstallmentPercent}%`,
                 })
                 .select();
 

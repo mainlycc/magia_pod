@@ -51,6 +51,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       return {
         id: profile.id,
         full_name: fullName || null,
+        email: user?.email || null,
       };
     });
 

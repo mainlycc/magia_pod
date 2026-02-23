@@ -35,7 +35,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     let query = supabase
       .from("trips")
       .select(
-        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before",
+        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule",
       )
       .eq("id", id);
     
@@ -93,6 +93,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payment_split_second_percent: number | null;
       payment_reminder_enabled: boolean;
       payment_reminder_days_before: number | null;
+      payment_schedule: unknown;
     }> = {};
     if ("title" in body) payload.title = body.title;
     if ("description" in body) payload.description = body.description ?? null;
@@ -130,6 +131,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payload.payment_reminder_enabled = Boolean(body.payment_reminder_enabled);
     if ("payment_reminder_days_before" in body)
       payload.payment_reminder_days_before = body.payment_reminder_days_before ?? null;
+    if ("payment_schedule" in body)
+      payload.payment_schedule = body.payment_schedule ?? null;
 
     const supabase = await createClient();
     

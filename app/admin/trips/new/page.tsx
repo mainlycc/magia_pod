@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { PaymentScheduleEditor } from "@/components/payment-schedule-editor";
+import { PaymentScheduleItem } from "@/contexts/trip-context";
 
 type Coordinator = {
   id: string;
@@ -31,6 +33,7 @@ export default function NewTripPage() {
   const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
   const [selectedCoordinators, setSelectedCoordinators] = useState<Set<string>>(new Set());
   const [loadingCoordinators, setLoadingCoordinators] = useState(true);
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([]);
 
   const effectivePublicSlug = isPublic ? publicSlug : "";
 
@@ -51,6 +54,36 @@ export default function NewTripPage() {
     loadCoordinators();
   }, []);
 
+  // Inicjalizuj domyślny harmonogram
+  useEffect(() => {
+    if (paymentSchedule.length === 0) {
+      const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const defaultDate2 = startDate
+        ? new Date(
+            new Date(startDate).getTime() - 14 * 24 * 60 * 60 * 1000
+          )
+            .toISOString()
+            .split("T")[0]
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split("T")[0];
+      setPaymentSchedule([
+        {
+          installment_number: 1,
+          percent: 30,
+          due_date: defaultDate1,
+        },
+        {
+          installment_number: 2,
+          percent: 70,
+          due_date: defaultDate2,
+        },
+      ]);
+    }
+  }, [startDate, paymentSchedule.length]);
+
   const toggleCoordinator = (coordinatorId: string) => {
     setSelectedCoordinators((prev) => {
       const next = new Set(prev);
@@ -66,6 +99,20 @@ export default function NewTripPage() {
   const save = async () => {
     if (!title) {
       setError("Nazwa jest wymagana");
+      return;
+    }
+
+    // Walidacja harmonogramu płatności
+    const totalPercent = paymentSchedule.reduce(
+      (sum, item) => sum + item.percent,
+      0
+    );
+    if (totalPercent !== 100) {
+      setError("Suma procentów w harmonogramie musi równać się 100%");
+      return;
+    }
+    if (paymentSchedule.length === 0) {
+      setError("Musisz dodać przynajmniej jedną ratę");
       return;
     }
 
@@ -87,6 +134,7 @@ export default function NewTripPage() {
           is_public: isPublic,
           public_slug: effectivePublicSlug || null,
           location: location || null,
+          payment_schedule: paymentSchedule,
         }),
       });
 
@@ -225,6 +273,14 @@ export default function NewTripPage() {
                 </p>
               </div>
             )}
+          </div>
+
+          <div className="mt-2 space-y-3 rounded-md border p-3">
+            <PaymentScheduleEditor
+              schedule={paymentSchedule}
+              onChange={setPaymentSchedule}
+              tripStartDate={startDate}
+            />
           </div>
 
           {coordinators.length > 0 && (

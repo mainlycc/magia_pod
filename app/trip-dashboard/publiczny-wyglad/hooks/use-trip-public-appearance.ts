@@ -113,9 +113,6 @@ export function useTripPublicAppearance() {
         public_hidden_middle_sections?: MiddleSectionId[] | null
         public_hidden_right_sections?: RightSectionId[] | null
         public_hidden_additional_sections?: string[] | null
-        show_trip_info_card?: boolean | null
-        show_baggage_card?: boolean | null
-        show_weather_card?: boolean | null
       }
       const trip = tripFullData
       

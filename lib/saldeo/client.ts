@@ -295,17 +295,13 @@ export async function getInvoicePdfUrl(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: body.toString(),
-    });    const responseText = await response.text();
-
-    if (!response.ok) {
+    });    const responseText = await response.text();    if (!response.ok) {
       return {
         success: false,
         error: `HTTP ${response.status}: ${responseText}`,
         rawResponse: responseText,
       };
-    }
-
-    // Parsuj odpowiedź XML - szukamy <SOURCE> oraz <NUMBER>
+    }    // Parsuj odpowiedź XML - szukamy <SOURCE> oraz <NUMBER>
     const sourceMatch = responseText.match(/<SOURCE[^>]*>([^<]+)<\/SOURCE>/i);
     const numberMatch = responseText.match(/<NUMBER[^>]*>([^<]+)<\/NUMBER>/i);
 

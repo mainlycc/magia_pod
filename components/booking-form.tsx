@@ -467,21 +467,19 @@ const createBookingFormSchema = (requiredFields?: {
           path: ["contact", "last_name"],
         });
       }
-      // Walidacja PESEL w kontakcie dla osoby fizycznej, jeśli jest wymagany
-      if (requirePesel) {
-        if (!value.contact.pesel || value.contact.pesel.trim() === "") {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "PESEL jest wymagany",
-            path: ["contact", "pesel"],
-          });
-        } else if (!/^\d{11}$/.test(value.contact.pesel)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "PESEL musi mieć dokładnie 11 cyfr",
-            path: ["contact", "pesel"],
-          });
-        }
+      // PESEL zawsze wymagany dla osoby fizycznej
+      if (!value.contact.pesel || value.contact.pesel.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "PESEL jest wymagany",
+          path: ["contact", "pesel"],
+        });
+      } else if (!/^\d{11}$/.test(value.contact.pesel)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "PESEL musi mieć dokładnie 11 cyfr",
+          path: ["contact", "pesel"],
+        });
       }
       // Dla osoby fizycznej nie waliduj company - zakończ tutaj
       return;
@@ -922,6 +920,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                 payment_split_second_percent: null,
                 payment_reminder_enabled: null,
                 payment_reminder_days_before: null,
+                payment_schedule: null,
               };
               setTripFullData(fullData);
 
@@ -944,6 +943,8 @@ export function BookingForm({ slug }: BookingFormProps) {
                   trip_info_text: "",
                   baggage_text: "",
                   weather_text: "",
+                  show_trip_info_card: true,
+                  show_baggage_card: true,
                   show_weather_card: false,
                   show_seats_left: false,
                   included_in_price_text: "",
@@ -1025,7 +1026,17 @@ export function BookingForm({ slug }: BookingFormProps) {
         representative_first_name: "",
         representative_last_name: "",
       },
-      participants: [],
+      participants: [
+        {
+          first_name: "",
+          last_name: "",
+          birth_date: "",
+          email: "",
+          phone: "",
+          document_type: "ID",
+          document_number: "",
+        },
+      ],
       participants_count: undefined,
       participant_services: [],
       consents: {
@@ -1149,6 +1160,17 @@ export function BookingForm({ slug }: BookingFormProps) {
       }
     }
     
+    if (stepId === "participants") {
+      // Dla kroku uczestników: nie waliduj pól uczestników przy przechodzeniu do następnego kroku
+      // (pełna walidacja będzie przy wysyłaniu formularza)
+      // Sprawdzamy tylko, czy jest przynajmniej jeden uczestnik (dla osób fizycznych)
+      if (applicantType === "individual") {
+        return []; // Pusta tablica - nie walidujemy pól, tylko sprawdzamy w logice
+      } else {
+        return []; // Dla firm też nie walidujemy
+      }
+    }
+    
     return baseFields;
   };
 
@@ -1157,9 +1179,20 @@ export function BookingForm({ slug }: BookingFormProps) {
     if (nextIndex === -1) return;
 
     if (nextIndex > activeStepIndex) {
+      // Dla kroku uczestników: sprawdź tylko, czy jest przynajmniej jeden uczestnik (dla osób fizycznych)
+      if (currentStep.id === "participants" && applicantType === "individual") {
+        const participants = form.getValues("participants");
+        if (!participants || participants.length === 0) {
+          // Nie powinno się zdarzyć, bo zawsze jest jeden uczestnik, ale na wszelki wypadek
+          return;
+        }
+      }
+      
       const fieldsToValidate = getFieldsToValidate(currentStep.id);
-      const isValid = await trigger(fieldsToValidate);
-      if (!isValid) return;
+      if (fieldsToValidate.length > 0) {
+        const isValid = await trigger(fieldsToValidate);
+        if (!isValid) return;
+      }
     }
 
     if (canGoToStep(nextIndex)) {
@@ -1169,9 +1202,20 @@ export function BookingForm({ slug }: BookingFormProps) {
   };
 
   const goToNextStep = async () => {
+    // Dla kroku uczestników: sprawdź tylko, czy jest przynajmniej jeden uczestnik (dla osób fizycznych)
+    if (currentStep.id === "participants" && applicantType === "individual") {
+      const participants = form.getValues("participants");
+      if (!participants || participants.length === 0) {
+        // Nie powinno się zdarzyć, bo zawsze jest jeden uczestnik, ale na wszelki wypadek
+        return;
+      }
+    }
+    
     const fieldsToValidate = getFieldsToValidate(currentStep.id);
-    const isValid = await trigger(fieldsToValidate);
-    if (!isValid) return;
+    if (fieldsToValidate.length > 0) {
+      const isValid = await trigger(fieldsToValidate);
+      if (!isValid) return;
+    }
     
     // Znajdź następny widoczny krok
     let nextIndex = activeStepIndex + 1;
@@ -1791,14 +1835,14 @@ export function BookingForm({ slug }: BookingFormProps) {
                     />
                   </div>
 
-                  {applicantType === "individual" && tripConfig?.require_pesel && (
+                  {applicantType === "individual" && (
                     <div className="grid gap-4 md:grid-cols-2">
                       <FormField
                         control={control}
                         name="contact.pesel"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>PESEL</FormLabel>
+                            <FormLabel>PESEL *</FormLabel>
                             <FormControl>
                               <Input placeholder="12345678901" {...field} maxLength={11} />
                             </FormControl>
@@ -3428,60 +3472,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                     </>
                   )}
 
-                  <section className="space-y-4">
-                    <div>
-                      <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
-                      </p>
-                    </div>
-                    {agreementTemplate && (() => {
-                      // Mapuj participant_services do odpowiedniego formatu
-                      const participantServices = form.watch("participant_services") || [];
-                      const mappedServices = participantServices.map((service: any) => {
-                        // Znajdź tytuł usługi z konfiguracji wycieczki
-                        let serviceTitle = service.service_id;
-                        
-                        if (service.type === "attraction" && tripConfig?.additional_attractions) {
-                          const attraction = tripConfig.additional_attractions.find((a: any) => a.id === service.service_id);
-                          if (attraction) serviceTitle = attraction.title;
-                        } else if (service.type === "diet" && tripConfig?.diets) {
-                          const diet = tripConfig.diets.find((d: any) => d.id === service.service_id);
-                          if (diet) serviceTitle = diet.title;
-                        } else if (service.type === "insurance" && tripConfig?.extra_insurances) {
-                          const insurance = tripConfig.extra_insurances.find((i: any) => i.id === service.service_id);
-                          if (insurance) serviceTitle = insurance.title;
-                        }
-
-                        return {
-                          service_type: service.type,
-                          service_title: serviceTitle,
-                        };
-                      });
-
-                      return (
-                        <AgreementPreview 
-                          template={agreementTemplate} 
-                          tripFullData={tripFullData}
-                          tripContentData={tripContentData}
-                          formData={{
-                            contact: {
-                              first_name: form.watch("contact.first_name"),
-                              last_name: form.watch("contact.last_name"),
-                              email: form.watch("contact.email"),
-                              phone: form.watch("contact.phone"),
-                              pesel: form.watch("contact.pesel"),
-                              address: form.watch("contact.address"),
-                            },
-                            company: applicantType === "company" ? form.watch("company") : undefined,
-                            participants: form.watch("participants"),
-                            participant_services: mappedServices as Array<{ service_type?: string; service_title?: string }>,
-                          }}
-                        />
-                      );
-                    })()}
-                  </section>
-
                   <Separator />
 
                   <section className="space-y-4">
@@ -3728,6 +3718,62 @@ export function BookingForm({ slug }: BookingFormProps) {
                         </div>
                       </div>
                     </div>
+                  </section>
+
+                  <Separator />
+
+                  <section className="space-y-4">
+                    <div>
+                      <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
+                      </p>
+                    </div>
+                    {agreementTemplate && (() => {
+                      // Mapuj participant_services do odpowiedniego formatu
+                      const participantServices = form.watch("participant_services") || [];
+                      const mappedServices = participantServices.map((service: any) => {
+                        // Znajdź tytuł usługi z konfiguracji wycieczki
+                        let serviceTitle = service.service_id;
+                        
+                        if (service.type === "attraction" && tripConfig?.additional_attractions) {
+                          const attraction = tripConfig.additional_attractions.find((a: any) => a.id === service.service_id);
+                          if (attraction) serviceTitle = attraction.title;
+                        } else if (service.type === "diet" && tripConfig?.diets) {
+                          const diet = tripConfig.diets.find((d: any) => d.id === service.service_id);
+                          if (diet) serviceTitle = diet.title;
+                        } else if (service.type === "insurance" && tripConfig?.extra_insurances) {
+                          const insurance = tripConfig.extra_insurances.find((i: any) => i.id === service.service_id);
+                          if (insurance) serviceTitle = insurance.title;
+                        }
+
+                        return {
+                          service_type: service.type,
+                          service_title: serviceTitle,
+                        };
+                      });
+
+                      return (
+                        <AgreementPreview 
+                          template={agreementTemplate} 
+                          tripFullData={tripFullData}
+                          tripContentData={tripContentData}
+                          formData={{
+                            contact: {
+                              first_name: form.watch("contact.first_name"),
+                              last_name: form.watch("contact.last_name"),
+                              email: form.watch("contact.email"),
+                              phone: form.watch("contact.phone"),
+                              pesel: form.watch("contact.pesel"),
+                              address: form.watch("contact.address"),
+                            },
+                            company: applicantType === "company" ? form.watch("company") : undefined,
+                            participants: form.watch("participants"),
+                            participant_services: mappedServices as Array<{ service_type?: string; service_title?: string }>,
+                          }}
+                        />
+                      );
+                    })()}
                   </section>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-3">

@@ -11,6 +11,13 @@ type Trip = {
   end_date: string | null
 }
 
+// Typ dla pojedynczej raty w harmonogramie
+export type PaymentScheduleItem = {
+  installment_number: number
+  percent: number
+  due_date: string
+}
+
 // Pełne dane wycieczki z API
 export type TripFullData = {
   id: string
@@ -40,6 +47,7 @@ export type TripFullData = {
   payment_split_second_percent: number | null
   payment_reminder_enabled: boolean | null
   payment_reminder_days_before: number | null
+  payment_schedule: PaymentScheduleItem[] | null
 }
 
 // Dane content wycieczki
@@ -54,6 +62,8 @@ export type TripContentData = {
   trip_info_text: string
   baggage_text: string
   weather_text: string
+  show_trip_info_card: boolean
+  show_baggage_card: boolean
   show_weather_card: boolean
   show_seats_left: boolean
   included_in_price_text: string

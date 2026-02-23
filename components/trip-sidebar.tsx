@@ -9,7 +9,6 @@ import {
   IconShieldCheck,
   IconUserPlus,
   IconUsers,
-  IconWallet,
   IconEdit,
   IconPlus,
   IconFileText,
@@ -97,20 +96,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       url: "/trip-dashboard/publiczny-wyglad",
       icon: IconEdit,
     },
+    
     {
-      title: "Rezerwacje i Umowy",
-      url: "/trip-dashboard/rezerwacje",
-      icon: IconFileDescription,
-    },
-    {
-      title: "Wzór umowy",
-      url: "/trip-dashboard/umowa",
-      icon: IconFileText,
-    },
-    {
-      title: "Płatności",
-      url: "/trip-dashboard/platnosci",
-      icon: IconWallet,
+      title: "Uczestnicy",
+      url: "/trip-dashboard/uczestnicy",
+      icon: IconUsers,
     },
     {
       title: "Faktury",
@@ -121,11 +111,6 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       title: "Ubezpieczenia",
       url: "/trip-dashboard/ubezpieczenia",
       icon: IconShieldCheck,
-    },
-    {
-      title: "Uczestnicy",
-      url: "/trip-dashboard/uczestnicy",
-      icon: IconUsers,
     },
     {
       title: "Dokumentacja",

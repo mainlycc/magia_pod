@@ -125,7 +125,7 @@ export function ContactStep({
               name="contact.pesel"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>PESEL</FormLabel>
+                  <FormLabel>PESEL *</FormLabel>
                   <FormControl>
                     <Input placeholder="12345678901" {...field} maxLength={11} />
                   </FormControl>

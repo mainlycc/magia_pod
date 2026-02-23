@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { ExternalLink } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useTrip } from "@/contexts/trip-context"
 
 export function TripPublicLink() {
@@ -10,13 +11,15 @@ export function TripPublicLink() {
   if (!selectedTrip) return null
 
   return (
-    <Link
-      href={`/trip/${selectedTrip.slug}`}
-      target="_blank"
-      className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-    >
-      Zobacz stronę publiczną
-      <ExternalLink className="h-3 w-3" />
-    </Link>
+    <Button asChild variant="outline" size="default">
+      <Link
+        href={`/trip/${selectedTrip.slug}`}
+        target="_blank"
+        className="inline-flex items-center gap-2"
+      >
+        Zobacz stronę publiczną
+        <ExternalLink className="h-4 w-4" />
+      </Link>
+    </Button>
   )
 }

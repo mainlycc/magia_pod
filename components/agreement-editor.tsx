@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { GripVertical, Plus, Trash2, Save } from "lucide-react";
+import { TripContentEditor } from "@/components/trip-content-editor";
 import {
   DndContext,
   closestCenter,
@@ -30,6 +31,141 @@ interface AgreementEditorProps {
   onChange: (template: AgreementTemplate) => void;
   onSave: () => void;
   saving?: boolean;
+}
+
+// Lista placeholderów, które są automatycznie wypełniane z danych formularza/wycieczki
+const AUTO_FILLED_PLACEHOLDERS = [
+  // Dane zgłaszającego
+  'contact_first_name',
+  'contact_last_name',
+  'contact_full_name',
+  'contact_address',
+  'contact_street',
+  'contact_city',
+  'contact_zip',
+  'contact_pesel',
+  'contact_phone',
+  'contact_email',
+  // Dane firmy
+  'company_name',
+  'company_nip',
+  'company_address',
+  // Dane uczestników
+  'participants_count',
+  'participants_list',
+  // Informacje o wycieczce
+  'trip_title',
+  'trip_location',
+  'trip_start_date',
+  'trip_end_date',
+  'trip_duration',
+  'trip_price_per_person',
+  'trip_total_price',
+  'trip_deposit_amount',
+  'trip_deposit_deadline',
+  'trip_final_payment_deadline',
+  'reservation_number',
+  'nights_count',
+  // Usługi
+  'selected_services',
+];
+
+// Funkcja sprawdzająca, czy wartość pola zawiera automatycznie wypełniany placeholder
+function hasAutoFilledPlaceholder(value: string): boolean {
+  if (!value) return false;
+  
+  // Sprawdź, czy wartość zawiera którykolwiek z automatycznie wypełnianych placeholderów
+  return AUTO_FILLED_PLACEHOLDERS.some(placeholder => 
+    value.includes(`{{${placeholder}}}`)
+  );
+}
+
+// Funkcja sprawdzająca, czy pole wymaga ręcznego wypełnienia
+// Pole wymaga ręcznego wypełnienia, jeśli:
+// 1. Jest puste (trzeba ręcznie wpisać wartość)
+// 2. Nie zawiera automatycznie wypełnianych placeholderów (zawiera zwykły tekst lub ręczne placeholdery)
+function requiresManualFill(value: string): boolean {
+  // Jeśli pole jest puste, wymaga ręcznego wypełnienia
+  if (!value || value.trim() === '') return true;
+  
+  // Jeśli pole zawiera automatycznie wypełniany placeholder, nie wymaga ręcznego wypełnienia
+  if (hasAutoFilledPlaceholder(value)) return false;
+  
+  // Jeśli pole nie zawiera żadnego automatycznie wypełnianego placeholderu,
+  // to wymaga ręcznego wypełnienia (zawiera zwykły tekst lub ręczne placeholdery)
+  return true;
+}
+
+// Komponent sortowalnego pola wewnątrz sekcji typu 'table'
+function SortableField({
+  field,
+  sectionId,
+  onUpdate,
+  onDelete,
+}: {
+  field: AgreementField;
+  sectionId: string;
+  onUpdate: (field: AgreementField) => void;
+  onDelete: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: `${sectionId}-${field.id}`, // Unikalne ID z prefiksem sectionId
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const needsManualFill = requiresManualFill(field.value);
+
+  return (
+    <div ref={setNodeRef} style={style} className="grid grid-cols-2 gap-3 items-start">
+      <div className="flex items-center gap-2">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-move p-1 hover:bg-muted rounded"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <Input
+          value={field.label}
+          onChange={(e) => {
+            onUpdate({ ...field, label: e.target.value });
+          }}
+          placeholder="Etykieta pola..."
+          className={`text-sm flex-1 ${needsManualFill ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+        />
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={field.value}
+          onChange={(e) => {
+            onUpdate({ ...field, value: e.target.value });
+          }}
+          placeholder="Wartość lub {{placeholder}}..."
+          className={`text-sm flex-1 ${needsManualFill ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          className="text-destructive hover:text-destructive"
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // Funkcja sprawdzająca czy sekcja jest systemowa (nieedytowalna)
@@ -74,7 +210,7 @@ function SortableSection({
     isDragging,
   } = useSortable({ 
     id: section.id,
-    disabled: isSystem, // Wyłącz drag & drop dla sekcji systemowych
+    // Usunięto disabled - sekcje systemowe też mogą być przeciągane
   });
 
   const style = {
@@ -83,10 +219,40 @@ function SortableSection({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const handleFieldChange = (fieldId: string, value: string) => {
+  // Sensory dla zagnieżdżonego DndContext (pola w sekcji)
+  const fieldSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleFieldDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id && section.fields) {
+      // Wyciągnij field.id z unikalnego ID (format: sectionId-fieldId)
+      const activeFieldId = String(active.id).replace(`${section.id}-`, '');
+      const overFieldId = String(over.id).replace(`${section.id}-`, '');
+
+      const oldIndex = section.fields.findIndex((field) => field.id === activeFieldId);
+      const newIndex = section.fields.findIndex((field) => field.id === overFieldId);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newFields = arrayMove(section.fields, oldIndex, newIndex);
+        onUpdate({ ...section, fields: newFields });
+      }
+    }
+  };
+
+  const handleFieldUpdate = (updatedField: AgreementField) => {
     if (section.fields) {
       const updatedFields = section.fields.map((field) =>
-        field.id === fieldId ? { ...field, value } : field
+        field.id === updatedField.id ? updatedField : field
       );
       onUpdate({ ...section, fields: updatedFields });
     }
@@ -138,7 +304,7 @@ function SortableSection({
           )}
           {isSystem ? (
             <div className="font-semibold flex-1 text-muted-foreground text-sm">
-              Sekcja systemowa (tylko do odczytu)
+              Sekcja systemowa
             </div>
           ) : (
             <Input
@@ -162,74 +328,52 @@ function SortableSection({
       </CardHeader>
       <CardContent>
         {section.type === 'table' && section.fields && (
-          <div className="space-y-3">
-            {section.fields.map((field) => (
-              <div key={field.id} className="grid grid-cols-2 gap-3 items-start">
-                <div>
-                  <Input
-                    value={field.label}
-                    onChange={(e) => {
-                      const updatedFields = section.fields!.map((f) =>
-                        f.id === field.id ? { ...f, label: e.target.value } : f
-                      );
-                      onUpdate({ ...section, fields: updatedFields });
-                    }}
-                    placeholder="Etykieta pola..."
-                    className="text-sm"
+          <DndContext
+            sensors={fieldSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleFieldDragEnd}
+          >
+            <SortableContext
+              items={section.fields.map((field) => `${section.id}-${field.id}`)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {section.fields.map((field) => (
+                  <SortableField
+                    key={field.id}
+                    field={field}
+                    sectionId={section.id}
+                    onUpdate={handleFieldUpdate}
+                    onDelete={() => handleDeleteField(field.id)}
                   />
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={field.value}
-                    onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                    placeholder="Wartość lub {{placeholder}}..."
-                    className="text-sm flex-1"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteField(field.id)}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                ))}
               </div>
-            ))}
+            </SortableContext>
             <Button
               variant="outline"
               size="sm"
               onClick={handleAddField}
-              className="w-full"
+              className="w-full mt-3"
             >
               <Plus className="h-4 w-4 mr-2" />
               Dodaj pole
             </Button>
-          </div>
+          </DndContext>
         )}
         
         {section.type === 'paragraph' && (
-          isSystem ? (
-            <div 
-              className="min-h-[100px] p-3 border rounded-md bg-muted/20 text-sm"
-              dangerouslySetInnerHTML={{ __html: section.content || '' }}
-            />
-          ) : (
-            <Textarea
-              value={section.content || ''}
-              onChange={(e) => handleContentChange(e.target.value)}
-              placeholder="Treść paragrafu..."
-              className="min-h-[100px]"
-            />
-          )
+          <TripContentEditor
+            content={section.content || ''}
+            onChange={handleContentChange}
+            label="Treść paragrafu"
+          />
         )}
         
         {section.type === 'list' && (
-          <Textarea
-            value={section.content || ''}
-            onChange={(e) => handleContentChange(e.target.value)}
-            placeholder="Elementy listy (jeden na linię)..."
-            className="min-h-[100px]"
+          <TripContentEditor
+            content={section.content || ''}
+            onChange={handleContentChange}
+            label="Elementy listy"
           />
         )}
       </CardContent>
@@ -250,7 +394,11 @@ export function AgreementEditor({
   }, [template]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })

@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
+import { PaymentScheduleEditor } from "@/components/payment-schedule-editor"
+import { PaymentScheduleItem } from "@/contexts/trip-context"
 
 type Coordinator = {
   id: string
@@ -38,11 +40,9 @@ export default function DodajWycieczkePage() {
   const [price, setPrice] = useState("")
   const [seats, setSeats] = useState("")
   const [location, setLocation] = useState("")
-  const [paymentSplitEnabled, setPaymentSplitEnabled] = useState(true)
-  const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState("30")
-  const [paymentSplitSecondPercent, setPaymentSplitSecondPercent] = useState("70")
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([])
   const [isPublic, setIsPublic] = useState(false)
   const [publicSlug, setPublicSlug] = useState("")
 
@@ -69,14 +69,60 @@ export default function DodajWycieczkePage() {
           setLocation(data.location || "")
           setIsPublic(data.isPublic || false)
           setPublicSlug(data.publicSlug || "")
-          setPaymentSplitEnabled(data.paymentSplitEnabled !== undefined ? data.paymentSplitEnabled : true)
-          setPaymentSplitFirstPercent(data.paymentSplitFirstPercent || "30")
-          setPaymentSplitSecondPercent(data.paymentSplitSecondPercent || "70")
           setPaymentReminderEnabled(data.paymentReminderEnabled || false)
           setPaymentReminderDaysBefore(data.paymentReminderDaysBefore || "")
+          if (data.paymentSchedule && Array.isArray(data.paymentSchedule)) {
+            setPaymentSchedule(data.paymentSchedule)
+          } else {
+            // Domyślny harmonogram: 2 raty
+            const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .split("T")[0]
+            const defaultDate2 = data.startDate
+              ? new Date(
+                  new Date(data.startDate).getTime() - 14 * 24 * 60 * 60 * 1000
+                )
+                  .toISOString()
+                  .split("T")[0]
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                  .toISOString()
+                  .split("T")[0]
+            setPaymentSchedule([
+              {
+                installment_number: 1,
+                percent: 30,
+                due_date: defaultDate1,
+              },
+              {
+                installment_number: 2,
+                percent: 70,
+                due_date: defaultDate2,
+              },
+            ])
+          }
         } catch (e) {
           console.error("Error loading saved data:", e)
         }
+      } else {
+        // Domyślny harmonogram jeśli brak zapisanych danych
+        const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0]
+        const defaultDate2 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0]
+        setPaymentSchedule([
+          {
+            installment_number: 1,
+            percent: 30,
+            due_date: defaultDate1,
+          },
+          {
+            installment_number: 2,
+            percent: 70,
+            due_date: defaultDate2,
+          },
+        ])
       }
     }
   }, [])
@@ -126,14 +172,18 @@ export default function DodajWycieczkePage() {
       return
     }
 
-    // Walidacja sumy procentów
-    if (paymentSplitEnabled) {
-      const firstPercent = parseInt(paymentSplitFirstPercent, 10)
-      const secondPercent = parseInt(paymentSplitSecondPercent, 10)
-      if (firstPercent + secondPercent !== 100) {
-        toast.error("Suma procentów musi równać się 100%")
-        return
-      }
+    // Walidacja harmonogramu płatności
+    const totalPercent = paymentSchedule.reduce(
+      (sum, item) => sum + item.percent,
+      0
+    )
+    if (totalPercent !== 100) {
+      toast.error("Suma procentów w harmonogramie musi równać się 100%")
+      return
+    }
+    if (paymentSchedule.length === 0) {
+      toast.error("Musisz dodać przynajmniej jedną ratę")
+      return
     }
 
     try {
@@ -150,9 +200,7 @@ export default function DodajWycieczkePage() {
         location,
         isPublic,
         publicSlug,
-        paymentSplitEnabled,
-        paymentSplitFirstPercent,
-        paymentSplitSecondPercent,
+        paymentSchedule,
         paymentReminderEnabled,
         paymentReminderDaysBefore,
         coordinatorIds: coordinators.map((c) => c.id),
@@ -250,76 +298,14 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
-            {/* Podział płatności */}
-            <div className="col-span-2 grid gap-2 border rounded-md p-2">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="payment-split-enabled"
-                  checked={paymentSplitEnabled}
-                  onCheckedChange={(checked) =>
-                    setPaymentSplitEnabled(Boolean(checked))
-                  }
-                  className="h-4 w-4"
-                />
-                <Label
-                  htmlFor="payment-split-enabled"
-                  className="text-xs cursor-pointer font-semibold"
-                >
-                  Płatność podzielona
-                </Label>
-              </div>
-              {paymentSplitEnabled && (
-                <div className="grid grid-cols-2 gap-2 pl-6">
-                  <div className="grid gap-1">
-                    <Label className="text-xs">
-                      Pierwsza płatność (zaliczka) %
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={paymentSplitFirstPercent}
-                      onChange={(e) => {
-                        setPaymentSplitFirstPercent(e.target.value)
-                        // Automatycznie oblicz drugi procent
-                        const first = parseInt(e.target.value, 10) || 0
-                        if (first >= 0 && first <= 100) {
-                          setPaymentSplitSecondPercent(String(100 - first))
-                        }
-                      }}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <Label className="text-xs">
-                      Druga płatność (reszta) %
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={paymentSplitSecondPercent}
-                      onChange={(e) => {
-                        setPaymentSplitSecondPercent(e.target.value)
-                        // Automatycznie oblicz pierwszy procent
-                        const second = parseInt(e.target.value, 10) || 0
-                        if (second >= 0 && second <= 100) {
-                          setPaymentSplitFirstPercent(String(100 - second))
-                        }
-                      }}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  {parseInt(paymentSplitFirstPercent, 10) +
-                    parseInt(paymentSplitSecondPercent, 10) !==
-                    100 && (
-                    <p className="col-span-2 text-[10px] text-destructive">
-                      Suma procentów musi równać się 100%
-                    </p>
-                  )}
-                </div>
-              )}
-              <div className="flex items-center gap-2 pl-6">
+            {/* Harmonogram płatności */}
+            <div className="col-span-2 border rounded-md p-2">
+              <PaymentScheduleEditor
+                schedule={paymentSchedule}
+                onChange={setPaymentSchedule}
+                tripStartDate={startDate}
+              />
+              <div className="mt-2 flex items-center gap-2">
                 <Checkbox
                   id="payment-reminder-enabled"
                   checked={paymentReminderEnabled}
@@ -336,7 +322,7 @@ export default function DodajWycieczkePage() {
                 </Label>
               </div>
               {paymentReminderEnabled && (
-                <div className="grid gap-1 pl-12">
+                <div className="grid gap-1 mt-2">
                   <Label className="text-xs">
                     Dni przed wycieczką (wysyłka maila)
                   </Label>

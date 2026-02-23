@@ -80,33 +80,45 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
       try {
         const supabase = createClient()
         
-        // Try to find by slug first
-        let { data: tripData, error: tripError } = await supabase
-          .from("trips")
-          .select(
-            "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location"
-          )
-          .eq("slug", slug)
-          .maybeSingle<Trip>()
+        // Wszystkie pola w jednym zapytaniu — unikamy cichego błędu drugiego zapytania
+        const basicFields = "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location"
+        const contentFields = "program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,show_seats_left,show_trip_info_card,show_baggage_card,show_weather_card,included_in_price_text,additional_costs_text,additional_service_text,trip_info_text,baggage_text,weather_text,reservation_number,duration_text,public_middle_sections,public_right_sections,public_hidden_middle_sections,public_hidden_right_sections,public_hidden_additional_sections"
+        const allFields = `${basicFields},${contentFields}`
+
+        async function queryTrip(fields: string, slugField: string, slugValue: string) {
+          return supabase
+            .from("trips")
+            .select(fields)
+            .eq(slugField, slugValue)
+            .maybeSingle<Trip>()
+        }
+
+        // Try to find by slug first (with all fields)
+        let { data: tripData, error: tripError } = await queryTrip(allFields, "slug", slug)
 
         if (!tripData && !tripError) {
           // Try public_slug
-          const { data: tripByPublicSlug, error: errorByPublicSlug } = await supabase
-            .from("trips")
-            .select(
-              "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location"
-            )
-            .eq("public_slug", slug)
-            .maybeSingle<Trip>()
-          
-          if (tripByPublicSlug) {
-            tripData = tripByPublicSlug
+          const res = await queryTrip(allFields, "public_slug", slug)
+          tripData = res.data
+          tripError = res.error
+        }
+
+        // Jeśli zapytanie z pełnymi polami nie zadziałało (np. brak kolumny), spróbuj z podstawowymi
+        if (tripError && !tripData) {
+          console.warn("Full query failed, falling back to basic fields:", tripError.message)
+          const { data: basicData, error: basicError } = await queryTrip(basicFields, "slug", slug)
+          if (!basicData && !basicError) {
+            const res = await queryTrip(basicFields, "public_slug", slug)
+            tripData = res.data
+            tripError = res.error
           } else {
-            tripError = errorByPublicSlug
+            tripData = basicData
+            tripError = basicError
           }
         }
 
         if (tripError) {
+          console.error("Error loading trip:", tripError)
           setError(tripError)
           setLoading(false)
           return
@@ -116,24 +128,6 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
           setError(new Error("Trip not found"))
           setLoading(false)
           return
-        }
-
-        // Load additional content fields
-        try {
-          const { data: contentData } = await supabase
-            .from("trips")
-            .select("program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,show_seats_left,show_trip_info_card,show_baggage_card,show_weather_card,included_in_price_text,additional_costs_text,additional_service_text,trip_info_text,baggage_text,weather_text,reservation_number,duration_text,public_middle_sections,public_right_sections,public_hidden_middle_sections,public_hidden_right_sections,public_hidden_additional_sections")
-            .eq("id", tripData.id)
-            .maybeSingle()
-          
-          if (contentData) {
-            tripData = {
-              ...tripData,
-              ...contentData,
-            }
-          }
-        } catch (e) {
-          // Ignore errors for optional fields
         }
 
         setTrip(tripData)
@@ -518,31 +512,8 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
               const isHidden = hiddenRightSections.includes(sectionId)
 
               if (sectionId === "bookingPreview") {
-                return (
-                  <Card key={sectionId} className="border-border">
-                    <CardHeader className="px-3 py-2">
-                      <CardTitle className="text-sm font-semibold">
-                        Podgląd karty rezerwacji
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm text-muted-foreground">
-                      <div className="flex items-center justify-between">
-                        <span>Cena (z bazy)</span>
-                        <span className="font-semibold text-foreground">
-                          {price} PLN
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Pozostało miejsc</span>
-                        {trip.show_seats_left && (
-                          <span className="text-xs text-muted-foreground">
-                            Na stronie będzie widoczne: {seatsLeft} miejsc
-                          </span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
+                // Karta podglądowa — nie wyświetlaj na publicznej stronie
+                return null
               }
 
               if (sectionId === "includedInPrice") {

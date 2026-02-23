@@ -245,6 +245,20 @@ export const createBookingFormSchema = (requiredFields?: {
           path: ["contact", "last_name"],
         });
       }
+      // PESEL zawsze wymagany dla osoby fizycznej
+      if (!value.contact.pesel || value.contact.pesel.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "PESEL jest wymagany",
+          path: ["contact", "pesel"],
+        });
+      } else if (!/^\d{11}$/.test(value.contact.pesel)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "PESEL musi mieć dokładnie 11 cyfr",
+          path: ["contact", "pesel"],
+        });
+      }
       // Dla osoby fizycznej nie waliduj company - przejdź dalej do walidacji uczestników
     } else if (value.applicant_type === "company") {
       // Dla firmy wymagaj danych firmy

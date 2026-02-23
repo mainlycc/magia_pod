@@ -44,7 +44,8 @@ export async function POST(request: NextRequest) {
           public_slug,
           payment_split_enabled,
           payment_split_first_percent,
-          payment_split_second_percent
+          payment_split_second_percent,
+          payment_schedule
         )
       `
       );
@@ -107,12 +108,67 @@ export async function POST(request: NextRequest) {
     }
 
     // Sprawdź czy wycieczka ma włączony podział płatności
+    // Użyj harmonogramu płatności jeśli dostępny, w przeciwnym razie użyj starego systemu
+    const paymentSchedule = trip.payment_schedule && Array.isArray(trip.payment_schedule) && trip.payment_schedule.length > 0
+      ? trip.payment_schedule
+      : null;
+    
     const paymentSplitEnabled = trip.payment_split_enabled ?? true;
     let paymentAmountCents = totalAmountCents;
     let isFirstPayment = true;
     let paymentDescription = `Rezerwacja ${booking.booking_ref} - ${trip.title}`;
 
-    if (paymentSplitEnabled) {
+    if (paymentSchedule && paymentSchedule.length > 0) {
+      // Nowy system: użyj harmonogramu
+      const firstInstallment = paymentSchedule[0];
+      const secondInstallment = paymentSchedule.length > 1 ? paymentSchedule[1] : null;
+      
+      // Sprawdź status płatności
+      const firstPaymentStatus = booking.first_payment_status ?? "unpaid";
+      const secondPaymentStatus = booking.second_payment_status ?? "unpaid";
+
+      // Jeśli pierwsza rata nie została zapłacona, płacimy pierwszą ratę
+      if (firstPaymentStatus === "unpaid") {
+        isFirstPayment = true;
+        paymentAmountCents = Math.round((totalAmountCents * firstInstallment.percent) / 100);
+        paymentDescription = `Rata ${firstInstallment.installment_number} (${firstInstallment.percent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+      } 
+      // Jeśli pierwsza rata została zapłacona, ale druga nie (jeśli istnieje), płacimy drugą ratę
+      else if (firstPaymentStatus === "paid" && secondInstallment && secondPaymentStatus === "unpaid") {
+        isFirstPayment = false;
+        paymentAmountCents = Math.round((totalAmountCents * secondInstallment.percent) / 100);
+        paymentDescription = `Rata ${secondInstallment.installment_number} (${secondInstallment.percent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+      }
+      // Jeśli obie płatności zostały zapłacone (lub wszystkie raty), zwróć błąd
+      else if (firstPaymentStatus === "paid" && (!secondInstallment || secondPaymentStatus === "paid")) {
+        return NextResponse.json(
+          { error: "payment_already_completed" },
+          { status: 400 }
+        );
+      }
+
+      // Zapisz kwoty w booking jeśli jeszcze nie są zapisane (dla kompatybilności wstecznej)
+      const adminClient = createAdminClient();
+      const updateData: {
+        first_payment_amount_cents?: number;
+        second_payment_amount_cents?: number;
+      } = {};
+
+      if (booking.first_payment_amount_cents === null || booking.first_payment_amount_cents === undefined) {
+        updateData.first_payment_amount_cents = Math.round((totalAmountCents * firstInstallment.percent) / 100);
+      }
+      if (secondInstallment && (booking.second_payment_amount_cents === null || booking.second_payment_amount_cents === undefined)) {
+        updateData.second_payment_amount_cents = Math.round((totalAmountCents * secondInstallment.percent) / 100);
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await adminClient
+          .from("bookings")
+          .update(updateData)
+          .eq("id", booking.id);
+      }
+    } else if (paymentSplitEnabled) {
+      // Stary system: użyj payment_split_first_percent i payment_split_second_percent
       const firstPercent = trip.payment_split_first_percent ?? 30;
       const secondPercent = trip.payment_split_second_percent ?? 70;
       

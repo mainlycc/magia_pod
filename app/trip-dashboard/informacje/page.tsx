@@ -18,6 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { X } from "lucide-react"
+import { PaymentScheduleEditor } from "@/components/payment-schedule-editor"
+import { PaymentScheduleItem } from "@/contexts/trip-context"
 
 type Coordinator = {
   id: string
@@ -40,11 +42,9 @@ export default function TripGeneralInfoPage() {
   const [price, setPrice] = useState("")
   const [seatsTotal, setSeatsTotal] = useState("")
   const [location, setLocation] = useState("")
-  const [paymentSplitEnabled, setPaymentSplitEnabled] = useState(true)
-  const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState("30")
-  const [paymentSplitSecondPercent, setPaymentSplitSecondPercent] = useState("70")
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([])
 
   const [coordinators, setCoordinators] = useState<Coordinator[]>([])
   const [availableCoordinators, setAvailableCoordinators] = useState<
@@ -90,21 +90,6 @@ export default function TripGeneralInfoPage() {
         typeof trip.seats_total === "number" ? String(trip.seats_total) : ""
       )
       setLocation(trip.location || "")
-      setPaymentSplitEnabled(
-        typeof trip.payment_split_enabled === "boolean"
-          ? trip.payment_split_enabled
-          : true
-      )
-      setPaymentSplitFirstPercent(
-        typeof trip.payment_split_first_percent === "number"
-          ? String(trip.payment_split_first_percent)
-          : "30"
-      )
-      setPaymentSplitSecondPercent(
-        typeof trip.payment_split_second_percent === "number"
-          ? String(trip.payment_split_second_percent)
-          : "70"
-      )
       setPaymentReminderEnabled(
         typeof trip.payment_reminder_enabled === "boolean"
           ? trip.payment_reminder_enabled
@@ -115,6 +100,38 @@ export default function TripGeneralInfoPage() {
           ? String(trip.payment_reminder_days_before)
           : ""
       )
+      // Załaduj harmonogram płatności
+      if (trip.payment_schedule && Array.isArray(trip.payment_schedule)) {
+        setPaymentSchedule(trip.payment_schedule)
+      } else {
+        // Fallback: utwórz harmonogram z starych danych lub domyślny
+        const firstPercent = trip.payment_split_first_percent ?? 30
+        const secondPercent = trip.payment_split_second_percent ?? 70
+        const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0]
+        const defaultDate2 = trip.start_date
+          ? new Date(
+              new Date(trip.start_date).getTime() - 14 * 24 * 60 * 60 * 1000
+            )
+              .toISOString()
+              .split("T")[0]
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .split("T")[0]
+        setPaymentSchedule([
+          {
+            installment_number: 1,
+            percent: firstPercent,
+            due_date: defaultDate1,
+          },
+          {
+            installment_number: 2,
+            percent: secondPercent,
+            due_date: defaultDate2,
+          },
+        ])
+      }
       setLoading(false)
     } else if (isLoadingTripData) {
       // Czekaj na załadowanie danych
@@ -160,14 +177,18 @@ export default function TripGeneralInfoPage() {
       const seatsNumber =
         seatsTotal.trim() === "" ? null : parseInt(seatsTotal, 10)
 
-      // Walidacja sumy procentów
-      if (paymentSplitEnabled) {
-        const firstPercent = parseInt(paymentSplitFirstPercent, 10)
-        const secondPercent = parseInt(paymentSplitSecondPercent, 10)
-        if (firstPercent + secondPercent !== 100) {
-          toast.error("Suma procentów musi równać się 100%")
-          return
-        }
+      // Walidacja harmonogramu płatności
+      const totalPercent = paymentSchedule.reduce(
+        (sum, item) => sum + item.percent,
+        0
+      )
+      if (totalPercent !== 100) {
+        toast.error("Suma procentów w harmonogramie musi równać się 100%")
+        return
+      }
+      if (paymentSchedule.length === 0) {
+        toast.error("Musisz dodać przynajmniej jedną ratę")
+        return
       }
 
       const res = await fetch(`/api/trips/${selectedTrip.id}`, {
@@ -181,13 +202,7 @@ export default function TripGeneralInfoPage() {
           price_cents: priceNumber,
           seats_total: seatsNumber,
           location: location || null,
-          payment_split_enabled: paymentSplitEnabled,
-          payment_split_first_percent: paymentSplitEnabled
-            ? parseInt(paymentSplitFirstPercent, 10)
-            : null,
-          payment_split_second_percent: paymentSplitEnabled
-            ? parseInt(paymentSplitSecondPercent, 10)
-            : null,
+          payment_schedule: paymentSchedule,
           payment_reminder_enabled: paymentReminderEnabled,
           payment_reminder_days_before: paymentReminderEnabled
             ? (paymentReminderDaysBefore.trim()
@@ -373,76 +388,14 @@ export default function TripGeneralInfoPage() {
                   />
                 </div>
 
-                {/* Podział płatności */}
-                <div className="col-span-2 grid gap-2 border rounded-md p-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="payment-split-enabled"
-                      checked={paymentSplitEnabled}
-                      onCheckedChange={(checked) =>
-                        setPaymentSplitEnabled(Boolean(checked))
-                      }
-                      className="h-4 w-4"
-                    />
-                    <Label
-                      htmlFor="payment-split-enabled"
-                      className="text-xs cursor-pointer font-semibold"
-                    >
-                      Płatność podzielona
-                    </Label>
-                  </div>
-                  {paymentSplitEnabled && (
-                    <div className="grid grid-cols-2 gap-2 pl-6">
-                      <div className="grid gap-1">
-                        <Label className="text-xs">
-                          Pierwsza płatność (zaliczka) %
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={paymentSplitFirstPercent}
-                          onChange={(e) => {
-                            setPaymentSplitFirstPercent(e.target.value)
-                            // Automatycznie oblicz drugi procent
-                            const first = parseInt(e.target.value, 10) || 0
-                            if (first >= 0 && first <= 100) {
-                              setPaymentSplitSecondPercent(String(100 - first))
-                            }
-                          }}
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      <div className="grid gap-1">
-                        <Label className="text-xs">
-                          Druga płatność (reszta) %
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={paymentSplitSecondPercent}
-                          onChange={(e) => {
-                            setPaymentSplitSecondPercent(e.target.value)
-                            // Automatycznie oblicz pierwszy procent
-                            const second = parseInt(e.target.value, 10) || 0
-                            if (second >= 0 && second <= 100) {
-                              setPaymentSplitFirstPercent(String(100 - second))
-                            }
-                          }}
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      {parseInt(paymentSplitFirstPercent, 10) +
-                        parseInt(paymentSplitSecondPercent, 10) !==
-                        100 && (
-                        <p className="col-span-2 text-[10px] text-destructive">
-                          Suma procentów musi równać się 100%
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 pl-6">
+                {/* Harmonogram płatności */}
+                <div className="col-span-2 border rounded-md p-2">
+                  <PaymentScheduleEditor
+                    schedule={paymentSchedule}
+                    onChange={setPaymentSchedule}
+                    tripStartDate={startDate}
+                  />
+                  <div className="mt-2 flex items-center gap-2">
                     <Checkbox
                       id="payment-reminder-enabled"
                       checked={paymentReminderEnabled}
@@ -459,7 +412,7 @@ export default function TripGeneralInfoPage() {
                     </Label>
                   </div>
                   {paymentReminderEnabled && (
-                    <div className="grid gap-1 pl-12">
+                    <div className="grid gap-1 mt-2">
                       <Label className="text-xs">
                         Dni przed wycieczką (wysyłka maila)
                       </Label>

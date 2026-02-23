@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       registration_mode,
       require_pesel,
       company_participants_info,
+      payment_schedule,
     } = body ?? {};
     if (!title) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
@@ -121,6 +122,7 @@ export async function POST(req: Request) {
         registration_mode: registration_mode ?? "both",
         require_pesel: typeof require_pesel === "boolean" ? require_pesel : true,
         company_participants_info: company_participants_info ?? null,
+        payment_schedule: payment_schedule && Array.isArray(payment_schedule) ? payment_schedule : null,
       })
       .select("id, slug")
       .single();

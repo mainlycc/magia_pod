@@ -6,6 +6,9 @@ import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-s
 
 const updateSchema = z.object({
   payment_status: z.enum(PAYMENT_STATUS_VALUES).optional(),
+  first_payment_status: z.enum(["unpaid", "paid"]).optional(),
+  second_payment_status: z.enum(["unpaid", "paid"]).optional(),
+  paid_amount_cents: z.number().int().min(0).optional(),
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
   internal_notes: z.array(z.any()).optional(),
 });
@@ -76,11 +79,93 @@ export async function PATCH(
   if (payload.payment_status !== undefined) {
     updateData.payment_status = payload.payment_status;
   }
+  if (payload.first_payment_status !== undefined) {
+    updateData.first_payment_status = payload.first_payment_status;
+  }
+  if (payload.second_payment_status !== undefined) {
+    updateData.second_payment_status = payload.second_payment_status;
+  }
+  if (payload.paid_amount_cents !== undefined) {
+    updateData.paid_amount_cents = payload.paid_amount_cents;
+  }
   if (payload.status !== undefined) {
     updateData.status = payload.status;
   }
   if (payload.internal_notes !== undefined) {
     updateData.internal_notes = payload.internal_notes;
+  }
+
+  // Automatycznie przelicz statusy jeśli zmieniono kwotę wpłaty lub status raty
+  if (
+    payload.paid_amount_cents !== undefined ||
+    payload.first_payment_status !== undefined ||
+    payload.second_payment_status !== undefined
+  ) {
+    // Pobierz aktualny stan bookingu + cenę wycieczki
+    const { data: currentBooking } = await supabase
+      .from("bookings")
+      .select(
+        "first_payment_status, second_payment_status, first_payment_amount_cents, second_payment_amount_cents, paid_amount_cents, trips:trips(price_cents)"
+      )
+      .eq("id", id)
+      .single();
+
+    if (currentBooking) {
+      const trip = Array.isArray(currentBooking.trips)
+        ? currentBooking.trips[0]
+        : currentBooking.trips;
+      const totalCents = trip?.price_cents ?? 0;
+      const paidCents = payload.paid_amount_cents ?? currentBooking.paid_amount_cents ?? 0;
+      const firstAmount = currentBooking.first_payment_amount_cents ?? 0;
+      const secondAmount = currentBooking.second_payment_amount_cents ?? 0;
+
+      // Przelicz statusy rat na podstawie wpłaconej kwoty
+      if (payload.paid_amount_cents !== undefined) {
+        if (firstAmount > 0) {
+          updateData.first_payment_status = paidCents >= firstAmount ? "paid" : "unpaid";
+        }
+        if (secondAmount > 0) {
+          updateData.second_payment_status =
+            paidCents >= firstAmount + secondAmount ? "paid" : "unpaid";
+        }
+      }
+
+      // Przelicz ogólny payment_status
+      if (totalCents > 0) {
+        if (paidCents >= totalCents) {
+          updateData.payment_status = paidCents > totalCents ? "overpaid" : "paid";
+        } else if (paidCents > 0) {
+          updateData.payment_status = "partial";
+        } else {
+          updateData.payment_status = "unpaid";
+        }
+      } else {
+        // Fallback po statusach rat
+        const first =
+          updateData.first_payment_status ??
+          payload.first_payment_status ??
+          currentBooking.first_payment_status ??
+          "unpaid";
+        const second =
+          updateData.second_payment_status ??
+          payload.second_payment_status ??
+          currentBooking.second_payment_status ??
+          "unpaid";
+        const hasSecondPayment = secondAmount > 0;
+
+        if (hasSecondPayment) {
+          if (first === "paid" && second === "paid") {
+            updateData.payment_status = "paid";
+          } else if (first === "paid" || second === "paid") {
+            updateData.payment_status = "partial";
+          } else {
+            updateData.payment_status = "unpaid";
+          }
+        } else {
+          updateData.payment_status = first === "paid" ? "paid" : "unpaid";
+        }
+      }
+    }
   }
 
   const { data, error } = await supabase
@@ -102,7 +187,12 @@ export async function PATCH(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  return NextResponse.json({ payment_status: data.payment_status });
+  return NextResponse.json({
+    payment_status: data.payment_status,
+    first_payment_status: data.first_payment_status,
+    second_payment_status: data.second_payment_status,
+    paid_amount_cents: data.paid_amount_cents,
+  });
 }
 
 export async function DELETE(

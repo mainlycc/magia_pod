@@ -26,14 +26,14 @@ export default function TripDashboardLayout({
             "md:group-data-[collapsible=offcanvas]/sidebar-wrapper:ml-0"
           )}
         >
-          <div className="flex flex-1 flex-col gap-4 p-4">
-            <Card className="flex-1 flex flex-col">
+          <div className="flex flex-1 flex-col gap-4 p-4 min-w-0 overflow-hidden">
+            <Card className="flex-1 flex flex-col min-w-0">
               <CardHeader className="flex flex-row items-center gap-2 pb-4">
                 <div className="flex flex-1 items-center justify-between gap-2">
                   <PageTitle />
                 </div>
               </CardHeader>
-              <CardContent className="flex-1">{children}</CardContent>
+              <CardContent className="flex-1 min-w-0 overflow-hidden">{children}</CardContent>
             </Card>
           </div>
           <Toaster position="top-right" richColors />
