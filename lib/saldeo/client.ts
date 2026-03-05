@@ -303,9 +303,7 @@ export async function getInvoicePdfUrl(
       };
     }    // Parsuj odpowiedź XML - szukamy <SOURCE> oraz <NUMBER>
     const sourceMatch = responseText.match(/<SOURCE[^>]*>([^<]+)<\/SOURCE>/i);
-    const numberMatch = responseText.match(/<NUMBER[^>]*>([^<]+)<\/NUMBER>/i);
-
-    if (sourceMatch && sourceMatch[1]) {
+    const numberMatch = responseText.match(/<NUMBER[^>]*>([^<]+)<\/NUMBER>/i);    if (sourceMatch && sourceMatch[1]) {
       return {
         success: true,
         pdfUrl: sourceMatch[1].trim(),

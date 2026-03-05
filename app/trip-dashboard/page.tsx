@@ -19,7 +19,6 @@ import {
   Banknote,
   TrendingUp,
   MapPin,
-  Clock,
   UserCircle,
   Mail,
 } from "lucide-react"
@@ -256,7 +255,12 @@ export default function TripDashboardPage() {
       {/* Nagłówek */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{selectedTrip.title}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{selectedTrip.title}</h1>
+            <Badge variant="outline" className="text-sm font-bold px-3 py-0.5">
+              Nr {selectedTrip.slug}
+            </Badge>
+          </div>
           {tripFullData?.location && (
             <div className="flex items-center gap-1.5 mt-1 text-muted-foreground text-sm">
               <MapPin className="h-4 w-4" />
@@ -485,30 +489,6 @@ export default function TripDashboardPage() {
                 <p className="text-xs text-muted-foreground pl-5">Brak przypisanych koordynatorów</p>
               )}
             </div>
-            <Separator />
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" />
-                Raty:
-              </span>
-              <span className="font-semibold">{paymentSchedule.length}</span>
-            </div>
-            {tripFullData?.payment_schedule &&
-              tripFullData.payment_schedule.length > 0 && (
-                <div className="space-y-1">
-                  {tripFullData.payment_schedule.map((item) => (
-                    <div
-                      key={item.installment_number}
-                      className="flex justify-between text-xs text-muted-foreground"
-                    >
-                      <span>
-                        Rata {item.installment_number} ({item.percent}%)
-                      </span>
-                      <span>do {formatDate(item.due_date)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
           </CardContent>
         </Card>
       </div>

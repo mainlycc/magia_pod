@@ -404,7 +404,11 @@ const createBookingFormSchema = (requiredFields?: {
   document?: boolean;
   gender?: boolean;
   phone?: boolean;
-} | null, requirePesel?: boolean | null) => z
+} | null, requiredContactFields?: {
+  pesel?: boolean;
+  phone?: boolean;
+  email?: boolean;
+} | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
     contact: z.object({
@@ -423,8 +427,8 @@ const createBookingFormSchema = (requiredFields?: {
         .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
         .optional()
         .or(z.literal("").transform(() => undefined)),
-      email: z.string().email("Podaj poprawny e-mail"),
-      phone: z.string().min(7, "Podaj telefon"),
+      email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
+      phone: z.string().min(7, "Podaj telefon").optional().or(z.literal("").transform(() => undefined)),
       address: optionalAddressSchema,
     }),
     company: companySchema.optional(),
@@ -467,19 +471,47 @@ const createBookingFormSchema = (requiredFields?: {
           path: ["contact", "last_name"],
         });
       }
-      // PESEL zawsze wymagany dla osoby fizycznej
-      if (!value.contact.pesel || value.contact.pesel.trim() === "") {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "PESEL jest wymagany",
-          path: ["contact", "pesel"],
-        });
-      } else if (!/^\d{11}$/.test(value.contact.pesel)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "PESEL musi mieć dokładnie 11 cyfr",
-          path: ["contact", "pesel"],
-        });
+      // E-mail wymagany gdy skonfigurowano (domyślnie tak)
+      if (requiredContactFields?.email !== false) {
+        if (!value.contact.email || value.contact.email.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj poprawny e-mail",
+            path: ["contact", "email"],
+          });
+        }
+      }
+      // Telefon wymagany gdy skonfigurowano (domyślnie tak)
+      if (requiredContactFields?.phone !== false) {
+        if (!value.contact.phone || value.contact.phone.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj telefon",
+            path: ["contact", "phone"],
+          });
+        } else if (value.contact.phone.length < 7) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon jest zbyt krótki",
+            path: ["contact", "phone"],
+          });
+        }
+      }
+      // PESEL wymagany dla osoby fizycznej tylko gdy skonfigurowano
+      if (requiredContactFields?.pesel) {
+        if (!value.contact.pesel || value.contact.pesel.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL jest wymagany",
+            path: ["contact", "pesel"],
+          });
+        } else if (!/^\d{11}$/.test(value.contact.pesel)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL musi mieć dokładnie 11 cyfr",
+            path: ["contact", "pesel"],
+          });
+        }
       }
       // Dla osoby fizycznej nie waliduj company - zakończ tutaj
       return;
@@ -639,6 +671,11 @@ type TripConfig = {
     document?: boolean;
     gender?: boolean;
     phone?: boolean;
+  } | null;
+  form_required_contact_fields?: {
+    pesel?: boolean;
+    phone?: boolean;
+    email?: boolean;
   } | null;
 };
 
@@ -809,7 +846,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,seats_total,reservation_info_text")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,reservation_info_text")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
           .maybeSingle<any>();
 
@@ -840,6 +877,11 @@ export function BookingForm({ slug }: BookingFormProps) {
               !Array.isArray(trip.form_required_participant_fields)
               ? trip.form_required_participant_fields as TripConfig["form_required_participant_fields"]
               : null,
+            form_required_contact_fields: trip.form_required_contact_fields &&
+              typeof trip.form_required_contact_fields === "object" &&
+              !Array.isArray(trip.form_required_contact_fields)
+              ? trip.form_required_contact_fields as TripConfig["form_required_contact_fields"]
+              : { pesel: false, phone: true, email: true },
           });
 
           setReservationInfoText(trip.reservation_info_text ?? null);
@@ -915,6 +957,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                 form_diets: null,
                 form_extra_insurances: null,
                 form_required_participant_fields: null,
+                form_required_contact_fields: null,
                 payment_split_enabled: null,
                 payment_split_first_percent: null,
                 payment_split_second_percent: null,
@@ -998,9 +1041,9 @@ export function BookingForm({ slug }: BookingFormProps) {
   const bookingFormSchemaWithConfig = useMemo(() => {
     return createBookingFormSchema(
       tripConfig?.form_required_participant_fields ?? null,
-      tripConfig?.require_pesel ?? null
+      tripConfig?.form_required_contact_fields ?? { pesel: tripConfig?.require_pesel ?? false, phone: true, email: true }
     );
-  }, [tripConfig?.form_required_participant_fields, tripConfig?.require_pesel]);
+  }, [tripConfig?.form_required_participant_fields, tripConfig?.form_required_contact_fields, tripConfig?.require_pesel]);
 
   const form = useForm({
     resolver: zodResolver(bookingFormSchemaWithConfig),
@@ -1136,15 +1179,22 @@ export function BookingForm({ slug }: BookingFormProps) {
     if (stepId === "contact") {
       // Dla kroku kontaktowego, dostosuj pola do walidacji w zależności od typu zgłaszającego
       if (applicantType === "individual") {
-        // Dla osoby fizycznej: wymagaj first_name, last_name i pesel, nie waliduj pól firmy
-        return [
+        // Dla osoby fizycznej: wymagaj first_name, last_name, nie waliduj pól firmy
+        const fields: FieldPath<BookingFormValues>[] = [
           "applicant_type",
           "contact.first_name",
           "contact.last_name",
-          "contact.pesel",
-          "contact.email",
-          "contact.phone",
         ];
+        if (tripConfig?.form_required_contact_fields?.email !== false) {
+          fields.push("contact.email");
+        }
+        if (tripConfig?.form_required_contact_fields?.phone !== false) {
+          fields.push("contact.phone");
+        }
+        if (tripConfig?.form_required_contact_fields?.pesel ?? tripConfig?.require_pesel) {
+          fields.push("contact.pesel");
+        }
+        return fields;
       } else if (applicantType === "company") {
         // Dla firmy: first_name i last_name są opcjonalne, nie wymagaj pesel, ale wymagaj pól firmy
         return [
@@ -1835,7 +1885,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                     />
                   </div>
 
-                  {applicantType === "individual" && (
+                  {applicantType === "individual" && (tripConfig?.form_required_contact_fields?.pesel ?? tripConfig?.require_pesel) && (
                     <div className="grid gap-4 md:grid-cols-2">
                       <FormField
                         control={control}
@@ -1854,32 +1904,36 @@ export function BookingForm({ slug }: BookingFormProps) {
                   )}
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    <FormField
-                      control={control}
-                      name="contact.email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>E-mail</FormLabel>
-                          <FormControl>
-                            <Input type="email" placeholder="ania@example.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={control}
-                      name="contact.phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Telefon</FormLabel>
-                          <FormControl>
-                            <Input placeholder="+48 600 000 000" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    {(tripConfig?.form_required_contact_fields?.email !== false) && (
+                      <FormField
+                        control={control}
+                        name="contact.email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>E-mail {(tripConfig?.form_required_contact_fields?.email !== false) && "*"}</FormLabel>
+                            <FormControl>
+                              <Input type="email" placeholder="ania@example.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                    {(tripConfig?.form_required_contact_fields?.phone !== false) && (
+                      <FormField
+                        control={control}
+                        name="contact.phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Telefon {(tripConfig?.form_required_contact_fields?.phone !== false) && "*"}</FormLabel>
+                            <FormControl>
+                              <Input placeholder="+48 600 000 000" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                   </div>
 
                   {applicantType === "company" && (

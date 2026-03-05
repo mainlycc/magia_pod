@@ -119,36 +119,12 @@ export function PaymentScheduleEditor({
         {localSchedule.map((item, index) => (
           <div
             key={index}
-            className="grid grid-cols-12 gap-2 items-end p-2 border rounded-md"
+            className="flex flex-col gap-2 p-3 border rounded-md"
           >
-            <div className="col-span-1 flex items-center justify-center">
-              <span className="text-xs font-medium">{item.installment_number}</span>
-            </div>
-            <div className="col-span-4 grid gap-1">
-              <Label className="text-xs">Procent (%)</Label>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={item.percent}
-                onChange={(e) =>
-                  updateInstallment(index, "percent", e.target.value)
-                }
-                className="h-8 text-xs"
-              />
-            </div>
-            <div className="col-span-5 grid gap-1">
-              <Label className="text-xs">Data wymagalności</Label>
-              <Input
-                type="date"
-                value={item.due_date}
-                onChange={(e) =>
-                  updateInstallment(index, "due_date", e.target.value)
-                }
-                className="h-8 text-xs"
-              />
-            </div>
-            <div className="col-span-2 flex justify-end">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-center">
+                Rata {item.installment_number}
+              </span>
               <Button
                 type="button"
                 variant="ghost"
@@ -159,6 +135,32 @@ export function PaymentScheduleEditor({
               >
                 <X className="h-4 w-4" />
               </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1">
+                <Label className="text-xs">Procent (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={item.percent}
+                  onChange={(e) =>
+                    updateInstallment(index, "percent", e.target.value)
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Data wymagalności</Label>
+                <Input
+                  type="date"
+                  value={item.due_date}
+                  onChange={(e) =>
+                    updateInstallment(index, "due_date", e.target.value)
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
           </div>
         ))}

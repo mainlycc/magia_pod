@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
 import { PaymentScheduleEditor } from "@/components/payment-schedule-editor"
 import { PaymentScheduleItem } from "@/contexts/trip-context"
+import { createClient } from "@/lib/supabase/client"
 
 type Coordinator = {
   id: string
@@ -50,6 +51,7 @@ export default function DodajWycieczkePage() {
   const [availableCoordinators, setAvailableCoordinators] = useState<Coordinator[]>([])
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("")
   const [loadingCoordinators, setLoadingCoordinators] = useState(true)
+  const [nextTripNumber, setNextTripNumber] = useState<string | null>(null)
 
   const effectivePublicSlug = isPublic ? publicSlug : ""
 
@@ -125,6 +127,35 @@ export default function DodajWycieczkePage() {
         ])
       }
     }
+  }, [])
+
+  // Pobierz następny numer wycieczki
+  useEffect(() => {
+    const loadNextTripNumber = async () => {
+      try {
+        const supabase = createClient()
+        const { data: existingTrips } = await supabase
+          .from("trips")
+          .select("slug")
+        
+        let maxNumericSlug = 0
+        if (existingTrips) {
+          for (const trip of existingTrips) {
+            const slug = trip.slug
+            if (slug && /^\d+$/.test(slug)) {
+              const numericValue = parseInt(slug, 10)
+              if (!isNaN(numericValue) && numericValue > maxNumericSlug) {
+                maxNumericSlug = numericValue
+              }
+            }
+          }
+        }
+        setNextTripNumber(String(maxNumericSlug + 1))
+      } catch {
+        console.error("Nie udało się pobrać numeru wycieczki")
+      }
+    }
+    void loadNextTripNumber()
   }, [])
 
   // Wczytaj koordynatorów
@@ -222,11 +253,22 @@ export default function DodajWycieczkePage() {
   )
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <TripCreationProgress currentStep={1} />
-      <Card className="p-3 space-y-2">
-        <CardContent className="px-0 pb-0 space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-xs">
+      <Card className="p-4">
+        <CardContent className="px-0 pb-0 space-y-4">
+          {/* Numer wycieczki */}
+          {nextTripNumber && (
+            <div className="flex items-center gap-2 mb-1">
+              <Label className="text-xs text-muted-foreground">Numer wycieczki:</Label>
+              <Badge variant="outline" className="text-sm font-bold px-3 py-0.5">
+                {nextTripNumber}
+              </Badge>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
+            {/* Nazwa */}
             <div className="grid gap-1">
               <Label className="text-xs">Nazwa *</Label>
               <Input
@@ -237,17 +279,19 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
+            {/* Opis */}
             <div className="grid gap-1">
               <Label className="text-xs">Opis</Label>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Opis wycieczki"
-                rows={2}
-                className="text-xs resize-none"
+                rows={1}
+                className="text-xs resize-none h-8 min-h-8 py-1.5"
               />
             </div>
 
+            {/* Data rozpoczęcia */}
             <div className="grid gap-1">
               <Label className="text-xs">Data rozpoczęcia</Label>
               <Input
@@ -257,6 +301,8 @@ export default function DodajWycieczkePage() {
                 className="h-8 text-xs"
               />
             </div>
+
+            {/* Data zakończenia */}
             <div className="grid gap-1">
               <Label className="text-xs">Data zakończenia</Label>
               <Input
@@ -267,6 +313,7 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
+            {/* Trasa/Kraj */}
             <div className="grid gap-1">
               <Label className="text-xs">Trasa/Kraj</Label>
               <Input
@@ -277,6 +324,7 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
+            {/* Cena */}
             <div className="grid gap-1">
               <Label className="text-xs">Cena (PLN)</Label>
               <Input
@@ -287,6 +335,8 @@ export default function DodajWycieczkePage() {
                 className="h-8 text-xs"
               />
             </div>
+
+            {/* Liczba miejsc */}
             <div className="grid gap-1">
               <Label className="text-xs">Liczba miejsc</Label>
               <Input
@@ -298,50 +348,10 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
-            {/* Harmonogram płatności */}
-            <div className="col-span-2 border rounded-md p-2">
-              <PaymentScheduleEditor
-                schedule={paymentSchedule}
-                onChange={setPaymentSchedule}
-                tripStartDate={startDate}
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <Checkbox
-                  id="payment-reminder-enabled"
-                  checked={paymentReminderEnabled}
-                  onCheckedChange={(checked) =>
-                    setPaymentReminderEnabled(Boolean(checked))
-                  }
-                  className="h-4 w-4"
-                />
-                <Label
-                  htmlFor="payment-reminder-enabled"
-                  className="text-xs cursor-pointer"
-                >
-                  Automatyczne przypomnienia o płatności
-                </Label>
-              </div>
-              {paymentReminderEnabled && (
-                <div className="grid gap-1 mt-2">
-                  <Label className="text-xs">
-                    Dni przed wycieczką (wysyłka maila)
-                  </Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={paymentReminderDaysBefore}
-                    onChange={(e) =>
-                      setPaymentReminderDaysBefore(e.target.value)
-                    }
-                    placeholder="np. 7"
-                    className="h-8 text-xs"
-                  />
-                </div>
-              )}
-            </div>
-
+            {/* Publiczna strona */}
             <div className="grid gap-1">
-              <div className="flex items-center gap-2 pt-1">
+              <Label className="text-xs invisible">Publiczna strona</Label>
+              <div className="flex items-center gap-2 h-8">
                 <Checkbox
                   id="is-public"
                   checked={isPublic}
@@ -355,29 +365,76 @@ export default function DodajWycieczkePage() {
                   Publiczna strona wycieczki
                 </Label>
               </div>
-              {isPublic && (
-                <div className="grid gap-1 pl-6">
-                  <Input
-                    placeholder="np. magicka-wycieczka-wlochy"
-                    value={publicSlug}
-                    onChange={(e) => setPublicSlug(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    URL:{" "}
-                    <span className="font-mono">
-                      /trip/{effectivePublicSlug || "twoj-slug"}
-                    </span>
-                  </p>
-                </div>
-              )}
             </div>
+
+            {/* Slug publiczny */}
+            {isPublic && (
+              <div className="grid gap-1">
+                <Label className="text-xs">Slug publiczny</Label>
+                <Input
+                  placeholder="np. magicka-wycieczka-wlochy"
+                  value={publicSlug}
+                  onChange={(e) => setPublicSlug(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  URL:{" "}
+                  <span className="font-mono">
+                    /trip/{effectivePublicSlug || "twoj-slug"}
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
 
-          <Separator className="my-2" />
+          <Separator />
+
+          {/* Harmonogram płatności */}
+          <div className="border rounded-md p-3 space-y-2 text-xs">
+            <PaymentScheduleEditor
+              schedule={paymentSchedule}
+              onChange={setPaymentSchedule}
+              tripStartDate={startDate}
+            />
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="payment-reminder-enabled"
+                checked={paymentReminderEnabled}
+                onCheckedChange={(checked) =>
+                  setPaymentReminderEnabled(Boolean(checked))
+                }
+                className="h-4 w-4"
+              />
+              <Label
+                htmlFor="payment-reminder-enabled"
+                className="text-xs cursor-pointer"
+              >
+                Automatyczne przypomnienia o płatności
+              </Label>
+            </div>
+            {paymentReminderEnabled && (
+              <div className="grid gap-1">
+                <Label className="text-xs">
+                  Dni przed wycieczką (wysyłka maila)
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={paymentReminderDaysBefore}
+                  onChange={(e) =>
+                    setPaymentReminderDaysBefore(e.target.value)
+                  }
+                  placeholder="np. 7"
+                  className="h-8 text-xs"
+                />
+              </div>
+            )}
+          </div>
+
+          <Separator />
 
           {/* Koordynatorzy */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <h2 className="text-xs font-semibold">Koordynatorzy</h2>
 
             {loadingCoordinators ? (
@@ -412,7 +469,7 @@ export default function DodajWycieczkePage() {
                 )}
 
                 {unassignedCoordinators.length > 0 && (
-                  <div className="flex gap-1.5 items-end">
+                  <div className="flex gap-2 items-end">
                     <div className="flex-1 grid gap-1">
                       <Label className="text-xs">Przypisz koordynatora</Label>
                       <Select
@@ -457,8 +514,8 @@ export default function DodajWycieczkePage() {
             )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={() => router.back()}>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => router.back()}>
               Anuluj
             </Button>
             <Button

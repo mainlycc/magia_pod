@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import TextAlign from "@tiptap/extension-text-align";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -17,6 +18,9 @@ import {
   Quote,
   Undo,
   Redo,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from "lucide-react";
 import { useEffect } from "react";
 
@@ -28,7 +32,12 @@ interface TripContentEditorProps {
 
 export function TripContentEditor({ content, onChange, label }: TripContentEditorProps) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit,
+      TextAlign.configure({
+        types: ["heading", "paragraph"],
+      }),
+    ],
     content: content || "",
     immediatelyRender: false,
     editorProps: {
@@ -136,6 +145,33 @@ export function TripContentEditor({ content, onChange, label }: TripContentEdito
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
         >
           <Quote className="h-4 w-4" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "left" }) ? "default" : "ghost"}
+          size="icon-sm"
+          onClick={() => editor.chain().focus().setTextAlign("left").run()}
+        >
+          <AlignLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "center" }) ? "default" : "ghost"}
+          size="icon-sm"
+          onClick={() => editor.chain().focus().setTextAlign("center").run()}
+        >
+          <AlignCenter className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "right" }) ? "default" : "ghost"}
+          size="icon-sm"
+          onClick={() => editor.chain().focus().setTextAlign("right").run()}
+        >
+          <AlignRight className="h-4 w-4" />
         </Button>
 
         <Separator orientation="vertical" className="h-6" />

@@ -179,6 +179,10 @@ export const createBookingFormSchema = (requiredFields?: {
   document?: boolean;
   gender?: boolean;
   phone?: boolean;
+} | null, requiredContactFields?: {
+  pesel?: boolean;
+  phone?: boolean;
+  email?: boolean;
 } | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
@@ -200,8 +204,8 @@ export const createBookingFormSchema = (requiredFields?: {
         .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
         .optional()
         .or(z.literal("").transform(() => undefined)),
-      email: z.string().email("Podaj poprawny e-mail"),
-      phone: z.string().min(7, "Podaj telefon"),
+      email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
+      phone: z.string().min(7, "Podaj telefon").optional().or(z.literal("").transform(() => undefined)),
       address: optionalAddressSchema,
       comment: z.string().max(1000, "Komentarz jest za długi").optional().or(z.literal("").transform(() => undefined)),
     }),
@@ -245,19 +249,47 @@ export const createBookingFormSchema = (requiredFields?: {
           path: ["contact", "last_name"],
         });
       }
-      // PESEL zawsze wymagany dla osoby fizycznej
-      if (!value.contact.pesel || value.contact.pesel.trim() === "") {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "PESEL jest wymagany",
-          path: ["contact", "pesel"],
-        });
-      } else if (!/^\d{11}$/.test(value.contact.pesel)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "PESEL musi mieć dokładnie 11 cyfr",
-          path: ["contact", "pesel"],
-        });
+      // E-mail wymagany gdy skonfigurowano (domyślnie tak)
+      if (requiredContactFields?.email !== false) {
+        if (!value.contact.email || value.contact.email.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj poprawny e-mail",
+            path: ["contact", "email"],
+          });
+        }
+      }
+      // Telefon wymagany gdy skonfigurowano (domyślnie tak)
+      if (requiredContactFields?.phone !== false) {
+        if (!value.contact.phone || value.contact.phone.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj telefon",
+            path: ["contact", "phone"],
+          });
+        } else if (value.contact.phone.length < 7) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon jest zbyt krótki",
+            path: ["contact", "phone"],
+          });
+        }
+      }
+      // PESEL wymagany dla osoby fizycznej tylko gdy skonfigurowano
+      if (requiredContactFields?.pesel) {
+        if (!value.contact.pesel || value.contact.pesel.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL jest wymagany",
+            path: ["contact", "pesel"],
+          });
+        } else if (!/^\d{11}$/.test(value.contact.pesel)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL musi mieć dokładnie 11 cyfr",
+            path: ["contact", "pesel"],
+          });
+        }
       }
       // Dla osoby fizycznej nie waliduj company - przejdź dalej do walidacji uczestników
     } else if (value.applicant_type === "company") {

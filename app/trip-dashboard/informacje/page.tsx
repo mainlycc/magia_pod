@@ -317,6 +317,14 @@ export default function TripGeneralInfoPage() {
     <div className="space-y-2">
           <Card className="p-3 space-y-2">
             <CardContent className="px-0 pb-0 space-y-2">
+              {/* Numer wycieczki */}
+              <div className="flex items-center gap-2 mb-1">
+                <Label className="text-xs text-muted-foreground">Numer wycieczki:</Label>
+                <Badge variant="outline" className="text-sm font-bold px-3 py-0.5">
+                  {selectedTrip.slug}
+                </Badge>
+              </div>
+
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="grid gap-1">
                   <Label className="text-xs">Nazwa *</Label>

@@ -348,18 +348,26 @@ export async function submitBooking(
 
 export function getFieldsToValidate(
   stepId: (typeof steps)[number]["id"],
-  applicantType: "individual" | "company"
+  applicantType: "individual" | "company",
+  requiredContactFields?: { pesel?: boolean; phone?: boolean; email?: boolean } | null
 ): FieldPath<BookingFormValues>[] {
   if (stepId === "contact") {
     if (applicantType === "individual") {
-      return [
+      const fields: FieldPath<BookingFormValues>[] = [
         "applicant_type",
         "contact.first_name",
         "contact.last_name",
-        "contact.pesel",
-        "contact.email",
-        "contact.phone",
       ];
+      if (requiredContactFields?.email !== false) {
+        fields.push("contact.email");
+      }
+      if (requiredContactFields?.phone !== false) {
+        fields.push("contact.phone");
+      }
+      if (requiredContactFields?.pesel) {
+        fields.push("contact.pesel");
+      }
+      return fields;
     } else if (applicantType === "company") {
       return [
         "applicant_type",

@@ -118,7 +118,7 @@ export function ContactStep({
           />
         </div>
 
-        {applicantType === "individual" && (
+        {applicantType === "individual" && (tripConfig?.form_required_contact_fields?.pesel ?? tripConfig?.require_pesel) && (
           <div className="grid gap-4 md:grid-cols-2">
             <FormField
               control={control}
@@ -137,32 +137,36 @@ export function ContactStep({
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
-          <FormField
-            control={control}
-            name="contact.email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>E-mail</FormLabel>
-                <FormControl>
-                  <Input type="email" placeholder="ania@example.com" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={control}
-            name="contact.phone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Telefon</FormLabel>
-                <FormControl>
-                  <Input placeholder="+48 600 000 000" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {(tripConfig?.form_required_contact_fields?.email !== false) && (
+            <FormField
+              control={control}
+              name="contact.email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>E-mail {(tripConfig?.form_required_contact_fields?.email !== false) && "*"}</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="ania@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+          {(tripConfig?.form_required_contact_fields?.phone !== false) && (
+            <FormField
+              control={control}
+              name="contact.phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Telefon {(tripConfig?.form_required_contact_fields?.phone !== false) && "*"}</FormLabel>
+                  <FormControl>
+                    <Input placeholder="+48 600 000 000" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </div>
 
         {applicantType === "company" && (

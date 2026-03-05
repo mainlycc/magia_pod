@@ -56,6 +56,11 @@ type Trip = {
   public_hidden_middle_sections?: string[] | null
   public_hidden_right_sections?: string[] | null
   public_hidden_additional_sections?: string[] | null
+  additional_fields?: Array<{
+    id: string
+    sectionTitle: string
+    fields: Array<{ title: string; value: string }>
+  }> | null
 }
 
 function calculateDays(startDate: string | null, endDate: string | null): number {
@@ -82,7 +87,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
         
         // Wszystkie pola w jednym zapytaniu — unikamy cichego błędu drugiego zapytania
         const basicFields = "id,title,slug,public_slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,is_public,gallery_urls,location"
-        const contentFields = "program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,show_seats_left,show_trip_info_card,show_baggage_card,show_weather_card,included_in_price_text,additional_costs_text,additional_service_text,trip_info_text,baggage_text,weather_text,reservation_number,duration_text,public_middle_sections,public_right_sections,public_hidden_middle_sections,public_hidden_right_sections,public_hidden_additional_sections"
+        const contentFields = "program_atrakcje,dodatkowe_swiadczenia,intro_text,section_poznaj_title,section_poznaj_description,show_seats_left,show_trip_info_card,show_baggage_card,show_weather_card,included_in_price_text,additional_costs_text,additional_service_text,trip_info_text,baggage_text,weather_text,reservation_number,duration_text,public_middle_sections,public_right_sections,public_hidden_middle_sections,public_hidden_right_sections,public_hidden_additional_sections,additional_fields"
         const allFields = `${basicFields},${contentFields}`
 
         async function queryTrip(fields: string, slugField: string, slugValue: string) {
@@ -204,6 +209,11 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
 
   const hiddenRightSections: string[] =
     (Array.isArray(trip.public_hidden_right_sections) ? trip.public_hidden_right_sections : [])
+
+  const hiddenAdditionalSections: string[] =
+    (Array.isArray(trip.public_hidden_additional_sections) ? trip.public_hidden_additional_sections : [])
+
+  const additionalFieldSections = Array.isArray(trip.additional_fields) ? trip.additional_fields : []
 
   const openImage = (index: number) => setSelectedImage(index)
   const closeImage = () => setSelectedImage(null)
@@ -443,6 +453,43 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                 </CardContent>
               </Card>
             )}
+
+            {/* Sekcje dodatkowe (np. Zakwaterowanie) */}
+            {additionalFieldSections
+              .filter((section) => !hiddenAdditionalSections.includes(section.id))
+              .map((section) => {
+                // Nie wyświetlaj sekcji bez tytułu lub bez pól z wartościami
+                const hasContent = section.fields.some(f => f.title || f.value)
+                if (!section.sectionTitle && !hasContent) return null
+
+                return (
+                  <Card key={section.id}>
+                    {section.sectionTitle && (
+                      <CardHeader className="px-3 py-2">
+                        <CardTitle className="text-sm font-semibold">
+                          {section.sectionTitle}
+                        </CardTitle>
+                      </CardHeader>
+                    )}
+                    <CardContent className={section.sectionTitle ? "pt-2" : "pt-4"}>
+                      <div className="space-y-2">
+                        {section.fields
+                          .filter(f => f.title || f.value)
+                          .map((field, idx) => (
+                            <div key={idx} className="flex flex-col gap-0.5">
+                              {field.title && (
+                                <span className="text-xs font-semibold text-foreground">{field.title}</span>
+                              )}
+                              {field.value && (
+                                <span className="text-sm text-muted-foreground">{field.value}</span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
           </div>
 
           {/* Środkowa kolumna – program */}

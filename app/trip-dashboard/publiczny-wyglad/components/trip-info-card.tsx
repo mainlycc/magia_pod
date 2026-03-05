@@ -1,8 +1,8 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { TripContentEditor } from "@/components/trip-content-editor"
 import type { ToggleableCardProps } from "../types"
 
 export function TripInfoCard({ show, onShowChange, text, onTextChange, title }: ToggleableCardProps) {
@@ -23,11 +23,10 @@ export function TripInfoCard({ show, onShowChange, text, onTextChange, title }: 
       </CardHeader>
       {show && (
         <CardContent className="space-y-2 pt-2">
-          <Textarea
-            value={text}
-            onChange={(e) => onTextChange(e.target.value)}
-            placeholder="Wpisz informacje o wyjeździe..."
-            className="min-h-[120px] text-xs"
+          <TripContentEditor
+            content={text}
+            onChange={onTextChange}
+            label=""
           />
         </CardContent>
       )}

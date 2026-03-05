@@ -41,6 +41,11 @@ export type TripConfig = {
     gender?: boolean;
     phone?: boolean;
   } | null;
+  form_required_contact_fields?: {
+    pesel?: boolean;
+    phone?: boolean;
+    email?: boolean;
+  } | null;
 };
 
 export const steps = [

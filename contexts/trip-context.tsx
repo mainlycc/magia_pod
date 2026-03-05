@@ -42,6 +42,7 @@ export type TripFullData = {
   form_diets: unknown
   form_extra_insurances: unknown
   form_required_participant_fields: unknown
+  form_required_contact_fields: unknown
   payment_split_enabled: boolean | null
   payment_split_first_percent: number | null
   payment_split_second_percent: number | null

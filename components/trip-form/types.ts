@@ -7,6 +7,12 @@ export interface RequiredParticipantFields {
   phone: boolean
 }
 
+export interface RequiredContactFields {
+  pesel: boolean
+  phone: boolean
+  email: boolean
+}
+
 export interface AdditionalAttraction {
   id: string
   title: string

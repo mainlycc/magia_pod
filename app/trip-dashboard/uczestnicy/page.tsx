@@ -175,14 +175,15 @@ export default function UczestnicyPage() {
     })
   }
 
-  // Zapisz wpłatę (kwota w groszach)
-  const savePayment = async (bookingId: string, amountCents: number) => {
+  // Zapisz wpłatę — addedCents to kwota DODAWANA do istniejącej sumy
+  const savePayment = async (bookingId: string, addedCents: number, currentPaidCents: number) => {
+    const newTotalCents = currentPaidCents + addedCents
     setUpdatingPayment(bookingId)
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paid_amount_cents: amountCents }),
+        body: JSON.stringify({ paid_amount_cents: newTotalCents }),
       })
       if (!res.ok) {
         throw new Error("Nie udało się zapisać wpłaty")
@@ -197,7 +198,7 @@ export default function UczestnicyPage() {
               ...p,
               bookings: {
                 ...p.bookings!,
-                paid_amount_cents: amountCents,
+                paid_amount_cents: newTotalCents,
                 payment_status: result.payment_status ?? p.bookings!.payment_status,
                 first_payment_status: result.first_payment_status ?? p.bookings!.first_payment_status,
                 second_payment_status: result.second_payment_status ?? p.bookings!.second_payment_status,
@@ -207,7 +208,13 @@ export default function UczestnicyPage() {
           return p
         })
       )
-      toast.success(`Zapisano wpłatę: ${(amountCents / 100).toFixed(2)} zł`)
+      // Wyczyść input po zapisaniu
+      setPaymentInputs((prev) => {
+        const next = { ...prev }
+        delete next[bookingId]
+        return next
+      })
+      toast.success(`Dodano wpłatę: ${(addedCents / 100).toFixed(2)} zł (łącznie: ${(newTotalCents / 100).toFixed(2)} zł)`)
     } catch (err) {
       console.error(err)
       toast.error("Nie udało się zapisać wpłaty")
@@ -216,10 +223,9 @@ export default function UczestnicyPage() {
     }
   }
 
-  // Pomocnicza: pobierz wartość inputu lub aktualną kwotę z bookingu
-  const getPaymentInputValue = (bookingId: string, currentPaidCents: number): string => {
-    if (paymentInputs[bookingId] !== undefined) return paymentInputs[bookingId]
-    return currentPaidCents > 0 ? (currentPaidCents / 100).toFixed(2) : ""
+  // Pomocnicza: pobierz wartość inputu (domyślnie pusty — wpisujemy kwotę do DODANIA)
+  const getPaymentInputValue = (bookingId: string): string => {
+    return paymentInputs[bookingId] ?? ""
   }
 
   // Oblicz statystyki
@@ -658,16 +664,16 @@ export default function UczestnicyPage() {
                                         </div>
                                       )}
 
-                                      {/* Input kwoty wpłaty */}
-                                      <div className="flex items-center gap-2 rounded-md border p-2 bg-background">
-                                        <span className="text-sm font-medium whitespace-nowrap">Kwota wpłaty:</span>
+                                      {/* Input kwoty wpłaty — dodaje do istniejącej sumy */}
+                                      <div className="flex items-center gap-2 rounded-md border p-2 bg-background flex-wrap">
+                                        <span className="text-sm font-medium whitespace-nowrap">Dodaj wpłatę:</span>
                                         <div className="relative flex-1 max-w-[200px]">
                                           <Input
                                             type="number"
                                             step="0.01"
                                             min="0"
                                             placeholder="0.00"
-                                            value={getPaymentInputValue(booking.id, paidAmount)}
+                                            value={getPaymentInputValue(booking.id)}
                                             onChange={(e) => {
                                               setPaymentInputs((prev) => ({
                                                 ...prev,
@@ -684,21 +690,16 @@ export default function UczestnicyPage() {
                                         <Button
                                           size="sm"
                                           className="shrink-0 h-8 text-xs"
-                                          disabled={updatingPayment === booking.id}
+                                          disabled={updatingPayment === booking.id || !paymentInputs[booking.id]}
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            const inputVal = paymentInputs[booking.id]
-                                            const val = inputVal !== undefined
-                                              ? inputVal
-                                              : paidAmount > 0
-                                                ? (paidAmount / 100).toFixed(2)
-                                                : "0"
-                                            const cents = Math.round(parseFloat(val || "0") * 100)
-                                            if (isNaN(cents) || cents < 0) {
-                                              toast.error("Podaj poprawną kwotę")
+                                            const inputVal = paymentInputs[booking.id] ?? "0"
+                                            const addedCents = Math.round(parseFloat(inputVal || "0") * 100)
+                                            if (isNaN(addedCents) || addedCents <= 0) {
+                                              toast.error("Podaj poprawną kwotę do dodania")
                                               return
                                             }
-                                            savePayment(booking.id, cents)
+                                            savePayment(booking.id, addedCents, paidAmount)
                                           }}
                                         >
                                           {updatingPayment === booking.id ? (
@@ -706,38 +707,48 @@ export default function UczestnicyPage() {
                                           ) : (
                                             <>
                                               <Save className="mr-1 h-3 w-3" />
-                                              Zapisz
+                                              Dodaj
                                             </>
                                           )}
                                         </Button>
-                                        {/* Szybkie przyciski na podstawie harmonogramu — tyle ile rat */}
-                                        {paymentSchedule.map((item, idx) => (
-                                          <Button
-                                            key={idx}
-                                            size="sm"
-                                            variant="outline"
-                                            className="shrink-0 h-8 text-xs"
-                                            onClick={(e) => {
-                                              e.stopPropagation()
-                                              // Suma rat od 1 do idx+1
-                                              const sumCents = paymentSchedule
-                                                .slice(0, idx + 1)
-                                                .reduce((s, r) => s + r.amount, 0)
-                                              setPaymentInputs((prev) => ({
-                                                ...prev,
-                                                [booking.id]: (sumCents / 100).toFixed(2),
-                                              }))
-                                            }}
-                                          >
-                                            {paymentSchedule.length === 1
-                                              ? "Całość"
-                                              : idx === 0
-                                                ? "I rata"
-                                                : idx === 1
-                                                  ? "II rata"
-                                                  : `${idx + 1} rata`}
-                                          </Button>
-                                        ))}
+                                        {/* Szybkie przyciski — wstawiają brakującą kwotę do osiągnięcia danej raty */}
+                                        {paymentSchedule.map((item, idx) => {
+                                          // Suma rat od 1 do idx+1 (cel do osiągnięcia)
+                                          const targetCents = paymentSchedule
+                                            .slice(0, idx + 1)
+                                            .reduce((s, r) => s + r.amount, 0)
+                                          // Ile brakuje do tego celu
+                                          const remainingCents = Math.max(0, targetCents - paidAmount)
+                                          return (
+                                            <Button
+                                              key={idx}
+                                              size="sm"
+                                              variant="outline"
+                                              className="shrink-0 h-8 text-xs"
+                                              disabled={remainingCents <= 0}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setPaymentInputs((prev) => ({
+                                                  ...prev,
+                                                  [booking.id]: (remainingCents / 100).toFixed(2),
+                                                }))
+                                              }}
+                                            >
+                                              {paymentSchedule.length === 1
+                                                ? "Całość"
+                                                : idx === 0
+                                                  ? "I rata"
+                                                  : idx === 1
+                                                    ? "II rata"
+                                                    : `${idx + 1} rata`}
+                                              {remainingCents > 0 && (
+                                                <span className="ml-1 text-muted-foreground">
+                                                  ({(remainingCents / 100).toFixed(2)})
+                                                </span>
+                                              )}
+                                            </Button>
+                                          )
+                                        })}
                                       </div>
                                     </div>
                                   )}

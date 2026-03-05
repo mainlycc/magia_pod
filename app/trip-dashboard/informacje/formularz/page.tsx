@@ -18,6 +18,7 @@ import { InsurancesSection } from "@/components/trip-form/sections/insurances-se
 import type {
   RegistrationMode,
   RequiredParticipantFields,
+  RequiredContactFields,
   AdditionalAttraction,
   Diet,
   ExtraInsurance,
@@ -40,6 +41,11 @@ function TripFormContent() {
     document: false,
     gender: false,
     phone: false,
+  })
+  const [requiredContactFields, setRequiredContactFields] = useState<RequiredContactFields>({
+    pesel: false,
+    phone: true,
+    email: true,
   })
   const [additionalAttractions, setAdditionalAttractions] = useState<AdditionalAttraction[]>([])
   const [expandedAttractions, setExpandedAttractions] = useState<Set<string>>(new Set())
@@ -160,6 +166,19 @@ function TripFormContent() {
             }
       )
 
+      // Wczytaj konfigurację wymaganych pól zgłaszającego
+      const contactFields = trip.form_required_contact_fields &&
+        typeof trip.form_required_contact_fields === "object" &&
+        !Array.isArray(trip.form_required_contact_fields)
+          ? trip.form_required_contact_fields as { pesel?: boolean; phone?: boolean; email?: boolean }
+          : null;
+      
+      setRequiredContactFields({
+        pesel: contactFields ? Boolean(contactFields.pesel) : Boolean(trip.require_pesel),
+        phone: contactFields ? Boolean(contactFields.phone) : true,
+        email: contactFields ? Boolean(contactFields.email) : true,
+      })
+
       // Wczytaj tekst informacyjny o rezerwacji z treści wycieczki (content)
       if (tripContentData) {
         setReservationInfoText(tripContentData.reservation_info_text || "")
@@ -224,8 +243,9 @@ function TripFormContent() {
                   ? parseInt(step1Data.paymentReminderDaysBefore, 10)
                   : null)
               : null,
-            // Ustaw również wymaganie PESEL na podstawie konfiguracji pól uczestników
-            require_pesel: requiredParticipantFields.pesel ?? false,
+            // Ustaw wymaganie PESEL zgłaszającego na podstawie konfiguracji pól zgłaszającego
+            require_pesel: requiredContactFields.pesel ?? false,
+            form_required_contact_fields: requiredContactFields,
           }),
         })
 
@@ -282,9 +302,10 @@ function TripFormContent() {
             form_additional_attractions: additionalAttractions,
             form_diets: diets,
             form_extra_insurances: extraInsurances,
-            // Te pola sterują widocznością i wymaganiem danych uczestników oraz PESEL zgłaszającego
+            // Te pola sterują widocznością i wymaganiem danych uczestników oraz pól zgłaszającego
             form_required_participant_fields: requiredParticipantFields,
-            require_pesel: requiredParticipantFields.pesel ?? false,
+            form_required_contact_fields: requiredContactFields,
+            require_pesel: requiredContactFields.pesel ?? false,
           }),
         })
 
@@ -351,9 +372,10 @@ function TripFormContent() {
           form_additional_attractions: additionalAttractions,
           form_diets: diets,
           form_extra_insurances: extraInsurances,
-          // Te pola sterują widocznością i wymaganiem danych uczestników oraz PESEL zgłaszającego
+          // Te pola sterują widocznością i wymaganiem danych uczestników oraz pól zgłaszającego
           form_required_participant_fields: requiredParticipantFields,
-          require_pesel: requiredParticipantFields.pesel ?? false,
+          form_required_contact_fields: requiredContactFields,
+          require_pesel: requiredContactFields.pesel ?? false,
         }),
       })
 
@@ -418,6 +440,8 @@ function TripFormContent() {
         setRegistrationMode={setRegistrationMode}
         requiredParticipantFields={requiredParticipantFields}
         setRequiredParticipantFields={setRequiredParticipantFields}
+        requiredContactFields={requiredContactFields}
+        setRequiredContactFields={setRequiredContactFields}
         showAdditionalServices={showAdditionalServices}
         setShowAdditionalServices={setShowAdditionalServices}
       />

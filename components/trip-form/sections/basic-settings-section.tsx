@@ -10,13 +10,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { RegistrationMode, RequiredParticipantFields } from "../types"
+import type { RegistrationMode, RequiredParticipantFields, RequiredContactFields } from "../types"
 
 interface BasicSettingsSectionProps {
   registrationMode: RegistrationMode
   setRegistrationMode: (mode: RegistrationMode) => void
   requiredParticipantFields: RequiredParticipantFields
   setRequiredParticipantFields: (fields: RequiredParticipantFields | ((prev: RequiredParticipantFields) => RequiredParticipantFields)) => void
+  requiredContactFields: RequiredContactFields
+  setRequiredContactFields: (fields: RequiredContactFields | ((prev: RequiredContactFields) => RequiredContactFields)) => void
   showAdditionalServices: boolean
   setShowAdditionalServices: (show: boolean) => void
 }
@@ -26,6 +28,8 @@ export function BasicSettingsSection({
   setRegistrationMode,
   requiredParticipantFields,
   setRequiredParticipantFields,
+  requiredContactFields,
+  setRequiredContactFields,
   showAdditionalServices,
   setShowAdditionalServices,
 }: BasicSettingsSectionProps) {
@@ -61,6 +65,78 @@ export function BasicSettingsSection({
           <div className="grid gap-2 mt-4 border rounded-md p-3">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">
+                Wymagane pola zgłaszającego
+              </Label>
+              <p className="text-[10px] text-muted-foreground">
+                Wybierz które pola są obowiązkowe dla osoby zgłaszającej. Imię i nazwisko są zawsze wymagane.
+              </p>
+            </div>
+            <div className="space-y-3 pl-2">
+              <div className="flex items-center justify-between rounded-lg border p-2">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium cursor-pointer">
+                    E-mail
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Adres e-mail osoby zgłaszającej
+                  </p>
+                </div>
+                <Switch
+                  checked={requiredContactFields.email}
+                  onCheckedChange={(checked) =>
+                    setRequiredContactFields((prev) => ({
+                      ...prev,
+                      email: checked,
+                    }))
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-2">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium cursor-pointer">
+                    Telefon
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Numer telefonu osoby zgłaszającej
+                  </p>
+                </div>
+                <Switch
+                  checked={requiredContactFields.phone}
+                  onCheckedChange={(checked) =>
+                    setRequiredContactFields((prev) => ({
+                      ...prev,
+                      phone: checked,
+                    }))
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-2">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium cursor-pointer">
+                    PESEL
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Numer PESEL osoby zgłaszającej
+                  </p>
+                </div>
+                <Switch
+                  checked={requiredContactFields.pesel}
+                  onCheckedChange={(checked) =>
+                    setRequiredContactFields((prev) => ({
+                      ...prev,
+                      pesel: checked,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(registrationMode === "individual" || registrationMode === "both") && (
+          <div className="grid gap-2 mt-4 border rounded-md p-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">
                 Wymagane pola uczestników
               </Label>
               <p className="text-[10px] text-muted-foreground">
@@ -68,25 +144,6 @@ export function BasicSettingsSection({
               </p>
             </div>
             <div className="space-y-3 pl-2">
-              <div className="flex items-center justify-between rounded-lg border p-2">
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-medium cursor-pointer">
-                    PESEL
-                  </Label>
-                  <p className="text-[10px] text-muted-foreground">
-                    Numer PESEL uczestnika
-                  </p>
-                </div>
-                <Switch
-                  checked={requiredParticipantFields.pesel}
-                  onCheckedChange={(checked) =>
-                    setRequiredParticipantFields((prev) => ({
-                      ...prev,
-                      pesel: checked,
-                    }))
-                  }
-                />
-              </div>
               <div className="flex items-center justify-between rounded-lg border p-2">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
