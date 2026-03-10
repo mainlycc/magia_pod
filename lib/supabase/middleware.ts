@@ -48,19 +48,23 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   // Public paths that should NOT require auth (allow anonymous access)
+  const path = request.nextUrl.pathname;
+
   const isPublicPath =
-    request.nextUrl.pathname === "/" ||
-    request.nextUrl.pathname === "/trip" ||
-    request.nextUrl.pathname.startsWith("/trip/") ||
-    request.nextUrl.pathname === "/register" ||
-    request.nextUrl.pathname === "/booking" ||
-    request.nextUrl.pathname.startsWith("/booking/") ||
-    request.nextUrl.pathname.startsWith("/api/bookings") ||
-    request.nextUrl.pathname.startsWith("/api/pdf") ||
-    request.nextUrl.pathname.startsWith("/api/email") ||
-    request.nextUrl.pathname.startsWith("/api/agreements") ||
-    request.nextUrl.pathname.startsWith("/auth") ||
-    request.nextUrl.pathname.startsWith("/login");
+    path === "/" ||
+    path === "/trip" ||
+    path.startsWith("/trip/") ||
+    path === "/register" ||
+    path === "/booking" ||
+    path.startsWith("/booking/") ||
+    path.startsWith("/api/bookings") ||
+    path.startsWith("/api/pdf") ||
+    path.startsWith("/api/email") ||
+    path.startsWith("/api/agreements") ||
+    // webhook Paynow musi być dostępny bez logowania
+    path.startsWith("/api/payments/paynow/webhook") ||
+    path.startsWith("/auth") ||
+    path.startsWith("/login");
 
   if (!user && !isPublicPath) {
     // no user, potentially respond by redirecting the user to the login page
@@ -75,7 +79,6 @@ export async function updateSession(request: NextRequest) {
   }
 
   // RBAC: admin and coordinator areas
-  const path = request.nextUrl.pathname;
   const requiresAdmin = path.startsWith("/admin");
   const requiresCoordinator = path.startsWith("/coord");
 
