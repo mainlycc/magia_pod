@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-status";
+import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 
 const updateSchema = z.object({
   payment_status: z.enum(PAYMENT_STATUS_VALUES).optional(),
@@ -168,6 +169,17 @@ export async function PATCH(
     }
   }
 
+  // Pobierz aktualny paid_amount_cents PRZED aktualizacją, aby obliczyć różnicę
+  let previousPaidCents = 0;
+  if (payload.paid_amount_cents !== undefined) {
+    const { data: currentData } = await supabase
+      .from("bookings")
+      .select("paid_amount_cents")
+      .eq("id", id)
+      .single();
+    previousPaidCents = currentData?.paid_amount_cents ?? 0;
+  }
+
   const { data, error } = await supabase
     .from("bookings")
     .update(updateData)
@@ -185,6 +197,57 @@ export async function PATCH(
 
   if (!data) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // Jeśli admin zmienił paid_amount_cents i kwota wzrosła, utwórz payment_history + fakturę
+  if (payload.paid_amount_cents !== undefined && payload.paid_amount_cents > previousPaidCents) {
+    const addedCents = payload.paid_amount_cents - previousPaidCents;
+    console.log(`[PATCH /bookings/${id}] Manual payment detected: added ${addedCents} cents (${previousPaidCents} -> ${payload.paid_amount_cents})`);
+
+    try {
+      const adminSupabase = createAdminClient();
+
+      // 1. Utwórz wpis w payment_history
+      const { data: paymentHistory, error: phError } = await adminSupabase
+        .from("payment_history")
+        .insert({
+          booking_id: id,
+          amount_cents: addedCents,
+          payment_method: "manual",
+          notes: `Ręczna wpłata przez admina (${addedCents / 100} zł)`,
+        })
+        .select()
+        .single();
+
+      if (phError) {
+        console.error(`[PATCH /bookings/${id}] Failed to create payment_history:`, phError);
+      } else {
+        console.log(`[PATCH /bookings/${id}] Payment history created: ${paymentHistory.id}`);
+
+        // 2. Uruchom proces fakturowania (asynchronicznie)
+        processPaymentInvoice({
+          bookingId: id,
+          paymentHistoryId: paymentHistory.id,
+          amountCents: addedCents,
+        })
+          .then((result) => {
+            if (result.success) {
+              console.log(`[PATCH /bookings/${id}] ✓ Invoice created:`, {
+                invoiceId: result.invoiceId,
+                invoiceNumber: result.invoiceNumber,
+              });
+            } else {
+              console.error(`[PATCH /bookings/${id}] Invoice creation failed:`, result.error);
+            }
+          })
+          .catch((err) => {
+            console.error(`[PATCH /bookings/${id}] Invoice process error:`, err);
+          });
+      }
+    } catch (err) {
+      // Błąd fakturowania nie powinien blokować odpowiedzi PATCH
+      console.error(`[PATCH /bookings/${id}] Error in manual payment flow:`, err);
+    }
   }
 
   return NextResponse.json({

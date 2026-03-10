@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { ReusableTable } from "@/components/reusable-table"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -61,6 +63,7 @@ const getInvoiceStatusBadgeVariant = (
 }
 
 export default function FakturyPage() {
+  const router = useRouter()
   const { selectedTrip } = useTrip()
   const [invoices, setInvoices] = useState<InvoiceWithBooking[]>([])
   const [loading, setLoading] = useState(true)
@@ -183,6 +186,7 @@ export default function FakturyPage() {
         enablePagination={true}
         pageSize={20}
         emptyMessage="Brak faktur dla tej wycieczki"
+        onRowClick={(invoice) => router.push(`/trip-dashboard/faktury/${invoice.id}`)}
       />
     </div>
   )

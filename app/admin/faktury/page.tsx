@@ -16,15 +16,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Eye } from "lucide-react";
+import { Eye, FileDown, Link2 } from "lucide-react";
 
 type InvoiceStatus = "wystawiona" | "wysłana" | "opłacona";
+type InvoiceType = "advance" | "advance_to_advance" | "final";
 
 type InvoiceWithBooking = {
   id: string;
   invoice_number: string;
   amount_cents: number;
   status: InvoiceStatus;
+  invoice_type: InvoiceType;
+  parent_invoice_id: string | null;
+  pdf_url: string | null;
+  pdf_storage_path: string | null;
   created_at: string;
   updated_at: string;
   booking_id: string;
@@ -42,7 +47,7 @@ type InvoiceWithBooking = {
     } | null;
   } | null;
   participants_count?: number;
-  searchable_text?: string; // Pole do wyszukiwania
+  searchable_text?: string;
 };
 
 type BookingOption = {
@@ -79,6 +84,24 @@ const getInvoiceStatusBadgeVariant = (status: InvoiceStatus): "default" | "secon
   return variants[status] || "outline";
 };
 
+const getInvoiceTypeLabel = (type: InvoiceType): string => {
+  const labels: Record<InvoiceType, string> = {
+    advance: "Zaliczkowa",
+    advance_to_advance: "Zaliczkowa do zaliczkowej",
+    final: "Końcowa",
+  };
+  return labels[type] || type;
+};
+
+const getInvoiceTypeBadgeVariant = (type: InvoiceType): "default" | "secondary" | "outline" => {
+  const variants: Record<InvoiceType, "default" | "secondary" | "outline"> = {
+    advance: "default",
+    advance_to_advance: "secondary",
+    final: "outline",
+  };
+  return variants[type] || "outline";
+};
+
 export default function AdminInvoicesPage() {
   const router = useRouter();
   const [invoices, setInvoices] = useState<InvoiceWithBooking[]>([]);
@@ -103,9 +126,15 @@ export default function AdminInvoicesPage() {
           invoice_number,
           amount_cents,
           status,
+          invoice_type,
+          parent_invoice_id,
+          pdf_url,
+          pdf_storage_path,
           created_at,
           updated_at,
           booking_id,
+          saldeo_invoice_id,
+          saldeo_error,
           bookings:bookings!inner(
             id,
             booking_ref,
@@ -127,11 +156,12 @@ export default function AdminInvoicesPage() {
 
       // Pobierz liczbę uczestników dla każdej faktury
       if (invoicesData) {
-        const invoiceIds = invoicesData.map((inv) => inv.booking_id);
+        const invoiceBookingIds = invoicesData.map((inv) => inv.booking_id);
+        const uniqueBookingIds = [...new Set(invoiceBookingIds)];
         const { data: participantsData } = await supabase
           .from("participants")
           .select("booking_id")
-          .in("booking_id", invoiceIds);
+          .in("booking_id", uniqueBookingIds);
 
         const participantsCountMap = new Map<string, number>();
         participantsData?.forEach((p) => {
@@ -154,7 +184,7 @@ export default function AdminInvoicesPage() {
         setInvoices(mapped);
       }
 
-      // Pobierz rezerwacje bez faktur dla formularza dodawania
+      // Pobierz rezerwacje dla formularza dodawania (teraz nie filtrujemy tych z fakturami)
       const { data: bookingsData, error: bookingsError } = await supabase
         .from("bookings")
         .select(
@@ -176,15 +206,6 @@ export default function AdminInvoicesPage() {
         throw bookingsError;
       }
 
-      // Pobierz faktury, żeby wykluczyć rezerwacje które już mają faktury
-      const { data: existingInvoices } = await supabase
-        .from("invoices")
-        .select("booking_id");
-
-      const existingBookingIds = new Set(
-        existingInvoices?.map((inv) => inv.booking_id) || []
-      );
-
       // Pobierz liczbę uczestników dla rezerwacji
       if (bookingsData) {
         const bookingIds = bookingsData.map((b) => b.id);
@@ -199,20 +220,18 @@ export default function AdminInvoicesPage() {
           participantsCountMap.set(p.booking_id, count + 1);
         });
 
-        const bookingsOptions = bookingsData
-          .filter((booking: any) => !existingBookingIds.has(booking.id))
-          .map((booking: any) => ({
-            id: booking.id,
-            booking_ref: booking.booking_ref,
-            contact_email: booking.contact_email,
-            trip_title: Array.isArray(booking.trips) && booking.trips.length > 0
-              ? booking.trips[0].title
-              : booking.trips?.title || "",
-            price_cents: Array.isArray(booking.trips) && booking.trips.length > 0
-              ? booking.trips[0].price_cents
-              : booking.trips?.price_cents || null,
-            participants_count: participantsCountMap.get(booking.id) || 0,
-          }));
+        const bookingsOptions = bookingsData.map((booking: any) => ({
+          id: booking.id,
+          booking_ref: booking.booking_ref,
+          contact_email: booking.contact_email,
+          trip_title: Array.isArray(booking.trips) && booking.trips.length > 0
+            ? booking.trips[0].title
+            : booking.trips?.title || "",
+          price_cents: Array.isArray(booking.trips) && booking.trips.length > 0
+            ? booking.trips[0].price_cents
+            : booking.trips?.price_cents || null,
+          participants_count: participantsCountMap.get(booking.id) || 0,
+        }));
 
         setBookings(bookingsOptions);
       }
@@ -231,6 +250,21 @@ export default function AdminInvoicesPage() {
         header: "Nr faktury",
         cell: ({ row }) => (
           <div className="font-medium">{row.original.invoice_number}</div>
+        ),
+        enableSorting: true,
+      },
+      {
+        id: "invoice_type",
+        header: "Typ",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Badge variant={getInvoiceTypeBadgeVariant(row.original.invoice_type)}>
+              {getInvoiceTypeLabel(row.original.invoice_type)}
+            </Badge>
+            {row.original.parent_invoice_id && (
+              <Link2 className="h-3 w-3 text-muted-foreground" />
+            )}
+          </div>
         ),
         enableSorting: true,
       },
@@ -276,17 +310,32 @@ export default function AdminInvoicesPage() {
         id: "actions",
         header: "Akcje",
         cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`/admin/faktury/${row.original.id}`);
-            }}
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            Podgląd
-          </Button>
+          <div className="flex items-center gap-1">
+            {row.original.pdf_url && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(row.original.pdf_url!, "_blank");
+                }}
+                title="Pobierz PDF"
+              >
+                <FileDown className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/admin/faktury/${row.original.id}`);
+              }}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Podgląd
+            </Button>
+          </div>
         ),
         enableSorting: false,
       },
@@ -323,6 +372,7 @@ export default function AdminInvoicesPage() {
           booking_id: formData.booking_id,
           amount_cents: amountCents,
           status: (formData.status as InvoiceStatus) || "wystawiona",
+          invoice_type: "advance",
         })
         .select()
         .single();
@@ -419,6 +469,14 @@ export default function AdminInvoicesPage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          onClick={() => router.push("/admin/faktury/nowa-saldeo")}
+        >
+          Wystaw fakture w Saldeo (test)
+        </Button>
+      </div>
       <ReusableTable
         columns={columns}
         data={invoices}
@@ -443,4 +501,3 @@ export default function AdminInvoicesPage() {
     </div>
   );
 }
-

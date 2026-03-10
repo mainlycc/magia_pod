@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -509,61 +510,41 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Wystaw fakturę automatycznie dla płatności z statusem "paid" lub "partial"
+  // Wystaw fakturę zaliczkową automatycznie dla każdej potwierdzonej płatności
+  // Każda wpłata = osobna faktura zaliczkowa (advance lub advance_to_advance)
   if ((newPaymentStatus === "paid" || newPaymentStatus === "partial") && paymentHistoryInserted) {
     try {
-      // Sprawdź czy faktura już istnieje dla tego booking_id
-      const { data: existingInvoice } = await supabase
-        .from("invoices")
-        .select("id")
+      // Pobierz ID ostatniej płatności z payment_history (tej, którą właśnie dodaliśmy)
+      const { data: lastPayment } = await supabase
+        .from("payment_history")
+        .select("id, amount_cents")
         .eq("booking_id", booking.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .single();
 
-      if (!existingInvoice) {
-        console.log(`[Paynow Webhook] Creating invoice for booking ${booking.id} (${payload.externalId})`);
-        
-        // Pobierz ID ostatniej płatności z payment_history
-        const { data: lastPayment } = await supabase
-          .from("payment_history")
-          .select("id")
-          .eq("booking_id", booking.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
+      if (lastPayment) {
+        console.log(`[Paynow Webhook] Creating advance invoice for booking ${booking.id}, payment ${lastPayment.id}`);
 
-        const paymentId = lastPayment?.id || null;
-
-        // Pobierz baseUrl dla wywołania API
-        const { origin } = new URL(request.url);
-        let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        
-        if (!baseUrl && process.env.VERCEL_URL) {
-          baseUrl = `https://${process.env.VERCEL_URL}`;
-        }
-        
-        if (!baseUrl) {
-          baseUrl = origin;
-        }
-
-        // Wywołaj endpoint do wystawiania faktury
-        const invoiceResponse = await fetch(`${baseUrl}/api/saldeo/invoice/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            booking_id: booking.id,
-            payment_id: paymentId,
-          }),
+        // Wywołaj serwis faktur bezpośrednio (nie przez HTTP fetch)
+        // processPaymentInvoice obsługuje PDF i email asynchronicznie, więc nie blokuje
+        const invoiceResult = await processPaymentInvoice({
+          bookingId: booking.id,
+          paymentHistoryId: lastPayment.id,
+          amountCents: lastPayment.amount_cents,
         });
 
-        if (invoiceResponse.ok) {
-          const invoiceData = await invoiceResponse.json();
-          console.log(`[Paynow Webhook] ✓ Invoice created successfully:`, invoiceData);
+        if (invoiceResult.success) {
+          console.log(`[Paynow Webhook] ✓ Invoice created:`, {
+            invoiceId: invoiceResult.invoiceId,
+            invoiceNumber: invoiceResult.invoiceNumber,
+            saldeoInvoiceId: invoiceResult.saldeoInvoiceId,
+          });
         } else {
-          const errorData = await invoiceResponse.json().catch(() => ({ error: "Unknown error" }));
-          console.error(`[Paynow Webhook] Failed to create invoice:`, errorData);
+          console.error(`[Paynow Webhook] Failed to create invoice:`, invoiceResult.error);
         }
       } else {
-        console.log(`[Paynow Webhook] Invoice already exists for booking ${booking.id}, skipping`);
+        console.warn(`[Paynow Webhook] No payment_history found for booking ${booking.id}`);
       }
     } catch (err) {
       // Błąd wystawiania faktury nie powinien blokować obsługi webhooka

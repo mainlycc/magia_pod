@@ -3,13 +3,23 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, FileText, Download, Mail, AlertCircle } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ArrowLeft, Download, Mail, AlertCircle } from "lucide-react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 
 type InvoiceStatus = "wystawiona" | "wysłana" | "opłacona";
 type InvoiceType = "advance" | "advance_to_advance" | "final";
@@ -88,11 +98,12 @@ const getInvoiceStatusLabel = (status: InvoiceStatus): string => {
 const getInvoiceStatusBadgeVariant = (
   status: InvoiceStatus
 ): "default" | "secondary" | "outline" => {
-  const variants: Record<InvoiceStatus, "default" | "secondary" | "outline"> = {
-    wystawiona: "outline",
-    wysłana: "secondary",
-    opłacona: "default",
-  };
+  const variants: Record<InvoiceStatus, "default" | "secondary" | "outline"> =
+    {
+      wystawiona: "outline",
+      wysłana: "secondary",
+      opłacona: "default",
+    };
   return variants[status] || "outline";
 };
 
@@ -105,7 +116,9 @@ const getInvoiceTypeLabel = (type: InvoiceType): string => {
   return labels[type] || type;
 };
 
-const getInvoiceTypeBadgeVariant = (type: InvoiceType): "default" | "secondary" | "outline" => {
+const getInvoiceTypeBadgeVariant = (
+  type: InvoiceType
+): "default" | "secondary" | "outline" => {
   const variants: Record<InvoiceType, "default" | "secondary" | "outline"> = {
     advance: "default",
     advance_to_advance: "secondary",
@@ -114,7 +127,7 @@ const getInvoiceTypeBadgeVariant = (type: InvoiceType): "default" | "secondary" 
   return variants[type] || "outline";
 };
 
-export default function InvoiceDetailsPage() {
+export default function TripInvoiceDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const invoiceId = params.id as string;
@@ -181,13 +194,11 @@ export default function InvoiceDetailsPage() {
         throw invoiceError;
       }
 
-      // Pobierz uczestników rezerwacji
       const { data: participantsData } = await supabase
         .from("participants")
         .select("id, first_name, last_name, email")
         .eq("booking_id", invoiceData.booking_id);
 
-      // Normalizuj dane bookings (i powiązane trips) do pojedynczych obiektów
       const rawBooking = Array.isArray(invoiceData.bookings)
         ? invoiceData.bookings[0]
         : invoiceData.bookings;
@@ -208,7 +219,6 @@ export default function InvoiceDetailsPage() {
 
       setInvoice(invoiceWithData as any);
 
-      // Jeśli mamy pdf_url w bazie, ustaw go
       if (invoiceData.pdf_url) {
         setPdfUrl(invoiceData.pdf_url);
       }
@@ -271,14 +281,11 @@ export default function InvoiceDetailsPage() {
       toast.error("Brak URL do PDF faktury");
       return;
     }
-
-    // Otwórz PDF w nowej karcie (automatycznie pobierze lub wyświetli w zależności od przeglądarki)
     window.open(pdfUrl, "_blank");
   };
 
   const handleSendEmail = async () => {
     if (!invoice) return;
-
     toast.info("Wysyłanie faktury...");
     // TODO: Implementacja wysyłania faktury emailem
   };
@@ -304,18 +311,19 @@ export default function InvoiceDetailsPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
             size="icon"
-            onClick={() => router.push("/admin/faktury")}
+            onClick={() => router.push("/trip-dashboard/faktury")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Faktura {invoice.invoice_number}</h1>
+            <h1 className="text-3xl font-bold">
+              Faktura {invoice.invoice_number}
+            </h1>
             <p className="text-muted-foreground">
               Wystawiona {formatDateTime(invoice.created_at)}
             </p>
@@ -331,7 +339,6 @@ export default function InvoiceDetailsPage() {
         </div>
       </div>
 
-      {/* Błąd Saldeo - jeśli wystąpił */}
       {invoice.saldeo_error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -341,9 +348,7 @@ export default function InvoiceDetailsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Lewa kolumna - Szczegóły faktury */}
         <div className="md:col-span-2 space-y-6">
-          {/* Podstawowe informacje */}
           <Card>
             <CardHeader>
               <CardTitle>Szczegóły faktury</CardTitle>
@@ -361,7 +366,9 @@ export default function InvoiceDetailsPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Data wystawienia</p>
+                  <p className="text-sm text-muted-foreground">
+                    Data wystawienia
+                  </p>
                   <p className="font-medium">{formatDate(invoice.created_at)}</p>
                 </div>
                 <div>
@@ -381,11 +388,17 @@ export default function InvoiceDetailsPage() {
                 </div>
                 {invoice.parent_invoice_id && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Podpięta pod fakturę</p>
+                    <p className="text-sm text-muted-foreground">
+                      Podpięta pod fakturę
+                    </p>
                     <Button
                       variant="link"
                       className="p-0 h-auto font-medium text-sm"
-                      onClick={() => router.push(`/admin/faktury/${invoice.parent_invoice_id}`)}
+                      onClick={() =>
+                        router.push(
+                          `/trip-dashboard/faktury/${invoice.parent_invoice_id}`
+                        )
+                      }
                     >
                       Zobacz fakturę nadrzędną →
                     </Button>
@@ -395,7 +408,9 @@ export default function InvoiceDetailsPage() {
 
               {invoice.saldeo_invoice_id && (
                 <div>
-                  <p className="text-sm text-muted-foreground">ID w systemie Saldeo</p>
+                  <p className="text-sm text-muted-foreground">
+                    ID w systemie Saldeo
+                  </p>
                   <p className="font-medium font-mono text-sm">
                     {invoice.saldeo_invoice_id}
                   </p>
@@ -404,7 +419,6 @@ export default function InvoiceDetailsPage() {
             </CardContent>
           </Card>
 
-          {/* Informacje o rezerwacji */}
           {booking && (
             <Card>
               <CardHeader>
@@ -416,26 +430,42 @@ export default function InvoiceDetailsPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Numer rezerwacji</p>
+                    <p className="text-sm text-muted-foreground">
+                      Numer rezerwacji
+                    </p>
                     <Button
                       variant="link"
                       className="p-0 h-auto font-medium"
-                      onClick={() => router.push(`/admin/bookings/${booking.id}`)}
+                      onClick={() =>
+                        router.push(
+                          `/trip-dashboard/rezerwacje/${booking.id}`
+                        )
+                      }
                     >
                       {booking.booking_ref}
                     </Button>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Data rezerwacji</p>
-                    <p className="font-medium">{formatDate(booking.created_at)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Data rezerwacji
+                    </p>
+                    <p className="font-medium">
+                      {formatDate(booking.created_at)}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Email kontaktowy</p>
-                    <p className="font-medium">{booking.contact_email || "-"}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Email kontaktowy
+                    </p>
+                    <p className="font-medium">
+                      {booking.contact_email || "-"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Telefon</p>
-                    <p className="font-medium">{booking.contact_phone || "-"}</p>
+                    <p className="font-medium">
+                      {booking.contact_phone || "-"}
+                    </p>
                   </div>
                 </div>
 
@@ -447,7 +477,9 @@ export default function InvoiceDetailsPage() {
                       <p>
                         {booking.address.postal_code} {booking.address.city}
                       </p>
-                      {booking.address.country && <p>{booking.address.country}</p>}
+                      {booking.address.country && (
+                        <p>{booking.address.country}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -455,7 +487,6 @@ export default function InvoiceDetailsPage() {
             </Card>
           )}
 
-          {/* Informacje o wycieczce */}
           {trip && (
             <Card>
               <CardHeader>
@@ -469,28 +500,37 @@ export default function InvoiceDetailsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   {trip.start_date && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Data rozpoczęcia</p>
-                      <p className="font-medium">{formatDate(trip.start_date)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Data rozpoczęcia
+                      </p>
+                      <p className="font-medium">
+                        {formatDate(trip.start_date)}
+                      </p>
                     </div>
                   )}
                   {trip.end_date && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Data zakończenia</p>
+                      <p className="text-sm text-muted-foreground">
+                        Data zakończenia
+                      </p>
                       <p className="font-medium">{formatDate(trip.end_date)}</p>
                     </div>
                   )}
                 </div>
                 {trip.price_cents !== null && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Cena za osobę</p>
-                    <p className="font-medium">{formatAmount(trip.price_cents)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Cena za osobę
+                    </p>
+                    <p className="font-medium">
+                      {formatAmount(trip.price_cents)}
+                    </p>
                   </div>
                 )}
               </CardContent>
             </Card>
           )}
 
-          {/* Uczestnicy */}
           {invoice.participants && invoice.participants.length > 0 && (
             <Card>
               <CardHeader>
@@ -508,7 +548,8 @@ export default function InvoiceDetailsPage() {
                     >
                       <div>
                         <p className="font-medium">
-                          {index + 1}. {participant.first_name} {participant.last_name}
+                          {index + 1}. {participant.first_name}{" "}
+                          {participant.last_name}
                         </p>
                         {participant.email && (
                           <p className="text-sm text-muted-foreground">
@@ -524,14 +565,14 @@ export default function InvoiceDetailsPage() {
           )}
         </div>
 
-        {/* Prawa kolumna - Podgląd PDF i Akcje */}
         <div className="space-y-6">
-          {/* Podgląd PDF */}
           {pdfUrl && (
             <Card>
               <CardHeader>
                 <CardTitle>Podgląd faktury</CardTitle>
-                <CardDescription>PDF faktury z systemu Saldeo</CardDescription>
+                <CardDescription>
+                  PDF faktury z systemu Saldeo
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="w-full h-[600px] border rounded-lg overflow-hidden">
@@ -558,8 +599,8 @@ export default function InvoiceDetailsPage() {
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>PDF w trakcie generowania</AlertTitle>
               <AlertDescription>
-                Po wystawieniu faktury w Saldeo, PDF jest generowany przez około 30
-                sekund. Spróbuj odświeżyć stronę za chwilę.
+                Po wystawieniu faktury w Saldeo, PDF jest generowany przez około
+                30 sekund. Spróbuj odświeżyć stronę za chwilę.
               </AlertDescription>
             </Alert>
           )}
@@ -628,11 +669,17 @@ export default function InvoiceDetailsPage() {
             <CardContent className="space-y-3">
               <div>
                 <p className="text-sm text-muted-foreground">Utworzono</p>
-                <p className="text-sm">{formatDateTime(invoice.created_at)}</p>
+                <p className="text-sm">
+                  {formatDateTime(invoice.created_at)}
+                </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Ostatnia modyfikacja</p>
-                <p className="text-sm">{formatDateTime(invoice.updated_at)}</p>
+                <p className="text-sm text-muted-foreground">
+                  Ostatnia modyfikacja
+                </p>
+                <p className="text-sm">
+                  {formatDateTime(invoice.updated_at)}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -641,3 +688,4 @@ export default function InvoiceDetailsPage() {
     </div>
   );
 }
+

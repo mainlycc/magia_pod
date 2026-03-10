@@ -35,7 +35,7 @@ export async function GET(
     // Pobierz fakturę z bazy danych
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
-      .select("id, saldeo_invoice_id, pdf_url")
+      .select("id, saldeo_invoice_id, pdf_url, invoice_type")
       .eq("id", invoiceId)
       .single();
 
@@ -75,8 +75,11 @@ export async function GET(
       }, { status: 500 });
     }
 
+    // Determine if this is an advance invoice for correct Saldeo API call
+    const isAdvanceInvoice = invoice.invoice_type === "advance" || invoice.invoice_type === "advance_to_advance";
+
     // Pobierz URL do PDF z Saldeo
-    const result = await getInvoicePdfUrl(config, invoice.saldeo_invoice_id);
+    const result = await getInvoicePdfUrl(config, invoice.saldeo_invoice_id, isAdvanceInvoice);
 
     if (result.success && result.pdfUrl) {
       // Zapisz URL w bazie danych dla przyszłości

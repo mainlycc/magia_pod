@@ -94,4 +94,41 @@ using (
   and public.is_admin()
 );
 
+-- Utwórz prywatny bucket na faktury PDF (invoices)
+insert into storage.buckets (id, name, public)
+values ('invoices', 'invoices', false)
+on conflict (id) do nothing;
 
+-- Polityki: admin/koordynator mogą czytać
+drop policy if exists storage_invoices_read on storage.objects;
+create policy storage_invoices_read
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'invoices'
+  and (
+    public.is_admin()
+    or public.is_coordinator()
+  )
+);
+
+-- Upload tylko dla admina i service_role (automatyczne faktury)
+drop policy if exists storage_invoices_insert on storage.objects;
+create policy storage_invoices_insert
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'invoices'
+  and public.is_admin()
+);-- Usuwanie tylko dla admina
+drop policy if exists storage_invoices_delete on storage.objects;
+create policy storage_invoices_delete
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'invoices'
+  and public.is_admin()
+);
