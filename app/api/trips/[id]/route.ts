@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
 
 // Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
@@ -35,7 +36,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     let query = supabase
       .from("trips")
       .select(
-        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule",
+        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule",
       )
       .eq("id", id);
     
@@ -78,6 +79,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       seats_total: number;
       category: string;
       location: string;
+      transport_mode: string | null;
+      airport_codes: string | null;
       is_public: boolean;
       public_slug: string | null;
       registration_mode: string | null;
@@ -95,6 +98,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payment_reminder_enabled: boolean;
       payment_reminder_days_before: number | null;
       payment_schedule: unknown;
+      transport_mode: string | null;
+      airport_codes: string | null;
     }> = {};
     if ("title" in body) payload.title = body.title;
     if ("description" in body) payload.description = body.description ?? null;
@@ -104,6 +109,21 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("seats_total" in body) payload.seats_total = body.seats_total;
     if ("category" in body) payload.category = body.category ?? null;
     if ("location" in body) payload.location = body.location ?? null;
+    if ("transport_mode" in body) {
+      const tm =
+        typeof body.transport_mode === "string"
+          ? body.transport_mode.trim()
+          : "";
+      payload.transport_mode =
+        tm && (TRIP_TRANSPORT_OPTIONS as readonly string[]).includes(tm)
+          ? tm
+          : null;
+    }
+    if ("airport_codes" in body)
+      payload.airport_codes =
+        typeof body.airport_codes === "string" && body.airport_codes.trim()
+          ? body.airport_codes.trim()
+          : null;
     if ("is_public" in body) payload.is_public = Boolean(body.is_public);
     if ("public_slug" in body) payload.public_slug = body.public_slug ?? null;
     if ("registration_mode" in body)

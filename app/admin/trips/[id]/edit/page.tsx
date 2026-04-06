@@ -32,6 +32,12 @@ import { format } from "date-fns/format";
 import { pl } from "date-fns/locale";
 import { PaymentScheduleEditor } from "@/components/payment-schedule-editor";
 import { PaymentScheduleItem } from "@/contexts/trip-context";
+import {
+  TRIP_TRANSPORT_OPTIONS,
+  TRANSPORT_NONE,
+  normalizeTransportMode,
+  transportModeToApi,
+} from "@/lib/trip-transport";
 
 type Coordinator = {
   id: string;
@@ -132,6 +138,8 @@ export default function EditTripPage() {
           setPrice(t.price_cents != null ? String(t.price_cents / 100) : "");
           setSeats(t.seats_total != null ? String(t.seats_total) : "");
           setLocation(t.location || "");
+          setTransportMode(normalizeTransportMode(t.transport_mode));
+          setAirportCodes(t.airport_codes || "");
           setIsPublic(Boolean(t.is_public));
           setPublicSlug(t.public_slug || "");
           // Załaduj harmonogram płatności
@@ -218,6 +226,8 @@ export default function EditTripPage() {
           price_cents: price ? Math.round(parseFloat(price) * 100) : null,
           seats_total: seats ? parseInt(seats) : null,
           location: location || null,
+          transport_mode: transportModeToApi(transportMode),
+          airport_codes: airportCodes.trim() ? airportCodes.trim() : null,
           is_public: isPublic,
           public_slug: isPublic ? (publicSlug || null) : null,
           payment_schedule: paymentSchedule,
@@ -405,6 +415,30 @@ export default function EditTripPage() {
                 placeholder="np. Islandia"
               />
             </div>
+            <div className="grid gap-2">
+              <Label>Środek transportu</Label>
+              <Select value={transportMode} onValueChange={setTransportMode}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TRANSPORT_NONE}>Brak</SelectItem>
+                  {TRIP_TRANSPORT_OPTIONS.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {mode}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Kody lotnisk</Label>
+            <Input
+              value={airportCodes}
+              onChange={(e) => setAirportCodes(e.target.value)}
+              placeholder="np. WAW, KRK"
+            />
           </div>
           <div className="grid gap-2">
             <Label>Cena (PLN)</Label>

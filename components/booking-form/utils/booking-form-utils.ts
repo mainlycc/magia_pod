@@ -27,13 +27,18 @@ export async function submitBooking(
     contact_pesel: values.contact.pesel,
     contact_email: values.contact.email,
     contact_phone: values.contact.phone,
-    address: values.contact.address && (values.contact.address.street || values.contact.address.city || values.contact.address.zip)
-      ? {
-          street: values.contact.address.street || "",
-          city: values.contact.address.city || "",
-          zip: values.contact.address.zip || "",
-        }
-      : undefined,
+    address: (() => {
+      const a = values.contact.address;
+      if (!a || !(a.street?.trim() || a.city?.trim() || a.zip?.trim())) return undefined;
+      if (applicantType === "individual") {
+        return { street: (a.street || "").trim(), city: "", zip: "" };
+      }
+      return {
+        street: a.street || "",
+        city: a.city || "",
+        zip: a.zip || "",
+      };
+    })(),
     company_name:
       values.company?.name && values.company.name.trim() !== ""
         ? values.company.name

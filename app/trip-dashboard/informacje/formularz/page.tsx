@@ -23,6 +23,8 @@ import type {
   Diet,
   ExtraInsurance,
 } from "@/components/trip-form/types"
+import { TRIP_CATEGORY_NONE } from "@/lib/trip-class-categories"
+import { transportModeToApi } from "@/lib/trip-transport"
 
 function TripFormContent() {
   const router = useRouter()
@@ -230,6 +232,22 @@ function TripFormContent() {
             is_public: step1Data.isPublic,
             public_slug: effectivePublicSlug || null,
             location: step1Data.location || null,
+            transport_mode: transportModeToApi(
+              typeof step1Data.transportMode === "string"
+                ? step1Data.transportMode
+                : ""
+            ),
+            airport_codes:
+              typeof step1Data.airportCodes === "string" &&
+              step1Data.airportCodes.trim()
+                ? step1Data.airportCodes.trim()
+                : null,
+            category:
+              typeof step1Data.tripCategory === "string" &&
+              step1Data.tripCategory.trim() &&
+              step1Data.tripCategory !== TRIP_CATEGORY_NONE
+                ? step1Data.tripCategory.trim()
+                : null,
             payment_split_enabled: step1Data.paymentSplitEnabled !== undefined ? step1Data.paymentSplitEnabled : true,
             payment_split_first_percent: step1Data.paymentSplitEnabled
               ? parseInt(step1Data.paymentSplitFirstPercent || "30", 10)

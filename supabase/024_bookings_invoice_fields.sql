@@ -3,7 +3,7 @@
 -- - invoice_name / invoice_nip / invoice_address: dane nabywcy faktury
 --
 -- invoice_type:
--- - 'contact'  -> dane osoby zgłaszającej (kontakt)
+-- - 'contact'  -> dane osoby Zgłaszającej (kontakt)
 -- - 'company'  -> dane firmy z formularza firmy
 -- - 'custom'   -> osobno podane dane do faktury (podformularz "faktura na inne dane")
 

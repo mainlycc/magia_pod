@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
 
 export async function POST(
   request: NextRequest,
@@ -72,28 +73,27 @@ export async function POST(
       location: (trip as any).location ?? null,
     };
 
-    // Pobierz reservation_number z wycieczki i policz numer kolejny umowy dla tej wycieczki
     const reservationNumber = (trip as any).reservation_number || null;
-    let agreementNumber = 1; // Domyślnie pierwsza umowa
-    
-    if (reservationNumber && trip.id) {
-      // Policz ile już jest umów dla wszystkich rezerwacji tej wycieczki
-      const { data: tripBookings, error: bookingsError } = await supabaseAdmin
-        .from("bookings")
-        .select("id")
-        .eq("trip_id", trip.id);
-      
-      if (!bookingsError && tripBookings && tripBookings.length > 0) {
-        const bookingIds = tripBookings.map(b => b.id);
-        const { count: agreementsCount, error: agreementsCountError } = await supabaseAdmin
-          .from("agreements")
-          .select("*", { count: "exact", head: true })
-          .in("booking_id", bookingIds);
-        
-        if (!agreementsCountError && agreementsCount !== null) {
-          agreementNumber = agreementsCount + 1;
-        }
-      }
+
+    const { data: existingAgreement, error: agreementCheckError } = await supabaseAdmin
+      .from("agreements")
+      .select("id, agreement_seq")
+      .eq("booking_id", id)
+      .maybeSingle();
+
+    if (agreementCheckError && agreementCheckError.code !== "PGRST116") {
+      console.error("Error checking existing agreement:", agreementCheckError);
+    }
+
+    let agreementNumber: number;
+    if (
+      existingAgreement &&
+      typeof existingAgreement.agreement_seq === "number" &&
+      existingAgreement.agreement_seq > 0
+    ) {
+      agreementNumber = existingAgreement.agreement_seq;
+    } else {
+      agreementNumber = await getNextAgreementSeq(supabaseAdmin, trip.id as string);
     }
 
     // Określ typ rejestracji na podstawie applicant_type lub company_name
@@ -185,26 +185,23 @@ export async function POST(
 
     const { base64, filename } = pdfResult;
 
-    // Zapisz informację o umowie w tabeli agreements
-    const { data: existingAgreement, error: agreementCheckError } = await supabaseAdmin
-      .from("agreements")
-      .select("id")
-      .eq("booking_id", id)
-      .maybeSingle();
-
-    if (agreementCheckError && agreementCheckError.code !== "PGRST116") {
-      console.error("Error checking existing agreement:", agreementCheckError);
-    }
+    const generatedAt = new Date().toISOString();
 
     if (existingAgreement) {
-      // Aktualizuj istniejący rekord
+      const patch: Record<string, unknown> = {
+        status: "generated",
+        pdf_url: filename,
+        generated_at: generatedAt,
+        updated_at: generatedAt,
+      };
+      const prevSeq = existingAgreement.agreement_seq;
+      if (prevSeq == null || prevSeq <= 0) {
+        patch.agreement_seq = agreementNumber;
+      }
+
       const { error: updateError } = await supabaseAdmin
         .from("agreements")
-        .update({
-          status: "generated",
-          pdf_url: filename,
-          updated_at: new Date().toISOString(),
-        })
+        .update(patch)
         .eq("id", existingAgreement.id);
 
       if (updateError) {
@@ -215,11 +212,12 @@ export async function POST(
         }, { status: 500 });
       }
     } else {
-      // Utwórz nowy rekord
       const { error: insertError } = await supabaseAdmin.from("agreements").insert({
         booking_id: id,
         status: "generated",
         pdf_url: filename,
+        agreement_seq: agreementNumber,
+        generated_at: generatedAt,
       });
 
       if (insertError) {

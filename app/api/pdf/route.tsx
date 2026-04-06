@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsPDF } from "jspdf";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatPostalAddressLine } from "@/lib/format-postal-address";
+import { registerNotoFonts } from "@/lib/pdf/register-noto-fonts";
 
 // Konfiguracja runtime dla Vercel - upewniamy się, że funkcja działa w środowisku serverless
 export const runtime = "nodejs";
@@ -117,11 +119,9 @@ function replacePlaceholders(template: string, data: PdfPayload): string {
   const contactFullName = [data.contact_first_name, data.contact_last_name]
     .filter(Boolean)
     .join(" ") || "-";
-  const contactAddress = data.address
-    ? `${data.address.street}, ${data.address.zip} ${data.address.city}`
-    : "-";
+  const contactAddress = data.address ? formatPostalAddressLine(data.address) : "-";
   const companyAddress = data.company_address
-    ? `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`
+    ? formatPostalAddressLine(data.company_address)
     : "-";
   
   const participantsList = data.participants
@@ -185,15 +185,19 @@ function replacePlaceholders(template: string, data: PdfPayload): string {
 }
 
 export function generatePdf(data: PdfPayload, customTemplate?: string | null): Buffer {
-  // Inicjalizacja jsPDF z domyślnymi ustawieniami
-  // jsPDF 2.x automatycznie obsługuje UTF-8, więc polskie znaki powinny działać poprawnie
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
     format: "a4",
   });
-  
-  // setCharSpace i setLineHeightFactor nie istnieją w jsPDF 2.x - usunięte
+
+  let pdfFont: "NotoSans" | "helvetica" = "helvetica";
+  try {
+    registerNotoFonts(doc);
+    pdfFont = "NotoSans";
+  } catch (e) {
+    console.warn("[generatePdf] Brak Noto Sans (pnpm run download-fonts), używam Helvetica:", e);
+  }
   
   const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
   const totalPrice = data.trip.price_cents
@@ -202,9 +206,7 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   const clientName = [data.contact_first_name, data.contact_last_name]
     .filter(Boolean)
     .join(" ") || "Klient";
-  const clientAddress = data.address
-    ? `${data.address.street}, ${data.address.zip} ${data.address.city}`
-    : "-";
+  const clientAddress = data.address ? formatPostalAddressLine(data.address) : "-";
   
   const today = new Date();
   const contractDate = today.toLocaleDateString("pl-PL", {
@@ -220,17 +222,17 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
 
   // Naglowek
   doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("UMOWA O UDZIAL W GRUPOWEJ IMPREZIE TURYSTYCZNEJ", 105, y, { align: "center" });
   y += 8;
   
   doc.setFontSize(10);
-  doc.setFont("helvetica", "italic");
+  doc.setFont(pdfFont, "normal");
   doc.text("(zwana dalej \"Umowa\")", 105, y, { align: "center" });
   y += 10;
   
   doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   // Generuj numer umowy w formacie #AAAAAA/BBB
   const agreementNumberText = data.reservation_number && data.agreement_number
     ? `#${data.reservation_number.padStart(6, '0')}/${String(data.agreement_number).padStart(3, '0')}`
@@ -240,16 +242,16 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
 
   // Strony umowy
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const partiesText = `Zawarta w dniu ${contractDate} w ${contractPlace} pomiedzy:`;
   doc.text(partiesText, 20, y);
   y += 8;
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("Biuro Podrozy \"Magia Podrozwania\"", 20, y);
   y += 6;
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const orgAddrLines = doc.splitTextToSize(`z siedziba w ${ORGANIZER_DATA.address}`, textWidth);
   doc.text(orgAddrLines, 25, y);
   y += orgAddrLines.length * 5;
@@ -265,10 +267,10 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
     data.invoice_name || data.company_name || clientName;
   const clientDisplayAddr = (() => {
     if (data.invoice_address) {
-      return `${data.invoice_address.street}, ${data.invoice_address.zip} ${data.invoice_address.city}`;
+      return formatPostalAddressLine(data.invoice_address);
     }
     if (data.company_address) {
-      return `${data.company_address.street}, ${data.company_address.zip} ${data.company_address.city}`;
+      return formatPostalAddressLine(data.company_address);
     }
     return clientAddress;
   })();
@@ -298,12 +300,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
 
   // § 1. Przedmiot Umowy
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 1. Przedmiot Umowy", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const subject1Text = "1. Przedmiotem Umowy jest organizacja i sprzedaz Klientowi, a przez niego uczestnikom, grupowej imprezy turystycznej, zwanej dalej \"Impreza Turystyczna\", zgodnie z warunkami niniejszej Umowy oraz Programem i Opisem Imprezy Turystycznej stanowiacymi Zalacznik nr 1 do Umowy.";
   const subject1Lines = doc.splitTextToSize(subject1Text, fullTextWidth);
   doc.text(subject1Lines, 20, y);
@@ -327,12 +329,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
 
   // § 2. Cena i Warunki Platnosci
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 2. Cena i Warunki Platnosci", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   doc.text(`1. Calkowita cena Imprezy Turystycznej wynosi: ${totalPrice} PLN.`, 20, y);
   y += 6;
 
@@ -371,12 +373,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
   
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 3. Obowiazki i Odpowiedzialnosc Organizatora", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const organizerObligations = [
     "1. Organizator zobowiazuje sie do zrealizowania Imprezy Turystycznej zgodnie z Umowa i Zalacznikiem nr 1 z nalezita starannoscia.",
     "2. Organizator ma obowiazek zapewnic Klientowi i uczestnikom grupy ubezpieczenie turystyczne na czas trwania Imprezy Turystycznej (OC, NNW, koszty leczenia, assistance).",
@@ -398,12 +400,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
 
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 4. Obowiazki i Odpowiedzialnosc Klienta", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const clientObligations = [
     "1. Klient zobowiazuje sie do dokonania platnosci w terminach i wysokosciach okreslonych w § 2.",
     "2. Klient ponosi odpowiedzialnosc za terminowe dostarczenie Organizatorowi kompletnej listy uczestnikow oraz wszystkich niezbednych danych i dokumentow (np. paszporty, wizy, dane do ubezpieczenia) wymaganych do realizacji Imprezy Turystycznej.",
@@ -425,12 +427,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
 
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 5. Odstapienie od Umowy i Anulowanie", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const cancellationText1 = "1. Klient moze odstapic od Umowy w kazdym czasie przed rozpoczeciem Imprezy Turystycznej. Odstapienie musi nastapic w formie pisemnej.";
   const cancellationLines1 = doc.splitTextToSize(cancellationText1, fullTextWidth);
   doc.text(cancellationLines1, 20, y);
@@ -458,12 +460,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
 
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 6. Reklamacje", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const complaints = [
     "1. Wszelkie usterki lub niezgodnosci w trakcie trwania Imprezy Turystycznej Klient jest zobowiazany zglosic niezwlocznie pilotowi, przewodnikowi lub Organizatorowi w celu ich usuniecia.",
     "2. Reklamacje dotyczace nienalezytgo wykonania Umowy nalezy skladac Organizatorowi na pismie, nie pozniej niz 14 dni od daty zakonczenia Imprezy Turystycznej.",
@@ -484,12 +486,12 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
 
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("§ 7. Postanowienia Koncowe", 20, y);
   y += 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const finalProvisions = [
     "1. W sprawach nieuregulowanych niniejsza Umowa maja zastosowanie przepisy Kodeksu Cywilnego oraz Ustawy z dnia 24 listopada 2017 r. o imprezach turystycznych i powiazanych uslugach turystycznych.",
     "2. Wszelkie zmiany niniejszej Umowy wymagaja formy pisemnej pod rygorem niewaznosci.",
@@ -507,13 +509,13 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
 
   // Podpisy
   doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("Organizator:", 20, y);
   doc.text("Klient (Organizator Grupy):", 120, y);
   y += 6;
 
   doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   const organizerNameLines = doc.splitTextToSize(ORGANIZER_DATA.name, 80);
   doc.text(organizerNameLines, 20, y);
   const clientSignatureLines = doc.splitTextToSize(clientDisplayName, 80);
@@ -521,7 +523,7 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   y += Math.max(organizerNameLines.length, clientSignatureLines.length) * 5 + 10;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("[Podpis Organizatora]", 20, y);
   doc.text("[Podpis Klienta]", 120, y);
   y += 20;
@@ -533,18 +535,18 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
 
   doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.text("ZALACZNIK NR 1 - OPIS I PROGRAM IMPREZY TURYSTYCZNEJ", 105, y, { align: "center" });
   y += 12;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   doc.text("Lista uczestnikow:", 20, y);
   y += 8;
 
   // Tabela uczestników
   doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(pdfFont, "bold");
   doc.setFillColor(240, 240, 240);
   doc.rect(20, y - 5, 170, 8, "F");
   doc.text("Lp.", 25, y);
@@ -553,7 +555,7 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   doc.text("Dokument", 150, y);
   y += 10;
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont(pdfFont, "normal");
   data.participants.forEach((participant, index) => {
     if (y > 280) {
       doc.addPage();

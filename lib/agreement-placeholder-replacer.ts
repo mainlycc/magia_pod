@@ -1,6 +1,7 @@
 // Funkcja do zastępowania placeholderów danymi z wycieczki (bez danych klienta/rezerwacji)
 
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
+import { formatPostalAddressLine } from "./format-postal-address";
 
 function formatDate(dateString: string | null): string {
   if (!dateString) return "-";
@@ -178,7 +179,7 @@ export function replaceBookingPlaceholders(
     .join(" ") || "-";
   
   const contactAddress = formData.contact?.address
-    ? `${formData.contact.address.street || ""}, ${formData.contact.address.zip || ""} ${formData.contact.address.city || ""}`.trim().replace(/^,\s*|,\s*$/g, "")
+    ? formatPostalAddressLine(formData.contact.address)
     : "-";
 
   result = result.replace(/\{\{contact_first_name\}\}/g, formData.contact?.first_name || "-");
@@ -194,7 +195,7 @@ export function replaceBookingPlaceholders(
 
   // Dane firmy
   const companyAddress = formData.company?.address
-    ? `${formData.company.address.street || ""}, ${formData.company.address.zip || ""} ${formData.company.address.city || ""}`.trim().replace(/^,\s*|,\s*$/g, "")
+    ? formatPostalAddressLine(formData.company.address)
     : "-";
 
   result = result.replace(/\{\{company_name\}\}/g, formData.company?.name || "-");

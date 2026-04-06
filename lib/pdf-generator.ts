@@ -1,7 +1,8 @@
 import { jsPDF } from "jspdf";
+import { NOTO_SANS_FAMILY, registerNotoFonts } from "@/lib/pdf/register-noto-fonts";
 
 // Funkcja do prostego parsowania HTML i renderowania w jsPDF
-function parseHtmlToPdf(html: string, doc: jsPDF): void {
+function parseHtmlToPdf(html: string, doc: jsPDF, fontFamily: string): void {
   // Usuń style inline i skrypty
   let cleanHtml = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -73,7 +74,7 @@ function parseHtmlToPdf(html: string, doc: jsPDF): void {
         y = 20;
       }
       doc.setFontSize(18);
-      doc.setFont("helvetica", "bold");
+      doc.setFont(fontFamily, "bold");
       const lines = doc.splitTextToSize(element.data, contentWidth);
       lines.forEach((line: string) => {
         doc.text(line, pageWidth / 2, y, { align: "center" });
@@ -81,14 +82,14 @@ function parseHtmlToPdf(html: string, doc: jsPDF): void {
       });
       y += 5;
       doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
+      doc.setFont(fontFamily, "normal");
     } else if (element.type === "h2") {
       if (y > 270) {
         doc.addPage();
         y = 20;
       }
       doc.setFontSize(14);
-      doc.setFont("helvetica", "bold");
+      doc.setFont(fontFamily, "bold");
       const lines = doc.splitTextToSize(element.data, contentWidth);
       lines.forEach((line: string) => {
         doc.text(line, margin, y);
@@ -96,7 +97,7 @@ function parseHtmlToPdf(html: string, doc: jsPDF): void {
       });
       y += 3;
       doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
+      doc.setFont(fontFamily, "normal");
     } else if (element.type === "table") {
       // Parsuj wiersze tabeli
       const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -127,12 +128,12 @@ function parseHtmlToPdf(html: string, doc: jsPDF): void {
           doc.rect(margin, y - 5, contentWidth, 8);
 
           // Label (lewa kolumna)
-          doc.setFont("helvetica", "bold");
+          doc.setFont(fontFamily, "bold");
           const labelLines = doc.splitTextToSize(label, contentWidth * 0.4);
           doc.text(labelLines, margin + 2, y);
 
           // Value (prawa kolumna)
-          doc.setFont("helvetica", "normal");
+          doc.setFont(fontFamily, "normal");
           const valueLines = doc.splitTextToSize(value, contentWidth * 0.55);
           doc.text(valueLines, margin + contentWidth * 0.42, y);
 
@@ -284,13 +285,21 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
     format: "a4",
   });
 
-  doc.setFont("helvetica", "normal");
+  let pdfFont = "helvetica";
+  try {
+    registerNotoFonts(doc);
+    pdfFont = NOTO_SANS_FAMILY;
+  } catch (e) {
+    console.warn("[generatePdfFromHtml] Brak Noto Sans (pnpm run download-fonts):", e);
+  }
+
+  doc.setFont(pdfFont, "normal");
   doc.setFontSize(10);
 
   // Parsuj i renderuj HTML
   try {
     console.log("Parsing HTML to PDF, HTML length:", html.length);
-    parseHtmlToPdf(html, doc);
+    parseHtmlToPdf(html, doc, pdfFont);
     console.log("HTML parsed successfully");
   } catch (parseError) {
     console.warn("HTML parsing failed, using simple text conversion:", parseError);

@@ -4,6 +4,7 @@ import { readFile } from "fs/promises";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
 import { createPaynowPayment } from "@/lib/paynow";
 import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
 
@@ -484,30 +485,8 @@ export async function POST(req: Request) {
     let attachment: { filename: string; base64: string } | null = null;
     let agreementPdfUrl: string | null = null;
 
-    // Pobierz reservation_number z wycieczki i policz numer kolejny umowy dla tej wycieczki
     const reservationNumber = trip.reservation_number || null;
-    let agreementNumber = 1; // Domyślnie pierwsza umowa
-    
-    if (reservationNumber) {
-      // Policz ile już jest umów dla wszystkich rezerwacji tej wycieczki
-      // Najpierw pobierz wszystkie booking_id dla tej wycieczki
-      const { data: tripBookings, error: bookingsError } = await adminSupabase
-        .from("bookings")
-        .select("id")
-        .eq("trip_id", trip.id);
-      
-      if (!bookingsError && tripBookings && tripBookings.length > 0) {
-        const bookingIds = tripBookings.map(b => b.id);
-        const { count: agreementsCount, error: agreementsCountError } = await adminSupabase
-          .from("agreements")
-          .select("*", { count: "exact", head: true })
-          .in("booking_id", bookingIds);
-        
-        if (!agreementsCountError && agreementsCount !== null) {
-          agreementNumber = agreementsCount + 1;
-        }
-      }
-    }
+    const agreementNumber = await getNextAgreementSeq(adminSupabase, trip.id);
 
     try {
       // W development zawsze używaj origin (localhost), w produkcji baseUrl
@@ -556,6 +535,8 @@ export async function POST(req: Request) {
             booking_id: booking.id,
             status: "generated",
             pdf_url: filename,
+            agreement_seq: agreementNumber,
+            generated_at: new Date().toISOString(),
           });
         } catch (agreementErr) {
           console.error("Error saving agreement to database:", agreementErr);

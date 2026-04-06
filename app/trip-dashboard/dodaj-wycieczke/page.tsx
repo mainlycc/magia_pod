@@ -24,6 +24,15 @@ import { X } from "lucide-react"
 import { PaymentScheduleEditor } from "@/components/payment-schedule-editor"
 import { PaymentScheduleItem } from "@/contexts/trip-context"
 import { createClient } from "@/lib/supabase/client"
+import {
+  TRIP_CLASS_CATEGORIES,
+  TRIP_CATEGORY_NONE,
+} from "@/lib/trip-class-categories"
+import {
+  TRIP_TRANSPORT_OPTIONS,
+  TRANSPORT_NONE,
+  normalizeTransportMode,
+} from "@/lib/trip-transport"
 
 type Coordinator = {
   id: string
@@ -41,6 +50,9 @@ export default function DodajWycieczkePage() {
   const [price, setPrice] = useState("")
   const [seats, setSeats] = useState("")
   const [location, setLocation] = useState("")
+  const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
+  const [airportCodes, setAirportCodes] = useState("")
+  const [tripCategory, setTripCategory] = useState<string>(TRIP_CATEGORY_NONE)
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([])
@@ -69,6 +81,30 @@ export default function DodajWycieczkePage() {
           setPrice(data.price || "")
           setSeats(data.seats || "")
           setLocation(data.location || "")
+          setTransportMode(
+            normalizeTransportMode(
+              typeof data.transportMode === "string"
+                ? data.transportMode
+                : typeof data.transport_mode === "string"
+                  ? data.transport_mode
+                  : undefined
+            )
+          )
+          setAirportCodes(
+            typeof data.airportCodes === "string"
+              ? data.airportCodes
+              : typeof data.airport_codes === "string"
+                ? data.airport_codes
+                : ""
+          )
+          {
+            const c = typeof data.tripCategory === "string" ? data.tripCategory.trim() : ""
+            setTripCategory(
+              (TRIP_CLASS_CATEGORIES as readonly string[]).includes(c)
+                ? c
+                : TRIP_CATEGORY_NONE
+            )
+          }
           setIsPublic(data.isPublic || false)
           setPublicSlug(data.publicSlug || "")
           setPaymentReminderEnabled(data.paymentReminderEnabled || false)
@@ -229,6 +265,9 @@ export default function DodajWycieczkePage() {
         price,
         seats,
         location,
+        transportMode,
+        airportCodes,
+        tripCategory,
         isPublic,
         publicSlug,
         paymentSchedule,
@@ -322,6 +361,50 @@ export default function DodajWycieczkePage() {
                 placeholder="np. Islandia"
                 className="h-8 text-xs"
               />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Środek transportu</Label>
+              <Select value={transportMode} onValueChange={setTransportMode}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Wybierz" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TRANSPORT_NONE}>Brak</SelectItem>
+                  {TRIP_TRANSPORT_OPTIONS.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {mode}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Kody lotnisk</Label>
+              <Input
+                value={airportCodes}
+                onChange={(e) => setAirportCodes(e.target.value)}
+                placeholder="np. WAW, KRK"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Kategoria wycieczki</Label>
+              <Select value={tripCategory} onValueChange={setTripCategory}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Wybierz kategorię" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TRIP_CATEGORY_NONE}>Brak</SelectItem>
+                  {TRIP_CLASS_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Cena */}

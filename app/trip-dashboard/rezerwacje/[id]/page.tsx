@@ -22,6 +22,7 @@ import {
   type PaymentStatusValue,
 } from "@/app/admin/trips/[id]/bookings/payment-status";
 import { calculatePaymentBalance } from "@/lib/utils/payment-calculator";
+import { formatPostalAddressLine } from "@/lib/format-postal-address";
 import { toast } from "sonner";
 
 type Booking = {
@@ -425,7 +426,7 @@ export default function BookingDetailsPage() {
             <div className="col-span-2">
               <Label className="text-muted-foreground">Adres</Label>
               <div>
-                {booking.address.street}, {booking.address.city} {booking.address.zip}
+                {formatPostalAddressLine(booking.address)}
               </div>
             </div>
           )}

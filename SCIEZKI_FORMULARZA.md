@@ -4,7 +4,7 @@
 
 Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden może być ukryty w zależności od konfiguracji wycieczki:
 
-1. **Kontakt** - Dane osoby zgłaszającej i adres korespondencyjny
+1. **Kontakt** - Dane osoby Zgłaszającej i adres
 2. **Uczestnicy** - Lista uczestników oraz dokumenty podróży
 3. **Usługi dodatkowe** - Ubezpieczenia, atrakcje i diety *(opcjonalny - widoczny tylko gdy `form_show_additional_services === true`)*
 4. **Zgody i podsumowanie** - Finalne potwierdzenie, zgody oraz wysyłka
@@ -311,7 +311,7 @@ Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden m
 
 ### Sekcja: Podsumowanie rezerwacji
 
-#### 1. Dane osoby zgłaszającej / firmy
+#### 1. Dane osoby Zgłaszającej / firmy
 
 **Dla FIRMY (`applicantType === "company"`):**
 
@@ -328,7 +328,7 @@ Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden m
 
 **Dla OSOBY FIZYCZNEJ (`applicantType === "individual"`):**
 
-**Wyświetlane są dane osoby zgłaszającej:**
+**Wyświetlane są dane osoby Zgłaszającej:**
 - Imię i nazwisko (`contact.first_name`, `contact.last_name`)
 - E-mail (`contact.email`)
 - Telefon (`contact.phone`)

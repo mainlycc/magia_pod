@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
 
 // Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
@@ -64,6 +65,8 @@ export async function POST(req: Request) {
       require_pesel,
       company_participants_info,
       payment_schedule,
+      transport_mode,
+      airport_codes,
     } = body ?? {};
     if (!title) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
@@ -104,6 +107,12 @@ export async function POST(req: Request) {
     // Wygeneruj nowy numeryczny slug (następny numer)
     const newSlug = String(maxNumericSlug + 1);
 
+    const tmRaw = typeof transport_mode === "string" ? transport_mode.trim() : "";
+    const transportModeResolved =
+      tmRaw && (TRIP_TRANSPORT_OPTIONS as readonly string[]).includes(tmRaw)
+        ? tmRaw
+        : null;
+
     const { data, error } = await supabase
       .from("trips")
       .insert({
@@ -123,6 +132,11 @@ export async function POST(req: Request) {
         require_pesel: typeof require_pesel === "boolean" ? require_pesel : true,
         company_participants_info: company_participants_info ?? null,
         payment_schedule: payment_schedule && Array.isArray(payment_schedule) ? payment_schedule : null,
+        transport_mode: transportModeResolved,
+        airport_codes:
+          typeof airport_codes === "string" && airport_codes.trim()
+            ? airport_codes.trim()
+            : null,
       })
       .select("id, slug")
       .single();

@@ -1,5 +1,5 @@
 -- 045: Dodanie pola form_required_contact_fields do tabeli trips
--- Pole JSONB określające które pola osoby zgłaszającej są wymagane w formularzu rezerwacji
+-- Pole JSONB określające które pola osoby Zgłaszającej są wymagane w formularzu rezerwacji
 -- Struktura: { "pesel": boolean, "phone": boolean, "email": boolean }
 -- Domyślnie phone i email są wymagane (true), pesel nie (false)
 

@@ -91,6 +91,17 @@ export async function PATCH(
   }
   if (payload.status !== undefined) {
     updateData.status = payload.status;
+    const { data: statusRow } = await supabase
+      .from("bookings")
+      .select("status")
+      .eq("id", id)
+      .single();
+    const prev = statusRow?.status;
+    if (payload.status === "cancelled" && prev !== "cancelled") {
+      updateData.cancelled_at = new Date().toISOString();
+    } else if (payload.status !== "cancelled" && prev === "cancelled") {
+      updateData.cancelled_at = null;
+    }
   }
   if (payload.internal_notes !== undefined) {
     updateData.internal_notes = payload.internal_notes;

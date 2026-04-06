@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
 
 export async function POST(
   request: Request,
@@ -98,12 +99,15 @@ export async function POST(
         return NextResponse.json({ error: "Failed to update agreement" }, { status: 500 });
       }
     } else {
-      // Utwórz nowy rekord
+      const signedAt = new Date().toISOString();
+      const agreementSeq = await getNextAgreementSeq(supabaseAdmin, booking.trip_id);
       const { error: insertError } = await supabaseAdmin.from("agreements").insert({
         booking_id: booking.id,
         status: "signed",
         pdf_url: signedFileName,
-        signed_at: new Date().toISOString(),
+        signed_at: signedAt,
+        agreement_seq: agreementSeq,
+        generated_at: signedAt,
       });
 
       if (insertError) {

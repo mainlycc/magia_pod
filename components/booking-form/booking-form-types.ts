@@ -52,7 +52,7 @@ export const steps = [
   {
     id: "contact",
     label: "Kontakt",
-    description: "Dane osoby zgłaszającej i adres korespondencyjny",
+    description: "Dane osoby Zgłaszającej i adres",
   },
   {
     id: "participants",

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { formatPostalAddressLine } from "@/lib/format-postal-address";
 import { ArrowLeft, FileText, Download, Mail, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -443,10 +444,7 @@ export default function InvoiceDetailsPage() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Adres</p>
                     <div className="text-sm">
-                      <p>{booking.address.street}</p>
-                      <p>
-                        {booking.address.postal_code} {booking.address.city}
-                      </p>
+                      <p>{formatPostalAddressLine(booking.address)}</p>
                       {booking.address.country && <p>{booking.address.country}</p>}
                     </div>
                   </div>

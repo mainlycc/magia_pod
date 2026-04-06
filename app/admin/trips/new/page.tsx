@@ -10,6 +10,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { PaymentScheduleEditor } from "@/components/payment-schedule-editor";
 import { PaymentScheduleItem } from "@/contexts/trip-context";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  TRIP_TRANSPORT_OPTIONS,
+  TRANSPORT_NONE,
+  transportModeToApi,
+} from "@/lib/trip-transport";
 
 type Coordinator = {
   id: string;
@@ -27,6 +39,8 @@ export default function NewTripPage() {
   const [price, setPrice] = useState("");
   const [seats, setSeats] = useState("");
   const [location, setLocation] = useState("");
+  const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE);
+  const [airportCodes, setAirportCodes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [publicSlug, setPublicSlug] = useState("");
@@ -134,6 +148,8 @@ export default function NewTripPage() {
           is_public: isPublic,
           public_slug: effectivePublicSlug || null,
           location: location || null,
+          transport_mode: transportModeToApi(transportMode),
+          airport_codes: airportCodes.trim() ? airportCodes.trim() : null,
           payment_schedule: paymentSchedule,
         }),
       });
@@ -225,6 +241,30 @@ export default function NewTripPage() {
                 placeholder="np. Islandia"
               />
             </div>
+            <div className="grid gap-2">
+              <Label>Środek transportu</Label>
+              <Select value={transportMode} onValueChange={setTransportMode}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TRANSPORT_NONE}>Brak</SelectItem>
+                  {TRIP_TRANSPORT_OPTIONS.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {mode}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Kody lotnisk</Label>
+            <Input
+              value={airportCodes}
+              onChange={(e) => setAirportCodes(e.target.value)}
+              placeholder="np. WAW, KRK"
+            />
           </div>
           <div className="grid gap-2">
             <Label>Cena (PLN)</Label>

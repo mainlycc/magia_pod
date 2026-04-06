@@ -27,6 +27,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -513,6 +514,20 @@ const createBookingFormSchema = (requiredFields?: {
           });
         }
       }
+      // Adres osoby Zgłaszającej — jedno pole (pełny tekst w street)
+      if (!value.contact.address?.street || value.contact.address.street.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj adres",
+          path: ["contact", "address", "street"],
+        });
+      } else if (value.contact.address.street.trim().length < 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj pełny adres (min. 8 znaków)",
+          path: ["contact", "address", "street"],
+        });
+      }
       // Dla osoby fizycznej nie waliduj company - zakończ tutaj
       return;
     }
@@ -683,7 +698,7 @@ const steps = [
   {
     id: "contact",
     label: "Kontakt",
-    description: "Dane osoby zgłaszającej i adres korespondencyjny",
+    description: "Dane osoby Zgłaszającej i adres",
   },
   {
     id: "participants",
@@ -708,6 +723,7 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
     "contact.last_name",
     "contact.email",
     "contact.phone",
+    "contact.address.street",
     "company.name",
     "company.nip",
     "company.address.street",
@@ -750,9 +766,7 @@ const formatValidationErrors = (errors: any): string => {
           .replace("contact.email", "E-mail")
           .replace("contact.phone", "Telefon")
           .replace("contact.pesel", "PESEL")
-          .replace("contact.address.street", "Ulica")
-          .replace("contact.address.city", "Miasto")
-          .replace("contact.address.zip", "Kod pocztowy")
+          .replace("contact.address.street", "Adres")
           .replace(/^participants\.(\d+)\.(.+)$/, (_, index, field) => {
             const fieldNames: Record<string, string> = {
               first_name: "Imię uczestnika",
@@ -929,7 +943,7 @@ export function BookingForm({ slug }: BookingFormProps) {
           try {
             const { data: fullTripData } = await supabase
               .from("trips")
-              .select("id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,location,is_public,public_slug,registration_mode")
+              .select("id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,location,transport_mode,airport_codes,is_public,public_slug,registration_mode")
               .eq("id", trip.id)
               .maybeSingle();
 
@@ -947,6 +961,8 @@ export function BookingForm({ slug }: BookingFormProps) {
                 is_active: fullTripData.is_active,
                 category: null,
                 location: fullTripData.location,
+                transport_mode: fullTripData.transport_mode ?? null,
+                airport_codes: fullTripData.airport_codes ?? null,
                 is_public: fullTripData.is_public,
                 public_slug: fullTripData.public_slug,
                 registration_mode: fullTripData.registration_mode,
@@ -1055,7 +1071,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         pesel: "",
         email: "",
         phone: "",
-        address: undefined,
+        address: { street: "", city: "", zip: "" },
       },
       company: {
         name: "",
@@ -1194,6 +1210,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         if (tripConfig?.form_required_contact_fields?.pesel ?? tripConfig?.require_pesel) {
           fields.push("contact.pesel");
         }
+        fields.push("contact.address.street");
         return fields;
       } else if (applicantType === "company") {
         // Dla firmy: first_name i last_name są opcjonalne, nie wymagaj pesel, ale wymagaj pól firmy
@@ -1319,13 +1336,22 @@ export function BookingForm({ slug }: BookingFormProps) {
         contact_pesel: values.contact.pesel,
         contact_email: values.contact.email,
         contact_phone: values.contact.phone,
-        address: values.contact.address && (values.contact.address.street || values.contact.address.city || values.contact.address.zip)
-          ? {
-              street: values.contact.address.street || "",
-              city: values.contact.address.city || "",
-              zip: values.contact.address.zip || "",
-            }
-          : undefined,
+        address: (() => {
+          const a = values.contact.address;
+          if (!a || !(a.street?.trim() || a.city?.trim() || a.zip?.trim())) return undefined;
+          if (applicantType === "individual") {
+            return {
+              street: (a.street || "").trim(),
+              city: "",
+              zip: "",
+            };
+          }
+          return {
+            street: a.street || "",
+            city: a.city || "",
+            zip: a.zip || "",
+          };
+        })(),
         company_name:
           values.company?.name && values.company.name.trim() !== ""
             ? values.company.name
@@ -1765,9 +1791,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         .replace("contact.last_name", "Nazwisko")
                         .replace("contact.email", "E-mail")
                         .replace("contact.phone", "Telefon")
-                        .replace("contact.address.street", "Ulica")
-                        .replace("contact.address.city", "Miasto")
-                        .replace("contact.address.zip", "Kod pocztowy");
+                        .replace("contact.address.street", "Adres");
                       errorMessages.push(`${readablePath}: ${obj[key].message}`);
                       errorFields.push(currentPath);
                     } else if (typeof obj[key] === "object" && obj[key] !== null) {
@@ -1819,12 +1843,12 @@ export function BookingForm({ slug }: BookingFormProps) {
             <TabsContent value="contact" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Dane osoby zgłaszającej</CardTitle>
+                  <CardTitle>Dane osoby Zgłaszającej</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {tripConfig?.registration_mode === "both" && (
                     <div className="space-y-2">
-                      <h3 className="font-medium text-sm">Typ osoby zgłaszającej</h3>
+                      <h3 className="font-medium text-sm">Typ osoby Zgłaszającej</h3>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
@@ -1935,6 +1959,30 @@ export function BookingForm({ slug }: BookingFormProps) {
                       />
                     )}
                   </div>
+
+                  {applicantType === "individual" && (
+                    <div className="space-y-3">
+                      <FormField
+                        control={control}
+                        name="contact.address.street"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Adres *</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="np. ul. Słoneczna 12/5, 00-001 Warszawa"
+                                rows={3}
+                                className="min-h-[5rem] resize-y"
+                                {...field}
+                                value={field.value ?? ""}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
 
                   {applicantType === "company" && (
                     <div className="space-y-4">
@@ -2093,7 +2141,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               Proszę o wystawienie faktury na inne dane
                             </FormLabel>
                             <p className="text-xs text-muted-foreground">
-                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane osoby zgłaszającej lub firmy.
+                              Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane osoby Zgłaszającej lub firmy.
                             </p>
                           </div>
                         </FormItem>
@@ -2304,9 +2352,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                             {tripConfig?.seats_total ?? "—"}
                           </span>
                         </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Liczba uczestników jest automatycznie ustawiona na maksymalną liczbę miejsc i nie można jej zmienić.
-                        </p>
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {tripConfig?.company_participants_info ||
@@ -3242,7 +3287,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                     <>
                       {/* Dla osoby fizycznej: standardowa kolejność */}
                       <section className="space-y-3">
-                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane osoby zgłaszającej</h3>
+                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane osoby Zgłaszającej</h3>
                         <div className="grid gap-2 text-sm">
                           {(contactSummary.first_name || contactSummary.last_name) && (
                             <div className="flex items-center justify-between gap-4">

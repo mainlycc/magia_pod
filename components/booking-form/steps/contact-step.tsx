@@ -56,12 +56,12 @@ export function ContactStep({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dane osoby zgłaszającej</CardTitle>
+        <CardTitle>Dane osoby Zgłaszającej</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {tripConfig?.registration_mode === "both" && (
           <div className="space-y-2">
-            <h3 className="font-medium text-sm">Typ osoby zgłaszającej</h3>
+            <h3 className="font-medium text-sm">Typ osoby Zgłaszającej</h3>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -319,7 +319,7 @@ export function ContactStep({
                     Proszę o wystawienie faktury na inne dane
                   </FormLabel>
                   <p className="text-xs text-muted-foreground">
-                    Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane osoby zgłaszającej lub firmy.
+                    Jeśli nie zaznaczysz tej opcji, faktura zostanie wystawiona na dane osoby Zgłaszającej lub firmy.
                   </p>
                 </div>
               </FormItem>

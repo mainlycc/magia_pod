@@ -16,19 +16,36 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ChevronDown, Banknote, Loader2, Save } from "lucide-react"
+import { ChevronDown, Banknote, Loader2, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import {
   getPaymentStatusBadgeClass,
 } from "@/app/admin/trips/[id]/bookings/payment-status"
 import type { PaymentStatusValue } from "@/app/admin/trips/[id]/bookings/payment-status"
 import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ParticipantAdditionalServicesEditor } from "./participant-additional-services-editor"
 
 type RequiredFields = {
   pesel?: boolean
   document?: boolean
   gender?: boolean
   phone?: boolean
+}
+
+type BookingAgreement = {
+  id: string
+  status: string
+  pdf_url: string | null
+  sent_at: string | null
+  signed_at: string | null
 }
 
 type Participant = {
@@ -46,6 +63,7 @@ type Participant = {
   document_expiry_date: string | null
   gender_code: string | null
   booking_id: string
+  selected_services: unknown
   bookings: {
     id: string
     booking_ref: string
@@ -59,6 +77,7 @@ type Participant = {
     paid_amount_cents: number
     contact_email: string
     contact_phone: string | null
+    agreements?: BookingAgreement[]
     trips: {
       id: string
       title: string
@@ -69,6 +88,17 @@ type Participant = {
       start_date: string | null
     } | null
   } | null
+}
+
+type PaymentHistoryEntry = {
+  id: string
+  booking_id: string
+  amount_cents: number
+  payment_date: string
+  payment_method: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
 }
 
 // Funkcje pomocnicze
@@ -82,14 +112,65 @@ const formatDate = (date: string | null | undefined): string => {
   return new Date(date).toLocaleDateString("pl-PL")
 }
 
+const getAgreementStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    generated: "Wygenerowana",
+    sent: "Wysłana",
+    signed: "Podpisana",
+  }
+  return labels[status] || status
+}
+
+function normalizeBookingAgreements(
+  raw: BookingAgreement[] | BookingAgreement | null | undefined
+): BookingAgreement[] {
+  if (!raw) return []
+  return Array.isArray(raw) ? raw : [raw]
+}
+
+function getAgreementPresentation(agreements: BookingAgreement[]) {
+  const generatedAgreement = agreements.find((a) => a.status !== "signed")
+  const signedAgreement = agreements.find((a) => a.status === "signed")
+  const previewAgreement = signedAgreement?.pdf_url
+    ? signedAgreement
+    : generatedAgreement?.pdf_url
+      ? generatedAgreement
+      : null
+  const sentAt =
+    generatedAgreement?.sent_at ??
+    signedAgreement?.sent_at ??
+    agreements.find((a) => a.sent_at)?.sent_at ??
+    null
+  const statusBadgeSource =
+    agreements.length > 0 ? agreements[agreements.length - 1] : null
+  return {
+    previewAgreement,
+    sentAt,
+    statusBadgeSource,
+  }
+}
+
 export default function UczestnicyPage() {
-  const { selectedTrip, tripFullData } = useTrip()
+  const { selectedTrip, tripFullData, isLoadingTripData } = useTrip()
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [updatingPayment, setUpdatingPayment] = useState<string | null>(null)
   // Lokalne wartości inputów kwot wpłat (bookingId -> wartość w zł jako string)
   const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({})
+  // Historia wpłat (bookingId -> wpisy)
+  const [paymentHistoryByBookingId, setPaymentHistoryByBookingId] = useState<
+    Record<string, PaymentHistoryEntry[]>
+  >({})
+  const [paymentHistoryLoadingByBookingId, setPaymentHistoryLoadingByBookingId] = useState<
+    Record<string, boolean>
+  >({})
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<{
+    bookingId: string
+    paymentId: string
+  } | null>(null)
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedTrip) {
@@ -125,6 +206,7 @@ export default function UczestnicyPage() {
             paid_amount_cents,
             contact_email,
             contact_phone,
+            agreements:agreements(id, status, pdf_url, sent_at, signed_at),
             trips:trips(
               id,
               title,
@@ -146,13 +228,19 @@ export default function UczestnicyPage() {
 
       console.log("Participants loaded:", data?.length, "records")
 
-      // Mapuj dane, aby bookings było pojedynczym obiektem zamiast tablicy
-      const mappedParticipants = (data || []).map((participant: any) => ({
-        ...participant,
-        bookings: Array.isArray(participant.bookings)
-          ? participant.bookings[0] || null
-          : participant.bookings,
-      }))
+      // Mapuj dane: bookings jako pojedynczy obiekt; agreements zostaje tablicą
+      const mappedParticipants = (data || []).map((participant: any) => {
+        const rawBooking = participant.bookings
+        const b = Array.isArray(rawBooking) ? rawBooking[0] || null : rawBooking
+        const bookings = b
+          ? {
+              ...b,
+              trips: Array.isArray(b.trips) ? b.trips[0] || null : b.trips,
+              agreements: normalizeBookingAgreements(b.agreements),
+            }
+          : null
+        return { ...participant, bookings }
+      })
 
       setParticipants(mappedParticipants)
     } catch (err: any) {
@@ -175,46 +263,94 @@ export default function UczestnicyPage() {
     })
   }
 
+  const loadPaymentHistory = async (bookingId: string, options?: { force?: boolean }) => {
+    const force = options?.force ?? false
+    if (!force && paymentHistoryByBookingId[bookingId]) return
+    if (paymentHistoryLoadingByBookingId[bookingId]) return
+
+    setPaymentHistoryLoadingByBookingId((prev) => ({ ...prev, [bookingId]: true }))
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/payments`)
+      if (!res.ok) {
+        throw new Error("Nie udało się pobrać historii wpłat")
+      }
+      const data = (await res.json()) as PaymentHistoryEntry[]
+      setPaymentHistoryByBookingId((prev) => ({ ...prev, [bookingId]: Array.isArray(data) ? data : [] }))
+    } catch (err) {
+      console.error(err)
+      toast.error("Nie udało się pobrać historii wpłat")
+    } finally {
+      setPaymentHistoryLoadingByBookingId((prev) => ({ ...prev, [bookingId]: false }))
+    }
+  }
+
+  const formatPaymentSource = (paymentMethod: string | null | undefined): string => {
+    const normalized = (paymentMethod ?? "").toLowerCase().trim()
+    if (!normalized) return "-"
+    if (normalized === "manual") return "Ręcznie"
+    if (normalized === "paynow") return "Paynow"
+    return paymentMethod ?? "-"
+  }
+
+  const requestDeletePayment = (bookingId: string, paymentId: string) => {
+    setPendingDelete({ bookingId, paymentId })
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDeletePayment = async () => {
+    if (!pendingDelete) return
+    const { bookingId, paymentId } = pendingDelete
+    setDeletingPaymentId(paymentId)
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/payments`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_id: paymentId }),
+      })
+      if (!res.ok) {
+        throw new Error("Nie udało się usunąć płatności")
+      }
+      toast.success("Usunięto płatność")
+      await loadPaymentHistory(bookingId, { force: true })
+      // Odśwież też podsumowanie wpłat/status (paid_amount_cents) w tabeli uczestników
+      await loadData()
+      setDeleteDialogOpen(false)
+      setPendingDelete(null)
+    } catch (err) {
+      console.error(err)
+      toast.error("Nie udało się usunąć płatności")
+    } finally {
+      setDeletingPaymentId(null)
+    }
+  }
+
   // Zapisz wpłatę — addedCents to kwota DODAWANA do istniejącej sumy
   const savePayment = async (bookingId: string, addedCents: number, currentPaidCents: number) => {
-    const newTotalCents = currentPaidCents + addedCents
     setUpdatingPayment(bookingId)
     try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/bookings/${bookingId}/payments`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paid_amount_cents: newTotalCents }),
+        body: JSON.stringify({
+          amount_cents: addedCents,
+          payment_method: "manual",
+        }),
       })
       if (!res.ok) {
         throw new Error("Nie udało się zapisać wpłaty")
       }
-      const result = await res.json()
+      await res.json()
 
       // Zaktualizuj lokalny stan uczestników
-      setParticipants((prev) =>
-        prev.map((p) => {
-          if (p.bookings?.id === bookingId) {
-            return {
-              ...p,
-              bookings: {
-                ...p.bookings!,
-                paid_amount_cents: newTotalCents,
-                payment_status: result.payment_status ?? p.bookings!.payment_status,
-                first_payment_status: result.first_payment_status ?? p.bookings!.first_payment_status,
-                second_payment_status: result.second_payment_status ?? p.bookings!.second_payment_status,
-              },
-            }
-          }
-          return p
-        })
-      )
       // Wyczyść input po zapisaniu
       setPaymentInputs((prev) => {
         const next = { ...prev }
         delete next[bookingId]
         return next
       })
-      toast.success(`Dodano wpłatę: ${(addedCents / 100).toFixed(2)} zł (łącznie: ${(newTotalCents / 100).toFixed(2)} zł)`)
+      toast.success(`Dodano wpłatę: ${(addedCents / 100).toFixed(2)} zł`)
+      await loadPaymentHistory(bookingId, { force: true })
+      await loadData()
     } catch (err) {
       console.error(err)
       toast.error("Nie udało się zapisać wpłaty")
@@ -466,12 +602,20 @@ export default function UczestnicyPage() {
                     const paidAmount = booking?.paid_amount_cents ?? 0
                     const totalAmount = booking?.trips?.price_cents || 0
                     const paidPercent = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0
+                    const agreementList = booking?.agreements ?? []
+                    const { previewAgreement, sentAt, statusBadgeSource } =
+                      getAgreementPresentation(agreementList)
 
                     return (
                       <React.Fragment key={participant.id}>
                         <TableRow
                           className="cursor-pointer"
-                          onClick={() => toggleRow(participant.id)}
+                          onClick={() => {
+                            if (booking?.id && !isExpanded) {
+                              loadPaymentHistory(booking.id)
+                            }
+                            toggleRow(participant.id)
+                          }}
                         >
                           <TableCell className="w-[48px]">
                             <Button
@@ -601,6 +745,70 @@ export default function UczestnicyPage() {
                                     )}
                                   </div>
                                 </div>
+                                {booking && (
+                                  <div>
+                                    <h4 className="font-semibold text-sm mb-2">Umowa</h4>
+                                    {agreementList.length === 0 ? (
+                                      <p className="text-sm text-muted-foreground">
+                                        Brak wygenerowanej umowy dla tej rezerwacji.
+                                      </p>
+                                    ) : (
+                                      <div className="space-y-3 text-sm">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          {statusBadgeSource && (
+                                            <Badge variant="secondary">
+                                              {getAgreementStatusLabel(statusBadgeSource.status)}
+                                            </Badge>
+                                          )}
+                                          {sentAt ? (
+                                            <span className="text-muted-foreground">
+                                              Wysłano e-mailem: {formatDate(sentAt)}
+                                            </span>
+                                          ) : (
+                                            <span className="text-muted-foreground">
+                                              Nie wysłano e-mailem
+                                            </span>
+                                          )}
+                                        </div>
+                                        {previewAgreement?.pdf_url ? (
+                                          <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span className="text-xs font-medium uppercase text-muted-foreground">
+                                                Podgląd umowy
+                                              </span>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  window.open(
+                                                    `/api/agreements/${previewAgreement.pdf_url}`,
+                                                    "_blank"
+                                                  )
+                                                }}
+                                              >
+                                                Otwórz w nowym oknie
+                                              </Button>
+                                            </div>
+                                            <div className="w-full overflow-hidden rounded-lg border bg-background">
+                                              <iframe
+                                                src={`/api/agreements/${previewAgreement.pdf_url}`}
+                                                className="h-[400px] w-full border-0"
+                                                title="Podgląd umowy"
+                                              />
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-muted-foreground">
+                                            Brak pliku PDF umowy do podglądu.
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                                 <Separator />
                                 <div>
                                   <h4 className="font-semibold text-sm mb-2">
@@ -750,7 +958,90 @@ export default function UczestnicyPage() {
                                           )
                                         })}
                                       </div>
+
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-sm font-medium">Historia wpłat</span>
+                                          {paymentHistoryLoadingByBookingId[booking.id] && (
+                                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                              Wczytywanie…
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="rounded-md border bg-background overflow-hidden">
+                                          <Table>
+                                            <TableHeader>
+                                              <TableRow>
+                                                <TableHead>Termin</TableHead>
+                                                <TableHead>Źródło</TableHead>
+                                                <TableHead className="text-right">Kwota</TableHead>
+                                                <TableHead className="w-[44px]"></TableHead>
+                                              </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                              {(paymentHistoryByBookingId[booking.id] ?? []).length === 0 &&
+                                              !paymentHistoryLoadingByBookingId[booking.id] ? (
+                                                <TableRow>
+                                                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                                                    Brak wpłat w historii.
+                                                  </TableCell>
+                                                </TableRow>
+                                              ) : (
+                                                (paymentHistoryByBookingId[booking.id] ?? []).map((p) => (
+                                                  <TableRow key={p.id}>
+                                                    <TableCell className="whitespace-nowrap">
+                                                      {formatDate(p.payment_date)}
+                                                    </TableCell>
+                                                    <TableCell className="whitespace-nowrap">
+                                                      {formatPaymentSource(p.payment_method)}
+                                                    </TableCell>
+                                                    <TableCell className="text-right whitespace-nowrap">
+                                                      {formatCurrency(p.amount_cents)}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0"
+                                                        disabled={deletingPaymentId === p.id}
+                                                        onClick={(e) => {
+                                                          e.stopPropagation()
+                                                          requestDeletePayment(booking.id, p.id)
+                                                        }}
+                                                        aria-label="Usuń płatność"
+                                                      >
+                                                        {deletingPaymentId === p.id ? (
+                                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                                        )}
+                                                      </Button>
+                                                    </TableCell>
+                                                  </TableRow>
+                                                ))
+                                              )}
+                                            </TableBody>
+                                          </Table>
+                                        </div>
+                                      </div>
                                     </div>
+                                  )}
+                                </div>
+                                <Separator />
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  {isLoadingTripData && !tripFullData ? (
+                                    <div className="text-sm text-muted-foreground py-2">
+                                      Wczytywanie katalogu usług…
+                                    </div>
+                                  ) : (
+                                    <ParticipantAdditionalServicesEditor
+                                      participantId={participant.id}
+                                      tripFullData={tripFullData}
+                                      initialSelectedServices={participant.selected_services}
+                                      onSaved={loadData}
+                                    />
                                   )}
                                 </div>
                               </div>
@@ -766,6 +1057,44 @@ export default function UczestnicyPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) {
+            setPendingDelete(null)
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Usunąć płatność?</DialogTitle>
+            <DialogDescription>
+              Tej operacji nie można cofnąć. Wpis z historii wpłat zostanie usunięty.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false)
+                setPendingDelete(null)
+              }}
+              disabled={!!deletingPaymentId}
+            >
+              Anuluj
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeletePayment}
+              disabled={!pendingDelete || !!deletingPaymentId}
+            >
+              Usuń
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

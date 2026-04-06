@@ -32,6 +32,8 @@ export type TripFullData = {
   is_active: boolean | null
   category: string | null
   location: string | null
+  transport_mode: string | null
+  airport_codes: string | null
   is_public: boolean | null
   public_slug: string | null
   registration_mode: string | null

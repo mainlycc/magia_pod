@@ -68,7 +68,7 @@ export function BasicSettingsSection({
                 Wymagane pola zgłaszającego
               </Label>
               <p className="text-[10px] text-muted-foreground">
-                Wybierz które pola są obowiązkowe dla osoby zgłaszającej. Imię i nazwisko są zawsze wymagane.
+                Wybierz które pola są obowiązkowe dla osoby Zgłaszającej. Imię i nazwisko są zawsze wymagane.
               </p>
             </div>
             <div className="space-y-3 pl-2">
@@ -78,7 +78,7 @@ export function BasicSettingsSection({
                     E-mail
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Adres e-mail osoby zgłaszającej
+                    Adres e-mail osoby Zgłaszającej
                   </p>
                 </div>
                 <Switch
@@ -97,7 +97,7 @@ export function BasicSettingsSection({
                     Telefon
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Numer telefonu osoby zgłaszającej
+                    Numer telefonu osoby Zgłaszającej
                   </p>
                 </div>
                 <Switch
@@ -116,7 +116,7 @@ export function BasicSettingsSection({
                     PESEL
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Numer PESEL osoby zgłaszającej
+                    Numer PESEL osoby Zgłaszającej
                   </p>
                 </div>
                 <Switch

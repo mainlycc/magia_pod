@@ -5,6 +5,7 @@ import {
   IconFileDescription,
   IconMail,
   IconReceipt,
+  IconReportAnalytics,
   IconSettings,
   IconShieldCheck,
   IconUserPlus,
@@ -144,6 +145,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       title: "Dokumenty",
       url: "/trip-dashboard/dokumenty",
       icon: IconFileText,
+    },
+    {
+      title: "Raport umów TFG",
+      url: "/trip-dashboard/raport-umow",
+      icon: IconReportAnalytics,
     },
   ]
 
