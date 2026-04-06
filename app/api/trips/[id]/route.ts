@@ -98,8 +98,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payment_reminder_enabled: boolean;
       payment_reminder_days_before: number | null;
       payment_schedule: unknown;
-      transport_mode: string | null;
-      airport_codes: string | null;
     }> = {};
     if ("title" in body) payload.title = body.title;
     if ("description" in body) payload.description = body.description ?? null;

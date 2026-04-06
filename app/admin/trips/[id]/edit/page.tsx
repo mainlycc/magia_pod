@@ -81,6 +81,8 @@ export default function EditTripPage() {
   const [price, setPrice] = useState<string>("");
   const [seats, setSeats] = useState<string>("");
   const [location, setLocation] = useState("");
+  const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE);
+  const [airportCodes, setAirportCodes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [publicSlug, setPublicSlug] = useState<string>("");
