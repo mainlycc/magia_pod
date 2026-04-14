@@ -3,20 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 
-async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
-  const { data: claims } = await supabase.auth.getClaims();
-  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
-  if (!userId) return false;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  return profile?.role === "admin";
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -27,20 +13,18 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!isAdmin) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+    if (!user) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
     const adminSupabase = createAdminClient();
 
-    // Jeśli podano payment_id, użyj go bezpośrednio
     let paymentHistoryId: string | null = payment_id || null;
     let amountCents: number = 0;
 
     if (paymentHistoryId) {
-      // Pobierz kwotę z istniejącego wpisu payment_history
       const { data: payment } = await adminSupabase
         .from("payment_history")
         .select("id, amount_cents")
@@ -53,7 +37,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (!paymentHistoryId || amountCents === 0) {
-      // Jeśli nie podano payment_id, pobierz ostatnią płatność
       const { data: lastPayment } = await adminSupabase
         .from("payment_history")
         .select("id, amount_cents")
@@ -69,7 +52,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (!paymentHistoryId || amountCents === 0) {
-      // Jeśli nadal brak - pobierz kwotę z bookingu i utwórz payment_history
       const { data: booking } = await adminSupabase
         .from("bookings")
         .select("paid_amount_cents")
@@ -85,7 +67,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Utwórz wpis payment_history
       const { data: newPayment, error: phError } = await adminSupabase
         .from("payment_history")
         .insert({
@@ -107,7 +88,6 @@ export async function POST(request: NextRequest) {
       paymentHistoryId = newPayment.id;
     }
 
-    // Deleguj do centralnego serwisu faktur
     const result = await processPaymentInvoice({
       bookingId: booking_id,
       paymentHistoryId: paymentHistoryId!,
@@ -119,10 +99,10 @@ export async function POST(request: NextRequest) {
         success: true,
         invoice_id: result.invoiceId,
         invoice_number: result.invoiceNumber,
-        saldeo_invoice_id: result.saldeoInvoiceId || null,
-        message: result.saldeoInvoiceId
-          ? "Faktura zaliczkowa została wygenerowana i zapisana w Saldeo"
-          : "Faktura została zapisana lokalnie (Saldeo w toku lub niedostępne)",
+        provider_invoice_id: result.providerInvoiceId || null,
+        message: result.providerInvoiceId
+          ? "Faktura zaliczkowa została wygenerowana i zapisana w Fakturownia"
+          : "Faktura została zapisana lokalnie (Fakturownia w toku lub niedostępne)",
       });
     } else {
       return NextResponse.json(
@@ -135,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error("Error in POST /api/saldeo/invoice/create:", error);
+    console.error("Error in POST /api/fakturownia/invoice/create:", error);
     return NextResponse.json(
       {
         success: false,

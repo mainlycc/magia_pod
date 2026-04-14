@@ -75,8 +75,8 @@ type Invoice = {
   amount_cents: number;
   status: "wystawiona" | "wysłana" | "opłacona";
   created_at: string;
-  saldeo_invoice_id: string | null;
-  saldeo_error: string | null;
+  fakturownia_invoice_id: string | null;
+  invoice_provider_error: string | null;
 };
 
 export default function BookingDetailsPage() {
@@ -152,7 +152,7 @@ export default function BookingDetailsPage() {
 
       const lastPayment = booking.payment_history[booking.payment_history.length - 1];
       
-      const res = await fetch("/api/saldeo/invoice/create", {
+      const res = await fetch("/api/fakturownia/invoice/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -165,14 +165,8 @@ export default function BookingDetailsPage() {
         const data = await res.json();
         if (data.success === false && data.error === "Invoice already exists for this booking") {
           toast.info("Faktura już istnieje dla tej rezerwacji");
-        } else if (data.saldeo_success === false && data.saldeo_error) {
-          // Faktura zapisana lokalnie, ale problem z Saldeo
-          toast.warning(
-            `Faktura zapisana lokalnie (${data.invoice_number}), ale wystąpił problem z Saldeo: ${data.saldeo_error}`,
-            { duration: 6000 }
-          );
-        } else if (data.saldeo_success === true) {
-          toast.success(`Faktura ${data.invoice_number} została wygenerowana i wysłana do Saldeo`);
+        } else if (data.provider_invoice_id) {
+          toast.success(`Faktura ${data.invoice_number} została wygenerowana i wysłana do Fakturownia`);
         } else {
           toast.success(`Faktura ${data.invoice_number} została wygenerowana`);
         }
@@ -581,26 +575,18 @@ export default function BookingDetailsPage() {
                   {new Date(invoice.created_at).toLocaleDateString("pl-PL")}
                 </div>
               </div>
-              {invoice.saldeo_invoice_id && (
+              {invoice.fakturownia_invoice_id && (
                 <div className="col-span-2">
-                  <Label className="text-muted-foreground">ID Saldeo</Label>
-                  <div className="text-sm font-mono">{invoice.saldeo_invoice_id}</div>
+                  <Label className="text-muted-foreground">ID Fakturownia</Label>
+                  <div className="text-sm font-mono">{invoice.fakturownia_invoice_id}</div>
                 </div>
               )}
-              {invoice.saldeo_error && (
+              {invoice.invoice_provider_error && (
                 <div className="col-span-2">
-                  <Label className="text-muted-foreground text-red-600">Błąd Saldeo</Label>
-                  <div className="text-sm text-red-600">{invoice.saldeo_error}</div>
+                  <Label className="text-muted-foreground text-red-600">Błąd Fakturownia</Label>
+                  <div className="text-sm text-red-600">{invoice.invoice_provider_error}</div>
                 </div>
               )}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => window.open(`https://saldeo.com`, "_blank")}
-              >
-                Zobacz w Saldeo
-              </Button>
             </div>
           </div>
         ) : (

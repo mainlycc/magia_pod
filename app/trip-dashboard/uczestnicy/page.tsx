@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ChevronDown, Banknote, Loader2, Save, Trash2 } from "lucide-react"
+import { ChevronDown, Banknote, Loader2, Save, Trash2, FileText } from "lucide-react"
 import { toast } from "sonner"
 import {
   getPaymentStatusBadgeClass,
@@ -99,6 +100,12 @@ type PaymentHistoryEntry = {
   notes: string | null
   created_at: string
   created_by: string | null
+  invoice: {
+    id: string
+    invoice_number: string
+    fakturownia_invoice_id: string | null
+    invoice_provider_error: string | null
+  } | null
 }
 
 // Funkcje pomocnicze
@@ -151,6 +158,7 @@ function getAgreementPresentation(agreements: BookingAgreement[]) {
 }
 
 export default function UczestnicyPage() {
+  const router = useRouter()
   const { selectedTrip, tripFullData, isLoadingTripData } = useTrip()
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
@@ -171,6 +179,7 @@ export default function UczestnicyPage() {
     paymentId: string
   } | null>(null)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [generatingInvoiceForPaymentId, setGeneratingInvoiceForPaymentId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedTrip) {
@@ -321,6 +330,29 @@ export default function UczestnicyPage() {
       toast.error("Nie udało się usunąć płatności")
     } finally {
       setDeletingPaymentId(null)
+    }
+  }
+
+  const generateInvoice = async (bookingId: string, paymentId: string) => {
+    setGeneratingInvoiceForPaymentId(paymentId)
+    try {
+      const res = await fetch("/api/fakturownia/invoice/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: bookingId, payment_id: paymentId }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        toast.error(data.message || "Nie udało się wygenerować faktury")
+        return
+      }
+      toast.success("Faktura została wygenerowana")
+      await loadPaymentHistory(bookingId, { force: true })
+    } catch (err) {
+      console.error(err)
+      toast.error("Nie udało się wygenerować faktury")
+    } finally {
+      setGeneratingInvoiceForPaymentId(null)
     }
   }
 
@@ -977,6 +1009,7 @@ export default function UczestnicyPage() {
                                                 <TableHead>Termin</TableHead>
                                                 <TableHead>Źródło</TableHead>
                                                 <TableHead className="text-right">Kwota</TableHead>
+                                                <TableHead>Faktura</TableHead>
                                                 <TableHead className="w-[44px]"></TableHead>
                                               </TableRow>
                                             </TableHeader>
@@ -984,7 +1017,7 @@ export default function UczestnicyPage() {
                                               {(paymentHistoryByBookingId[booking.id] ?? []).length === 0 &&
                                               !paymentHistoryLoadingByBookingId[booking.id] ? (
                                                 <TableRow>
-                                                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                                                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                                                     Brak wpłat w historii.
                                                   </TableCell>
                                                 </TableRow>
@@ -999,6 +1032,39 @@ export default function UczestnicyPage() {
                                                     </TableCell>
                                                     <TableCell className="text-right whitespace-nowrap">
                                                       {formatCurrency(p.amount_cents)}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {p.invoice ? (
+                                                        <Button
+                                                          variant="link"
+                                                          size="sm"
+                                                          className="h-auto p-0 text-xs font-medium gap-1"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            router.push(`/trip-dashboard/faktury/${p.invoice!.id}`)
+                                                          }}
+                                                        >
+                                                          <FileText className="h-3 w-3" />
+                                                          {p.invoice.invoice_number || "—"}
+                                                        </Button>
+                                                      ) : (
+                                                        <Button
+                                                          variant="outline"
+                                                          size="sm"
+                                                          className="h-7 text-xs"
+                                                          disabled={generatingInvoiceForPaymentId === p.id}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            generateInvoice(booking.id, p.id)
+                                                          }}
+                                                        >
+                                                          {generatingInvoiceForPaymentId === p.id ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                          ) : (
+                                                            "Wygeneruj fakturę"
+                                                          )}
+                                                        </Button>
+                                                      )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                       <Button

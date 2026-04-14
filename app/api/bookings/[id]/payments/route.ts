@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 
 const paymentSchema = z.object({
   amount_cents: z.number().int().positive(),
@@ -22,7 +23,15 @@ export async function GET(
 
   const { data, error } = await supabase
     .from("payment_history")
-    .select("*")
+    .select(`
+      *,
+      invoice:invoices!invoices_payment_history_id_fkey(
+        id,
+        invoice_number,
+        fakturownia_invoice_id,
+        invoice_provider_error
+      )
+    `)
     .eq("booking_id", id)
     .order("payment_date", { ascending: false });
 
@@ -31,7 +40,13 @@ export async function GET(
     return NextResponse.json({ error: "fetch_failed" }, { status: 500 });
   }
 
-  return NextResponse.json(data || []);
+  // Normalize: invoice może być tablicą w zależności od Supabase – spłaszcz do obiektu lub null
+  const normalized = (data || []).map((entry: any) => ({
+    ...entry,
+    invoice: Array.isArray(entry.invoice) ? (entry.invoice[0] ?? null) : (entry.invoice ?? null),
+  }));
+
+  return NextResponse.json(normalized);
 }
 
 export async function POST(
@@ -126,47 +141,15 @@ export async function POST(
     })
     .eq("id", id);
 
-  // Wystaw fakturę automatycznie dla płatności z statusem "paid" lub "partial"
-  if (newPaymentStatus === "paid" || newPaymentStatus === "partial") {
-    try {
-      // Sprawdź czy faktura już istnieje dla tego booking_id
-      const { data: existingInvoice } = await supabase
-        .from("invoices")
-        .select("id")
-        .eq("booking_id", id)
-        .single();
-
-      if (!existingInvoice && payment) {
-        console.log(`[Payments API] Creating invoice for booking ${id}`);
-
-        // Pobierz baseUrl dla wywołania API
-        const { origin } = new URL(request.url);
-        let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        
-        if (!baseUrl && process.env.VERCEL_URL) {
-          baseUrl = `https://${process.env.VERCEL_URL}`;
-        }
-        
-        if (!baseUrl) {
-          baseUrl = origin;
-        }
-
-        // Wywołaj endpoint do wystawiania faktury (asynchronicznie, nie blokujemy odpowiedzi)
-        fetch(`${baseUrl}/api/saldeo/invoice/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            booking_id: id,
-            payment_id: payment.id,
-          }),
-        }).catch((err) => {
-          console.error("[Payments API] Error creating invoice:", err);
-        });
-      }
-    } catch (err) {
-      // Błąd wystawiania faktury nie powinien blokować odpowiedzi
-      console.error("[Payments API] Error in invoice creation logic:", err);
-    }
+  // Wystaw fakturę dla każdej wpłaty (asynchronicznie, nie blokujemy odpowiedzi)
+  if (payment && payload.amount_cents > 0) {
+    processPaymentInvoice({
+      bookingId: id,
+      paymentHistoryId: payment.id,
+      amountCents: payload.amount_cents,
+    }).catch((err) => {
+      console.error("[Payments API] Error creating invoice:", err);
+    });
   }
 
   return NextResponse.json(payment);

@@ -30,6 +30,7 @@ import {
   normalizeTransportMode,
   transportModeToApi,
 } from "@/lib/trip-transport"
+import { DatePicker } from "@/components/ui/date-picker"
 
 type Coordinator = {
   id: string
@@ -377,19 +378,17 @@ export default function TripGeneralInfoPage() {
 
                 <div className="grid gap-1">
                   <Label className="text-xs">Data rozpoczęcia</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={startDate || ""}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    onChange={setStartDate}
                     className="h-8 text-xs"
                   />
                 </div>
                 <div className="grid gap-1">
                   <Label className="text-xs">Data zakończenia</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={endDate || ""}
-                    onChange={(e) => setEndDate(e.target.value)}
+                    onChange={setEndDate}
                     className="h-8 text-xs"
                   />
                 </div>

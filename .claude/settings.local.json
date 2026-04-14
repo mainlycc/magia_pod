@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/invoice/create\")",
+      "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/invoice/manual\")",
+      "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/invoice/pdf-by-id\")",
+      "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/clients\")",
+      "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/test-connection\")",
+      "Bash(npx tsc:*)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
+    ]
+  }
+}

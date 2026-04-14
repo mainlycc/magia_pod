@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { X, Plus } from "lucide-react"
 import { PaymentScheduleItem } from "@/contexts/trip-context"
+import { DatePicker } from "@/components/ui/date-picker"
 
 type PaymentScheduleEditorProps = {
   schedule: PaymentScheduleItem[]
@@ -152,12 +153,9 @@ export function PaymentScheduleEditor({
               </div>
               <div className="grid gap-1">
                 <Label className="text-xs">Data wymagalności</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={item.due_date}
-                  onChange={(e) =>
-                    updateInstallment(index, "due_date", e.target.value)
-                  }
+                  onChange={(v) => updateInstallment(index, "due_date", v)}
                   className="h-8 text-xs"
                 />
               </div>

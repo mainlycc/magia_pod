@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { TfgReportType } from "@/lib/reports/tfg-agreement-report";
+import { DatePicker } from "@/components/ui/date-picker";
 
 const REPORT_OPTIONS: { value: TfgReportType; label: string }[] = [
   { value: "tfg_signed_detail", label: "Składki TFG – wykaz zawartych umów (szczegółowy)" },
@@ -244,20 +245,18 @@ export function AgreementTfgReportClient() {
               <div className="flex flex-wrap gap-4 items-end">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Od</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-[160px]"
+                    onChange={setDateFrom}
+                    className="w-[160px] h-10"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Do</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-[160px]"
+                    onChange={setDateTo}
+                    className="w-[160px] h-10"
                   />
                 </div>
               </div>

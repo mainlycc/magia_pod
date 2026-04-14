@@ -538,7 +538,7 @@ export async function POST(request: NextRequest) {
           console.log(`[Paynow Webhook] ✓ Invoice created:`, {
             invoiceId: invoiceResult.invoiceId,
             invoiceNumber: invoiceResult.invoiceNumber,
-            saldeoInvoiceId: invoiceResult.saldeoInvoiceId,
+            providerInvoiceId: invoiceResult.providerInvoiceId,
           });
         } else {
           console.error(`[Paynow Webhook] Failed to create invoice:`, invoiceResult.error);

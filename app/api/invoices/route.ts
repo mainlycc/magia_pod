@@ -1,35 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return false;
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  return profile?.role === "admin";
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!isAdmin) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+    if (!user) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    // Pobierz faktury z powiązanymi danymi rezerwacji i wycieczek
-    const { data: invoices, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const tripId = searchParams.get("trip_id");
+
+    let query = supabase
       .from("invoices")
       .select(
         `
@@ -57,6 +43,12 @@ export async function GET() {
       )
       .order("created_at", { ascending: false });
 
+    if (tripId) {
+      query = query.eq("bookings.trip_id", tripId);
+    }
+
+    const { data: invoices, error } = await query;
+
     if (error) {
       console.error("Error fetching invoices:", error);
       return NextResponse.json(
@@ -65,28 +57,30 @@ export async function GET() {
       );
     }
 
-    // Dla każdej faktury policz liczbę uczestników
+    // When filtering by trip_id via join, invoices with non-matching bookings
+    // still appear but with null bookings — filter them out client-side
+    const filtered = tripId
+      ? (invoices || []).filter(
+          (inv) => inv.bookings !== null
+        )
+      : invoices || [];
+
     const invoicesWithParticipants = await Promise.all(
-      (invoices || []).map(async (invoice) => {
+      filtered.map(async (invoice) => {
         if (!invoice.booking_id) {
           return { ...invoice, participants_count: 0 };
         }
-
         const { count } = await supabase
           .from("participants")
           .select("*", { count: "exact", head: true })
           .eq("booking_id", invoice.booking_id);
-
-        return {
-          ...invoice,
-          participants_count: count || 0,
-        };
+        return { ...invoice, participants_count: count || 0 };
       })
     );
 
     return NextResponse.json(invoicesWithParticipants);
   } catch (error) {
-    console.error("GET /api/admin/invoices error:", error);
+    console.error("GET /api/invoices error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

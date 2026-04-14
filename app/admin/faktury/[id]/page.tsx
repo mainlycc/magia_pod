@@ -26,8 +26,8 @@ type Invoice = {
   created_at: string;
   updated_at: string;
   booking_id: string;
-  saldeo_invoice_id: string | null;
-  saldeo_error: string | null;
+  fakturownia_invoice_id: string | null;
+  invoice_provider_error: string | null;
   pdf_url: string | null;
   bookings: {
     id: string;
@@ -130,10 +130,10 @@ export default function InvoiceDetailsPage() {
   }, [invoiceId]);
 
   useEffect(() => {
-    if (invoice?.saldeo_invoice_id) {
+    if (invoice?.fakturownia_invoice_id) {
       loadPdfUrl();
     }
-  }, [invoice?.saldeo_invoice_id]);
+  }, [invoice?.fakturownia_invoice_id]);
 
   const loadInvoice = async () => {
     try {
@@ -154,8 +154,8 @@ export default function InvoiceDetailsPage() {
           created_at,
           updated_at,
           booking_id,
-          saldeo_invoice_id,
-          saldeo_error,
+          fakturownia_invoice_id,
+          invoice_provider_error,
           pdf_url,
           bookings:bookings!inner(
             id,
@@ -226,7 +226,7 @@ export default function InvoiceDetailsPage() {
 
     try {
       setLoadingPdf(true);
-      const response = await fetch(`/api/saldeo/invoice/${invoice.id}/pdf`);
+      const response = await fetch(`/api/fakturownia/invoice/${invoice.id}/pdf`);
       const data = await response.json();
 
       if (data.success && data.pdfUrl) {
@@ -332,12 +332,12 @@ export default function InvoiceDetailsPage() {
         </div>
       </div>
 
-      {/* Błąd Saldeo - jeśli wystąpił */}
-      {invoice.saldeo_error && (
+      {/* Błąd Fakturownia - jeśli wystąpił */}
+      {invoice.invoice_provider_error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Błąd integracji z Saldeo</AlertTitle>
-          <AlertDescription>{invoice.saldeo_error}</AlertDescription>
+          <AlertTitle>Błąd integracji z Fakturownia</AlertTitle>
+          <AlertDescription>{invoice.invoice_provider_error}</AlertDescription>
         </Alert>
       )}
 
@@ -394,11 +394,11 @@ export default function InvoiceDetailsPage() {
                 )}
               </div>
 
-              {invoice.saldeo_invoice_id && (
+              {invoice.fakturownia_invoice_id && (
                 <div>
-                  <p className="text-sm text-muted-foreground">ID w systemie Saldeo</p>
+                  <p className="text-sm text-muted-foreground">ID w systemie Fakturownia</p>
                   <p className="font-medium font-mono text-sm">
-                    {invoice.saldeo_invoice_id}
+                    {invoice.fakturownia_invoice_id}
                   </p>
                 </div>
               )}
@@ -529,7 +529,7 @@ export default function InvoiceDetailsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Podgląd faktury</CardTitle>
-                <CardDescription>PDF faktury z systemu Saldeo</CardDescription>
+                <CardDescription>PDF faktury z systemu Fakturownia</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="w-full h-[600px] border rounded-lg overflow-hidden">
@@ -551,13 +551,12 @@ export default function InvoiceDetailsPage() {
             </Card>
           )}
 
-          {!pdfUrl && !loadingPdf && invoice?.saldeo_invoice_id && (
+          {!pdfUrl && !loadingPdf && invoice?.fakturownia_invoice_id && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>PDF w trakcie generowania</AlertTitle>
               <AlertDescription>
-                Po wystawieniu faktury w Saldeo, PDF jest generowany przez około 30
-                sekund. Spróbuj odświeżyć stronę za chwilę.
+                PDF jest generowany przez Fakturownia. Spróbuj odświeżyć stronę za chwilę.
               </AlertDescription>
             </Alert>
           )}
@@ -580,7 +579,7 @@ export default function InvoiceDetailsPage() {
                 className="w-full"
                 variant="outline"
                 onClick={handleSendEmail}
-                disabled={!booking?.contact_email || !invoice.saldeo_invoice_id}
+                disabled={!booking?.contact_email || !invoice.fakturownia_invoice_id}
               >
                 <Mail className="mr-2 h-4 w-4" />
                 Wyślij emailem

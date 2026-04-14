@@ -33,8 +33,8 @@ type InvoiceWithBooking = {
   created_at: string;
   updated_at: string;
   booking_id: string;
-  saldeo_invoice_id: string | null;
-  saldeo_error: string | null;
+  fakturownia_invoice_id: string | null;
+  invoice_provider_error: string | null;
   bookings: {
     id: string;
     booking_ref: string;
@@ -133,8 +133,8 @@ export default function AdminInvoicesPage() {
           created_at,
           updated_at,
           booking_id,
-          saldeo_invoice_id,
-          saldeo_error,
+          fakturownia_invoice_id,
+          invoice_provider_error,
           bookings:bookings!inner(
             id,
             booking_ref,
@@ -472,9 +472,9 @@ export default function AdminInvoicesPage() {
       <div className="flex justify-end">
         <Button
           variant="outline"
-          onClick={() => router.push("/admin/faktury/nowa-saldeo")}
+          onClick={() => router.push("/admin/faktury/nowa-fakturownia")}
         >
-          Wystaw fakture w Saldeo (test)
+          Wystaw fakturę w Fakturownia
         </Button>
       </div>
       <ReusableTable

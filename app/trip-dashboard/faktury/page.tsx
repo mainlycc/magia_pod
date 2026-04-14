@@ -20,8 +20,8 @@ type InvoiceWithBooking = {
   created_at: string
   updated_at: string
   booking_id: string
-  saldeo_invoice_id: string | null
-  saldeo_error: string | null
+  fakturownia_invoice_id: string | null
+  invoice_provider_error: string | null
   bookings: {
     id: string
     booking_ref: string
@@ -81,16 +81,12 @@ export default function FakturyPage() {
 
     try {
       setLoading(true)
-      const response = await fetch("/api/admin/invoices")
+      const response = await fetch(`/api/invoices?trip_id=${selectedTrip.id}`)
       if (!response.ok) {
         throw new Error("Nie udało się wczytać faktur")
       }
       const data: InvoiceWithBooking[] = await response.json()
-      // Filtruj po wybranej wycieczce
-      const filtered = data.filter(
-        (invoice) => invoice.bookings?.trip_id === selectedTrip.id
-      )
-      setInvoices(filtered)
+      setInvoices(data)
     } catch (err) {
       toast.error("Nie udało się wczytać faktur")
       console.error(err)

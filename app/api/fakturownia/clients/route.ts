@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { fetchContractors, type SaldeoConfig } from "@/lib/saldeo/client";
+import { fetchClients, type FakturowniaConfig } from "@/lib/fakturownia/client";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const {
@@ -23,29 +23,27 @@ export async function GET() {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    const config: SaldeoConfig = {
-      username: process.env.SALDEO_USERNAME || "",
-      apiToken: process.env.SALDEO_API_TOKEN || "",
-      companyProgramId: process.env.SALDEO_COMPANY_PROGRAM_ID || "",
-      apiUrl: process.env.SALDEO_API_URL || "https://saldeo.brainshare.pl",
+    const config: FakturowniaConfig = {
+      apiToken: process.env.FAKTUROWNIA_API_TOKEN || "",
+      subdomain: process.env.FAKTUROWNIA_SUBDOMAIN || "",
     };
 
-    if (!config.username || !config.apiToken || !config.companyProgramId) {
+    if (!config.apiToken || !config.subdomain) {
       return NextResponse.json(
-        { error: "saldeo_config_missing", message: "Brak konfiguracji Saldeo" },
+        { error: "fakturownia_config_missing", message: "Brak konfiguracji Fakturownia (FAKTUROWNIA_API_TOKEN, FAKTUROWNIA_SUBDOMAIN)" },
         { status: 500 }
       );
     }
 
-    const result = await fetchContractors(config);
+    const result = await fetchClients(config);
 
     return NextResponse.json({
       success: result.success,
-      contractors: result.contractors,
+      clients: result.clients,
       error: result.error || null,
     });
   } catch (error) {
-    console.error("Error fetching contractors:", error);
+    console.error("Error fetching Fakturownia clients:", error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
