@@ -94,13 +94,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const invoiceItems: FakturowniaInvoiceItem[] = positions.map((item: any) => ({
-      name: String(item.name),
-      quantity: Number(item.quantity),
-      unit: String(item.unit),
-      unit_price: Number(item.unit_price),
-      tax: item.tax ? String(item.tax) : "np",
-    }));
+    const invoiceItems: FakturowniaInvoiceItem[] = positions.map((item: any) => {
+      const quantity = Number(item.quantity);
+      const unitPrice = Number(item.unit_price);
+
+      // Uwaga: klient Fakturownia w tym projekcie wysyła `price_net` i `total_price_gross`.
+      // W trybie marży (tax: "np") zwykle net == gross, więc mapujemy 1:1.
+      return {
+        name: String(item.name),
+        quantity,
+        price_net: unitPrice,
+        total_price_gross: unitPrice * quantity,
+        tax: item.tax ? String(item.tax) : "np",
+      };
+    });
 
     const invoiceData: FakturowniaInvoiceData = {
       kind: kind || "advance",

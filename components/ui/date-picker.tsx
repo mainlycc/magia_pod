@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { format, parseISO } from "date-fns"
+import { format } from "date-fns/format"
+import { parseISO } from "date-fns/parseISO"
 import { pl } from "date-fns/locale"
 import { CalendarIcon } from "lucide-react"
 

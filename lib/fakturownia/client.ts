@@ -29,6 +29,7 @@ export interface FakturowniaInvoiceData {
   payment_to?: string;
   payment_type: string; // "transfer", "cash", "card"
   currency: string;
+  use_gross?: boolean;
   lang?: string;
   buyer_name: string;
   buyer_tax_no?: string;
@@ -38,6 +39,9 @@ export interface FakturowniaInvoiceData {
   buyer_country?: string;
   buyer_email?: string;
   buyer_phone?: string;
+  // Procedura marży (m.in. VAT marża / turystyka)
+  margin_procedure?: boolean;
+  margin_kind?: string;
   // Powiązanie z zamówieniem (wymagane dla kind: "advance" od KSeF)
   order_id?: number;
   // Powiązanie z poprzednią fakturą zaliczkową (dla advance_to_advance)

@@ -7,7 +7,8 @@
       "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/clients\")",
       "Bash(mkdir -p \"C:/Users/sblic/Programowanie_lokalnie/CLI-magiapodrozowania/with-supabase-app/app/api/fakturownia/test-connection\")",
       "Bash(npx tsc:*)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(echo \"TSC_DONE:$?\")"
     ]
   }
 }
