@@ -11,6 +11,7 @@ export interface RequiredContactFields {
   pesel: boolean
   phone: boolean
   email: boolean
+  address: boolean
 }
 
 export interface AdditionalAttraction {

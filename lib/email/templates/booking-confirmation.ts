@@ -83,34 +83,19 @@ export function generateBookingConfirmationEmail(
                 </div>
               </div>
               
-              <!-- Info Box -->
-              <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 16px; border-radius: 6px; margin: 30px 0;">
-                <p style="margin: 0 0 8px 0; font-size: 14px; color: #166534; font-weight: 600;">
-                  📄 Umowa do podpisania
-                </p>
-                <p style="margin: 0 0 12px 0; font-size: 14px; color: #166534; line-height: 1.5;">
-                  <strong>W załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.</strong> Prosimy o:
-                </p>
-                <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: #166534; line-height: 1.8;">
-                  <li>Pobranie załączonej umowy PDF</li>
-                  <li>Podpisanie umowy</li>
-                  <li>Przesłanie podpisanej umowy przez poniższy link</li>
-                </ol>
-              </div>
-              
               <!-- CTA Buttons -->
               <table role="presentation" style="width: 100%; margin: 30px 0;">
                 <tr>
                   <td align="center" style="padding: 0;">
                     <a href="${bookingLink}" 
                        style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3); transition: all 0.3s ease;">
-                      Prześlij podpisaną umowę
+                      Szczegóły rezerwacji
                     </a>
                   </td>
                 </tr>
               </table>
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6b7280; text-align: center; line-height: 1.5;">
-                Kliknij powyższy przycisk, aby przejść do strony, gdzie możesz przesłać podpisaną umowę w formacie PDF.
+                Kliknij powyższy przycisk, aby przejść do szczegółów rezerwacji.
               </p>
               ${paymentLink ? `
               <!-- Payment Link -->
@@ -140,10 +125,9 @@ export function generateBookingConfirmationEmail(
                   ⚠️ Co dalej?
                 </p>
                 <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; color: #92400e; line-height: 1.8;">
-                  <li><strong>Pobierz załączoną umowę PDF</strong> z tego maila</li>
-                  <li><strong>Podpisz umowę</strong></li>
-                  <li><strong>Kliknij przycisk powyżej</strong>, aby przejść do strony rezerwacji</li>
-                  <li><strong>Prześlij podpisaną umowę</strong> (PDF) przez formularz na stronie</li>
+                  <li><strong>Dokonaj płatności</strong> (jeśli jeszcze nie została opłacona) — płatność jest potwierdzeniem zawarcia umowy</li>
+                  <li><strong>Zachowaj kod rezerwacji</strong> i ten e-mail na przyszłość</li>
+                  <li><strong>W razie pytań</strong> skontaktuj się z nami, podając kod rezerwacji</li>
                 </ol>
               </div>
               

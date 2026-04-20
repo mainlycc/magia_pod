@@ -80,7 +80,11 @@ export const participantSchema = z.object({
   email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
-  document_number: z.string().min(3, "Podaj numer dokumentu").optional(),
+  document_number: z
+    .string()
+    .min(3, "Podaj numer dokumentu")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   document_issue_date: z
     .string()
     .optional()
@@ -183,6 +187,7 @@ export const createBookingFormSchema = (requiredFields?: {
   pesel?: boolean;
   phone?: boolean;
   email?: boolean;
+  address?: boolean;
 } | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
@@ -288,6 +293,35 @@ export const createBookingFormSchema = (requiredFields?: {
             code: z.ZodIssueCode.custom,
             message: "PESEL musi mieć dokładnie 11 cyfr",
             path: ["contact", "pesel"],
+          });
+        }
+      }
+
+      // Adres wymagany tylko gdy skonfigurowano
+      if (requiredContactFields?.address) {
+        const street = value.contact.address?.street?.trim() ?? "";
+        const city = value.contact.address?.city?.trim() ?? "";
+        const zip = value.contact.address?.zip?.trim() ?? "";
+
+        if (!street) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj ulicę",
+            path: ["contact", "address", "street"],
+          });
+        }
+        if (!city) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj miasto",
+            path: ["contact", "address", "city"],
+          });
+        }
+        if (!zip) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj kod pocztowy",
+            path: ["contact", "address", "zip"],
           });
         }
       }

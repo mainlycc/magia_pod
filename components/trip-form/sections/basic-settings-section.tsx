@@ -75,6 +75,25 @@ export function BasicSettingsSection({
               <div className="flex items-center justify-between rounded-lg border p-2">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
+                    Adres
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Adres zamieszkania osoby Zgłaszającej
+                  </p>
+                </div>
+                <Switch
+                  checked={requiredContactFields.address}
+                  onCheckedChange={(checked) =>
+                    setRequiredContactFields((prev) => ({
+                      ...prev,
+                      address: checked,
+                    }))
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-2">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium cursor-pointer">
                     E-mail
                   </Label>
                   <p className="text-[10px] text-muted-foreground">

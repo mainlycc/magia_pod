@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
+import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -507,6 +508,20 @@ export async function POST(request: NextRequest) {
           updatedBooking: updatedBooking,
         });
       }
+    }
+  }
+
+  // Zsynchronizuj paid_amount_cents i payment_status z sumą wpisów w payment_history
+  // (UI panelu wycieczki korzysta z paid_amount_cents; sam webhook wcześniej go nie ustawiał.)
+  if (status === "CONFIRMED") {
+    const synced = await recalculateBookingPaymentsFromHistory(supabase, booking.id);
+    if (synced.ok) {
+      newPaymentStatus = synced.paymentStatus as typeof newPaymentStatus;
+      console.log(
+        `[Paynow Webhook] Synced booking totals from payment_history: paid_amount_cents=${synced.totalPaid}, payment_status=${synced.paymentStatus}`,
+      );
+    } else {
+      console.error("[Paynow Webhook] recalculateBookingPaymentsFromHistory failed:", synced.error);
     }
   }
 

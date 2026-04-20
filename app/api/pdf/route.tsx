@@ -50,6 +50,7 @@ export type PdfPayload = {
     phone?: string;
     document_type?: string;
     document_number?: string;
+    selected_services?: unknown;
   }>;
 };
 
@@ -71,6 +72,36 @@ function formatDate(dateString: string | null | undefined): string {
   } catch {
     return dateString;
   }
+}
+
+function sumAdditionalServicesCents(participants: PdfPayload["participants"]): number {
+  let sum = 0;
+
+  for (const p of participants) {
+    const s = p.selected_services;
+    if (!s || typeof s !== "object") continue;
+    const o = s as Record<string, unknown>;
+
+    const diets = Array.isArray(o.diets) ? (o.diets as Array<Record<string, unknown>>) : [];
+    const insurances = Array.isArray(o.insurances) ? (o.insurances as Array<Record<string, unknown>>) : [];
+    const attractions = Array.isArray(o.attractions) ? (o.attractions as Array<Record<string, unknown>>) : [];
+
+    for (const d of diets) {
+      const cents = d.price_cents;
+      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
+    }
+    for (const ins of insurances) {
+      const cents = ins.price_cents;
+      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
+    }
+    for (const a of attractions) {
+      if (a.include_in_contract === false) continue;
+      const cents = a.price_cents;
+      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
+    }
+  }
+
+  return sum;
 }
 
 /**
@@ -109,12 +140,11 @@ function generateAgreementFilename(reservationNumber: string | null | undefined,
  */
 function replacePlaceholders(template: string, data: PdfPayload): string {
   const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
-  const totalPrice = data.trip.price_cents
-    ? ((data.trip.price_cents * data.participants.length) / 100).toFixed(2)
-    : "-";
-  const depositAmount = totalPrice !== "-" && data.trip.price_cents
-    ? ((data.trip.price_cents * data.participants.length * 0.3) / 100).toFixed(2)
-    : "-";
+  const baseCents = (data.trip.price_cents ?? 0) * data.participants.length;
+  const addonsCents = sumAdditionalServicesCents(data.participants);
+  const totalCents = data.trip.price_cents ? baseCents + addonsCents : 0;
+  const totalPrice = data.trip.price_cents ? (totalCents / 100).toFixed(2) : "-";
+  const depositAmount = data.trip.price_cents ? ((totalCents * 0.3) / 100).toFixed(2) : "-";
   
   const contactFullName = [data.contact_first_name, data.contact_last_name]
     .filter(Boolean)
@@ -200,9 +230,10 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   }
   
   const price = data.trip.price_cents ? (data.trip.price_cents / 100).toFixed(2) : "-";
-  const totalPrice = data.trip.price_cents
-    ? ((data.trip.price_cents * data.participants.length) / 100).toFixed(2)
-    : "-";
+  const baseCents = (data.trip.price_cents ?? 0) * data.participants.length;
+  const addonsCents = sumAdditionalServicesCents(data.participants);
+  const totalCents = data.trip.price_cents ? baseCents + addonsCents : 0;
+  const totalPrice = data.trip.price_cents ? (totalCents / 100).toFixed(2) : "-";
   const clientName = [data.contact_first_name, data.contact_last_name]
     .filter(Boolean)
     .join(" ") || "Klient";
@@ -344,8 +375,8 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   doc.text("3. Platnosc za Impreze Turystyczna odbywa sie w nastepujacych ratach:", 20, y);
   y += 6;
 
-  const depositAmount = totalPrice !== "-" ? ((parseFloat(totalPrice) * 0.3).toFixed(2)) : "-";
-  const finalAmount = totalPrice !== "-" ? ((parseFloat(totalPrice) * 0.7).toFixed(2)) : "-";
+  const depositAmount = totalPrice !== "-" ? ((totalCents * 0.3) / 100).toFixed(2) : "-";
+  const finalAmount = totalPrice !== "-" ? ((totalCents * 0.7) / 100).toFixed(2) : "-";
   
   doc.text(`o Rata I (zaliczka): ${depositAmount} PLN platna w terminie 7 dni od daty podpisania Umowy.`, 25, y);
   y += 6;

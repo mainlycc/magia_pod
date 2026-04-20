@@ -48,6 +48,7 @@ function TripFormContent() {
     pesel: false,
     phone: true,
     email: true,
+    address: false,
   })
   const [additionalAttractions, setAdditionalAttractions] = useState<AdditionalAttraction[]>([])
   const [expandedAttractions, setExpandedAttractions] = useState<Set<string>>(new Set())
@@ -172,13 +173,14 @@ function TripFormContent() {
       const contactFields = trip.form_required_contact_fields &&
         typeof trip.form_required_contact_fields === "object" &&
         !Array.isArray(trip.form_required_contact_fields)
-          ? trip.form_required_contact_fields as { pesel?: boolean; phone?: boolean; email?: boolean }
+          ? trip.form_required_contact_fields as { pesel?: boolean; phone?: boolean; email?: boolean; address?: boolean }
           : null;
       
       setRequiredContactFields({
         pesel: contactFields ? Boolean(contactFields.pesel) : Boolean(trip.require_pesel),
         phone: contactFields ? Boolean(contactFields.phone) : true,
         email: contactFields ? Boolean(contactFields.email) : true,
+        address: contactFields ? Boolean(contactFields.address) : false,
       })
 
       // Wczytaj tekst informacyjny o rezerwacji z treści wycieczki (content)

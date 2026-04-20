@@ -196,6 +196,18 @@ export default function UczestnicyPage() {
       setLoading(true)
       const supabase = createClient()
 
+      // Zsynchronizuj sumy wpłat z historią (Paynow itd. mogły dodać wpisy bez aktualizacji bookings)
+      try {
+        const syncRes = await fetch(`/api/trips/${selectedTrip.id}/reconcile-payments`, {
+          method: "POST",
+        })
+        if (!syncRes.ok) {
+          console.warn("reconcile-payments:", await syncRes.text())
+        }
+      } catch (e) {
+        console.warn("reconcile-payments fetch failed:", e)
+      }
+
       // Pobierz uczestników dla wybranej wycieczki z pełnymi danymi
       const { data, error } = await supabase
         .from("participants")
@@ -445,6 +457,10 @@ export default function UczestnicyPage() {
     }
     return { pesel: false, document: false, gender: false, phone: false }
   }, [tripFullData])
+
+  // Jak w formularzu rezerwacji: płeć pokazujemy, dopóki pole nie jest wyłączone (gender !== false)
+  const showParticipantGender =
+    (tripFullData?.form_required_participant_fields as { gender?: boolean } | null)?.gender !== false
 
   // Oblicz harmonogram płatności na podstawie danych wycieczki
   const paymentSchedule = useMemo(() => {
@@ -740,7 +756,7 @@ export default function UczestnicyPage() {
                                         {participant.phone || "-"}
                                       </div>
                                     )}
-                                    {requiredFields.gender && (
+                                    {showParticipantGender && (
                                       <div>
                                         <span className="text-muted-foreground">Płeć:</span>{" "}
                                         {participant.gender_code === "F"

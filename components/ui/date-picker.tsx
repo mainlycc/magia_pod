@@ -18,6 +18,11 @@ type DatePickerProps = {
   disabled?: boolean
   className?: string
   align?: React.ComponentProps<typeof PopoverContent>["align"]
+  calendarClassName?: string
+  fromYear?: number
+  toYear?: number
+  defaultYear?: number
+  captionLayout?: React.ComponentProps<typeof Calendar>["captionLayout"]
 }
 
 function toDate(value?: string | null): Date | undefined {
@@ -42,8 +47,18 @@ export function DatePicker({
   disabled,
   className,
   align = "start",
+  calendarClassName,
+  fromYear,
+  toYear,
+  defaultYear,
+  captionLayout = "dropdown",
 }: DatePickerProps) {
   const selected = toDate(value)
+  const fallbackMonth =
+    selected ??
+    (typeof defaultYear === "number" && Number.isFinite(defaultYear)
+      ? new Date(defaultYear, 0, 1)
+      : undefined)
 
   return (
     <Popover>
@@ -62,9 +77,18 @@ export function DatePicker({
           {selected ? format(selected, "dd.MM.yyyy", { locale: pl }) : placeholder}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align={align} className="w-auto p-0">
+      <PopoverContent align={align} className="w-auto p-2">
         <Calendar
+          className={cn(
+            // Powiększamy siatkę dni, żeby kalendarz nie był „przykurczony”.
+            "[--cell-size:2.5rem]",
+            calendarClassName
+          )}
           mode="single"
+          captionLayout={captionLayout}
+          fromYear={fromYear}
+          toYear={toYear}
+          defaultMonth={fallbackMonth}
           selected={selected}
           onSelect={(d) => {
             if (!d) return

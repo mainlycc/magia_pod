@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
@@ -306,7 +307,11 @@ const participantSchema = z.object({
   email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
-  document_number: z.string().min(3, "Podaj numer dokumentu").optional(),
+  document_number: z
+    .string()
+    .min(3, "Podaj numer dokumentu")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   document_issue_date: z
     .string()
     .optional()
@@ -409,6 +414,7 @@ const createBookingFormSchema = (requiredFields?: {
   pesel?: boolean;
   phone?: boolean;
   email?: boolean;
+  address?: boolean;
 } | null) => z
   .object({
     applicant_type: z.enum(["individual", "company"]).optional(),
@@ -514,19 +520,41 @@ const createBookingFormSchema = (requiredFields?: {
           });
         }
       }
-      // Adres osoby Zgłaszającej — jedno pole (pełny tekst w street)
-      if (!value.contact.address?.street || value.contact.address.street.trim() === "") {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Podaj adres",
-          path: ["contact", "address", "street"],
-        });
-      } else if (value.contact.address.street.trim().length < 8) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Podaj pełny adres (min. 8 znaków)",
-          path: ["contact", "address", "street"],
-        });
+      // Adres osoby zgłaszającej — konfigurowalny (domyślnie wymagany)
+      const addressRequired = requiredContactFields?.address !== false;
+      const street = value.contact.address?.street?.trim() ?? "";
+      const city = value.contact.address?.city?.trim() ?? "";
+      const zip = value.contact.address?.zip?.trim() ?? "";
+      const anyAddressFilled = Boolean(street || city || zip);
+
+      if (addressRequired || anyAddressFilled) {
+        if (!street) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj ulicę i numer",
+            path: ["contact", "address", "street"],
+          });
+        }
+        if (!city) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj miasto",
+            path: ["contact", "address", "city"],
+          });
+        }
+        if (!zip) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj kod pocztowy",
+            path: ["contact", "address", "zip"],
+          });
+        } else if (zip.length < 4) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj kod pocztowy",
+            path: ["contact", "address", "zip"],
+          });
+        }
       }
       // Dla osoby fizycznej nie waliduj company - zakończ tutaj
       return;
@@ -691,6 +719,7 @@ type TripConfig = {
     pesel?: boolean;
     phone?: boolean;
     email?: boolean;
+    address?: boolean;
   } | null;
 };
 
@@ -724,6 +753,8 @@ const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFor
     "contact.email",
     "contact.phone",
     "contact.address.street",
+    "contact.address.city",
+    "contact.address.zip",
     "company.name",
     "company.nip",
     "company.address.street",
@@ -766,7 +797,9 @@ const formatValidationErrors = (errors: any): string => {
           .replace("contact.email", "E-mail")
           .replace("contact.phone", "Telefon")
           .replace("contact.pesel", "PESEL")
-          .replace("contact.address.street", "Adres")
+          .replace("contact.address.street", "Ulica i numer")
+          .replace("contact.address.city", "Miasto")
+          .replace("contact.address.zip", "Kod pocztowy")
           .replace(/^participants\.(\d+)\.(.+)$/, (_, index, field) => {
             const fieldNames: Record<string, string> = {
               first_name: "Imię uczestnika",
@@ -895,7 +928,7 @@ export function BookingForm({ slug }: BookingFormProps) {
               typeof trip.form_required_contact_fields === "object" &&
               !Array.isArray(trip.form_required_contact_fields)
               ? trip.form_required_contact_fields as TripConfig["form_required_contact_fields"]
-              : { pesel: false, phone: true, email: true },
+              : { pesel: false, phone: true, email: true, address: false },
           });
 
           setReservationInfoText(trip.reservation_info_text ?? null);
@@ -1057,7 +1090,7 @@ export function BookingForm({ slug }: BookingFormProps) {
   const bookingFormSchemaWithConfig = useMemo(() => {
     return createBookingFormSchema(
       tripConfig?.form_required_participant_fields ?? null,
-      tripConfig?.form_required_contact_fields ?? { pesel: tripConfig?.require_pesel ?? false, phone: true, email: true }
+      tripConfig?.form_required_contact_fields ?? { pesel: tripConfig?.require_pesel ?? false, phone: true, email: true, address: false }
     );
   }, [tripConfig?.form_required_participant_fields, tripConfig?.form_required_contact_fields, tripConfig?.require_pesel]);
 
@@ -1210,7 +1243,9 @@ export function BookingForm({ slug }: BookingFormProps) {
         if (tripConfig?.form_required_contact_fields?.pesel ?? tripConfig?.require_pesel) {
           fields.push("contact.pesel");
         }
-        fields.push("contact.address.street");
+        if (tripConfig?.form_required_contact_fields?.address) {
+          fields.push("contact.address.street", "contact.address.city", "contact.address.zip");
+        }
         return fields;
       } else if (applicantType === "company") {
         // Dla firmy: first_name i last_name są opcjonalne, nie wymagaj pesel, ale wymagaj pól firmy
@@ -1339,17 +1374,10 @@ export function BookingForm({ slug }: BookingFormProps) {
         address: (() => {
           const a = values.contact.address;
           if (!a || !(a.street?.trim() || a.city?.trim() || a.zip?.trim())) return undefined;
-          if (applicantType === "individual") {
-            return {
-              street: (a.street || "").trim(),
-              city: "",
-              zip: "",
-            };
-          }
           return {
-            street: a.street || "",
-            city: a.city || "",
-            zip: a.zip || "",
+            street: (a.street || "").trim(),
+            city: (a.city || "").trim(),
+            zip: (a.zip || "").trim(),
           };
         })(),
         company_name:
@@ -1739,6 +1767,10 @@ export function BookingForm({ slug }: BookingFormProps) {
     [participantsWatch],
   );
 
+  const showParticipantPhone = tripConfig?.form_required_participant_fields?.phone !== false;
+  const showParticipantDocument = tripConfig?.form_required_participant_fields?.document !== false;
+  const showParticipantGender = tripConfig?.form_required_participant_fields?.gender !== false;
+
   return (
     <>
       <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="w-full">
@@ -1843,7 +1875,7 @@ export function BookingForm({ slug }: BookingFormProps) {
             <TabsContent value="contact" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Dane osoby Zgłaszającej</CardTitle>
+                  <CardTitle>Dane Osoby Zgłaszającej</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {tripConfig?.registration_mode === "both" && (
@@ -1916,7 +1948,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         name="contact.pesel"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>PESEL *</FormLabel>
+                            <FormLabel>PESEL</FormLabel>
                             <FormControl>
                               <Input placeholder="12345678901" {...field} maxLength={11} />
                             </FormControl>
@@ -1934,7 +1966,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         name="contact.email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>E-mail {(tripConfig?.form_required_contact_fields?.email !== false) && "*"}</FormLabel>
+                            <FormLabel>E-mail</FormLabel>
                             <FormControl>
                               <Input type="email" placeholder="ania@example.com" {...field} />
                             </FormControl>
@@ -1949,7 +1981,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                         name="contact.phone"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Telefon {(tripConfig?.form_required_contact_fields?.phone !== false) && "*"}</FormLabel>
+                            <FormLabel>Telefon</FormLabel>
                             <FormControl>
                               <Input placeholder="+48 600 000 000" {...field} />
                             </FormControl>
@@ -1962,25 +1994,47 @@ export function BookingForm({ slug }: BookingFormProps) {
 
                   {applicantType === "individual" && (
                     <div className="space-y-3">
-                      <FormField
-                        control={control}
-                        name="contact.address.street"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Adres *</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                placeholder="np. ul. Słoneczna 12/5, 00-001 Warszawa"
-                                rows={3}
-                                className="min-h-[5rem] resize-y"
-                                {...field}
-                                value={field.value ?? ""}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <FormField
+                          control={control}
+                          name="contact.address.street"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Ulica i numer</FormLabel>
+                              <FormControl>
+                                <Input placeholder="ul. Słoneczna 12/5" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={control}
+                          name="contact.address.city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Miasto</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Warszawa" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={control}
+                          name="contact.address.zip"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Kod pocztowy</FormLabel>
+                              <FormControl>
+                                <Input placeholder="00-001" {...field} value={field.value || ""} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -2391,7 +2445,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.first_name`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Imię *</FormLabel>
+                                  <FormLabel>Imię</FormLabel>
                                   <FormControl>
                                     <Input placeholder="Jan" {...field} />
                                   </FormControl>
@@ -2404,7 +2458,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.last_name`}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Nazwisko *</FormLabel>
+                                  <FormLabel>Nazwisko</FormLabel>
                                   <FormControl>
                                     <Input placeholder="Kowalski" {...field} />
                                   </FormControl>
@@ -2421,12 +2475,17 @@ export function BookingForm({ slug }: BookingFormProps) {
                               name={`participants.${index}.birth_date` as any}
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Data urodzenia *</FormLabel>
+                                  <FormLabel>Data urodzenia</FormLabel>
                                   <FormControl>
-                                    <Input
-                                      type="date"
-                                      {...field}
+                                    <DatePicker
                                       value={(field.value as string) || ""}
+                                      onChange={(v) => field.onChange(v)}
+                                      placeholder="Wybierz datę"
+                                      className="w-full"
+                                      fromYear={1900}
+                                      toYear={new Date().getFullYear()}
+                                      defaultYear={1990}
+                                      captionLayout="dropdown"
                                     />
                                   </FormControl>
                                   <FormMessage />
@@ -2439,9 +2498,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 name={`participants.${index}.gender_code`}
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>
-                                      Płeć{tripConfig?.form_required_participant_fields?.gender ? " *" : ""}
-                                    </FormLabel>
+                                    <FormLabel>Płeć</FormLabel>
                                     <Select
                                       onValueChange={field.onChange}
                                       defaultValue={field.value}
@@ -2467,9 +2524,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 name={`participants.${index}.phone`}
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>
-                                      Telefon{tripConfig?.form_required_participant_fields?.phone ? " *" : ""}
-                                    </FormLabel>
+                                    <FormLabel>Telefon</FormLabel>
                                     <FormControl>
                                       <Input placeholder="+48 600 000 000" {...field} />
                                     </FormControl>
@@ -2488,9 +2543,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                   name={`participants.${index}.document_type`}
                                   render={({ field }) => (
                                     <FormItem>
-                                      <FormLabel>
-                                        Dokument{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
-                                      </FormLabel>
+                                      <FormLabel>Dokument</FormLabel>
                                       <Select
                                         onValueChange={field.onChange}
                                         defaultValue={field.value}
@@ -2514,9 +2567,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                                   name={`participants.${index}.document_number`}
                                   render={({ field }) => (
                                     <FormItem>
-                                      <FormLabel>
-                                        Seria i numer dokumentu{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
-                                      </FormLabel>
+                                      <FormLabel>Seria i numer dokumentu</FormLabel>
                                       <FormControl>
                                         <Input placeholder="ABC123456" {...field} />
                                       </FormControl>
@@ -2534,10 +2585,14 @@ export function BookingForm({ slug }: BookingFormProps) {
                                     <FormItem>
                                       <FormLabel>Data wydania</FormLabel>
                                       <FormControl>
-                                        <Input
-                                          type="date"
-                                          {...field}
-                                          value={field.value || ""}
+                                        <DatePicker
+                                          value={(field.value as string) || ""}
+                                          onChange={(v) => field.onChange(v)}
+                                          placeholder="Wybierz datę"
+                                          className="w-full"
+                                          fromYear={1900}
+                                          toYear={new Date().getFullYear() + 5}
+                                          captionLayout="dropdown"
                                         />
                                       </FormControl>
                                       <FormMessage />
@@ -2551,10 +2606,14 @@ export function BookingForm({ slug }: BookingFormProps) {
                                     <FormItem>
                                       <FormLabel>Data ważności</FormLabel>
                                       <FormControl>
-                                        <Input
-                                          type="date"
-                                          {...field}
-                                          value={field.value || ""}
+                                        <DatePicker
+                                          value={(field.value as string) || ""}
+                                          onChange={(v) => field.onChange(v)}
+                                          placeholder="Wybierz datę"
+                                          className="w-full"
+                                          fromYear={1900}
+                                          toYear={new Date().getFullYear() + 20}
+                                          captionLayout="dropdown"
                                         />
                                       </FormControl>
                                       <FormMessage />
@@ -2617,593 +2676,843 @@ export function BookingForm({ slug }: BookingFormProps) {
                       </p>
                     ) : (
                       <div className="space-y-6">
-                        {/* Diety */}
-                        {tripConfig?.diets && tripConfig.diets.filter((d: any) => d.enabled !== false).length > 0 && (
-                          <div className="space-y-4">
-                            <Label className="text-sm font-semibold">Diety</Label>
-                            {tripConfig.diets.filter((d: any) => d.enabled !== false).map((diet) => {
-                              const allServices = form.watch("participant_services") || [];
-                              const dietServices = allServices.filter((s: any) => s.type === "diet" && s.service_id === diet.id);
-                              
-                              return (
-                                <div key={diet.id} className="border rounded-lg p-4 space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <Label className="text-sm font-medium">{diet.title}</Label>
-                                      {diet.price_cents !== null && diet.price_cents > 0 && (
-                                        <span className="ml-2 text-xs text-muted-foreground">
-                                          (+{((diet.price_cents || 0) / 100).toFixed(2)} PLN)
-                                        </span>
+                        {(() => {
+                          const enabledDiets = (tripConfig?.diets || []).filter((d: any) => d.enabled !== false);
+                          const enabledInsurances = (tripConfig?.extra_insurances || []).filter(
+                            (i: any) => i.enabled !== false,
+                          );
+                          const enabledAttractions = (tripConfig?.additional_attractions || []).filter(
+                            (a: any) => a.enabled !== false,
+                          );
+
+                          const allServices = form.watch("participant_services") || [];
+
+                          // Dla osoby fizycznej renderuj per-uczestnik (eliminuje „powiązanie” wariantów między osobami).
+                          if (applicantType === "individual") {
+                            return (
+                              <div className="space-y-6">
+                                {fields.map((pField, participantIndex) => {
+                                  const p = participantsWatch?.[participantIndex];
+                                  const participantName =
+                                    p && (p.first_name || p.last_name)
+                                      ? `${p.first_name || ""} ${p.last_name || ""}`.trim()
+                                      : `Uczestnik ${participantIndex + 1}`;
+                                  const participantLabel = `${participantIndex + 1}. ${participantName}`;
+
+                                  const removeAtIndex = (idx: number) => {
+                                    const currentServices = form.getValues("participant_services") || [];
+                                    form.setValue(
+                                      "participant_services",
+                                      currentServices.filter((_: any, i: number) => i !== idx),
+                                    );
+                                  };
+
+                                  const setVariantForIndex = (
+                                    idx: number,
+                                    variant_id: string,
+                                    price_cents: number | null,
+                                  ) => {
+                                    const currentServices = form.getValues("participant_services") || [];
+                                    form.setValue(
+                                      "participant_services",
+                                      currentServices.map((s: any, i: number) =>
+                                        i === idx ? { ...s, variant_id, price_cents } : s,
+                                      ),
+                                    );
+                                  };
+
+                                  return (
+                                    <div key={pField.id} className="rounded-lg border p-4 space-y-5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <Label className="text-sm font-semibold">{participantLabel}</Label>
+                                      </div>
+
+                                      {/* Diety */}
+                                      {enabledDiets.length > 0 && (
+                                        <div className="space-y-3">
+                                          <Label className="text-xs text-muted-foreground">Diety</Label>
+                                          <div className="space-y-3">
+                                            {enabledDiets.map((diet: any) => {
+                                              const idx = allServices.findIndex(
+                                                (s: any) =>
+                                                  s.type === "diet" &&
+                                                  s.service_id === diet.id &&
+                                                  s.participant_index === participantIndex,
+                                              );
+                                              const selected = idx >= 0;
+                                              const service = selected ? allServices[idx] : null;
+                                              const variants = diet.variants && diet.variants.length > 0 ? diet.variants : null;
+                                              return (
+                                                <div
+                                                  key={`diet-${diet.id}`}
+                                                  className={cn(
+                                                    "rounded-md border p-3 transition-colors",
+                                                    selected
+                                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                      : "bg-muted/20",
+                                                  )}
+                                                >
+                                                  <div className="flex items-start justify-between gap-3">
+                                                    <div className="space-y-1">
+                                                      <div className="text-sm font-medium">{diet.title}</div>
+                                                      {diet.price_cents !== null && diet.price_cents > 0 && (
+                                                        <div className="text-xs text-muted-foreground">
+                                                          +{((diet.price_cents || 0) / 100).toFixed(2)} PLN
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    {selected ? (
+                                                      <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeAtIndex(idx)}
+                                                      >
+                                                        <X className="h-4 w-4" />
+                                                      </Button>
+                                                    ) : (
+                                                      <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                          const currentServices = form.getValues("participant_services") || [];
+                                                          const v0 = variants?.[0] ?? null;
+                                                          form.setValue("participant_services", [
+                                                            ...currentServices,
+                                                            {
+                                                              type: "diet",
+                                                              service_id: diet.id,
+                                                              participant_index: participantIndex,
+                                                              variant_id: v0?.id,
+                                                              price_cents: v0?.price_cents ?? diet.price_cents ?? null,
+                                                              currency: "PLN",
+                                                            },
+                                                          ]);
+                                                        }}
+                                                      >
+                                                        Dodaj
+                                                      </Button>
+                                                    )}
+                                                  </div>
+
+                                                  {selected && variants && (
+                                                    <div className="mt-3 space-y-1">
+                                                      <Label className="text-xs">Wariant</Label>
+                                                      <Select
+                                                        value={service?.variant_id ?? variants[0]?.id ?? ""}
+                                                        onValueChange={(value) => {
+                                                          const v = variants.find((x: any) => x.id === value);
+                                                          setVariantForIndex(idx, value, v?.price_cents ?? null);
+                                                        }}
+                                                      >
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                          <SelectValue placeholder="Wybierz wariant" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                          {variants.map((v: any) => (
+                                                            <SelectItem key={v.id} value={v.id}>
+                                                              {v.title}
+                                                              {v.price_cents !== null && v.price_cents > 0
+                                                                ? ` (+${((v.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                : " (bezpłatna)"}
+                                                            </SelectItem>
+                                                          ))}
+                                                        </SelectContent>
+                                                      </Select>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Ubezpieczenia */}
+                                      {enabledInsurances.length > 0 && (
+                                        <div className="space-y-3">
+                                          <Label className="text-xs text-muted-foreground">Ubezpieczenia dodatkowe</Label>
+                                          <div className="space-y-3">
+                                            {enabledInsurances.map((insurance: any) => {
+                                              const idx = allServices.findIndex(
+                                                (s: any) =>
+                                                  s.type === "insurance" &&
+                                                  s.service_id === insurance.id &&
+                                                  s.participant_index === participantIndex,
+                                              );
+                                              const selected = idx >= 0;
+                                              const service = selected ? allServices[idx] : null;
+                                              const variants =
+                                                insurance.variants && insurance.variants.length > 0 ? insurance.variants : null;
+                                              return (
+                                                <div
+                                                  key={`ins-${insurance.id}`}
+                                                  className={cn(
+                                                    "rounded-md border p-3 transition-colors",
+                                                    selected
+                                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                      : "bg-muted/20",
+                                                  )}
+                                                >
+                                                  <div className="flex items-start justify-between gap-3">
+                                                    <div className="space-y-1">
+                                                      <div className="text-sm font-medium">{insurance.title}</div>
+                                                      {!variants &&
+                                                        insurance.price_cents !== null &&
+                                                        insurance.price_cents !== undefined &&
+                                                        insurance.price_cents > 0 && (
+                                                          <div className="text-xs text-muted-foreground">
+                                                            +{((insurance.price_cents || 0) / 100).toFixed(2)} PLN
+                                                          </div>
+                                                        )}
+                                                    </div>
+                                                    {selected ? (
+                                                      <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeAtIndex(idx)}
+                                                      >
+                                                        <X className="h-4 w-4" />
+                                                      </Button>
+                                                    ) : (
+                                                      <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                          const currentServices = form.getValues("participant_services") || [];
+                                                          const v0 = variants?.[0] ?? null;
+                                                          form.setValue("participant_services", [
+                                                            ...currentServices,
+                                                            {
+                                                              type: "insurance",
+                                                              service_id: insurance.id,
+                                                              participant_index: participantIndex,
+                                                              variant_id: v0?.id,
+                                                              price_cents:
+                                                                (v0?.price_cents ?? insurance.price_cents ?? null) as number | null,
+                                                              currency: "PLN",
+                                                            },
+                                                          ]);
+                                                        }}
+                                                      >
+                                                        Dodaj
+                                                      </Button>
+                                                    )}
+                                                  </div>
+
+                                                  {selected && variants && (
+                                                    <div className="mt-3 space-y-1">
+                                                      <Label className="text-xs">Wariant</Label>
+                                                      <Select
+                                                        value={service?.variant_id ?? variants[0]?.id ?? ""}
+                                                        onValueChange={(value) => {
+                                                          const v = variants.find((x: any) => x.id === value);
+                                                          setVariantForIndex(idx, value, v?.price_cents ?? null);
+                                                        }}
+                                                      >
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                          <SelectValue placeholder="Wybierz wariant" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                          {variants.map((v: any) => (
+                                                            <SelectItem key={v.id} value={v.id}>
+                                                              {v.title}
+                                                              {v.price_cents !== null && v.price_cents > 0
+                                                                ? ` (+${((v.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                : ""}
+                                                            </SelectItem>
+                                                          ))}
+                                                        </SelectContent>
+                                                      </Select>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Atrakcje */}
+                                      {enabledAttractions.length > 0 && (
+                                        <div className="space-y-3">
+                                          <Label className="text-xs text-muted-foreground">Atrakcje dodatkowe</Label>
+                                          <div className="space-y-3">
+                                            {enabledAttractions.map((attraction: any) => {
+                                              const idx = allServices.findIndex(
+                                                (s: any) =>
+                                                  s.type === "attraction" &&
+                                                  s.service_id === attraction.id &&
+                                                  s.participant_index === participantIndex,
+                                              );
+                                              const selected = idx >= 0;
+                                              return (
+                                                <div
+                                                  key={`att-${attraction.id}`}
+                                                  className={cn(
+                                                    "rounded-md border p-3 transition-colors",
+                                                    selected
+                                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                      : "bg-muted/20",
+                                                  )}
+                                                >
+                                                  <div className="flex items-start justify-between gap-3">
+                                                    <div className="space-y-1">
+                                                      <div className="text-sm font-medium">{attraction.title}</div>
+                                                      {attraction.price_cents !== null && attraction.price_cents > 0 && (
+                                                        <div className="text-xs text-muted-foreground">
+                                                          +{((attraction.price_cents || 0) / 100).toFixed(2)}{" "}
+                                                          {attraction.currency || "PLN"}
+                                                          {attraction.currency && attraction.currency !== "PLN"
+                                                            ? " (nie wlicza się do umowy)"
+                                                            : ""}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    {selected ? (
+                                                      <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeAtIndex(idx)}
+                                                      >
+                                                        <X className="h-4 w-4" />
+                                                      </Button>
+                                                    ) : (
+                                                      <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                          const currentServices = form.getValues("participant_services") || [];
+                                                          form.setValue("participant_services", [
+                                                            ...currentServices,
+                                                            {
+                                                              type: "attraction",
+                                                              service_id: attraction.id,
+                                                              participant_index: participantIndex,
+                                                              price_cents: attraction.price_cents ?? null,
+                                                              currency: attraction.currency || "PLN",
+                                                              include_in_contract: attraction.include_in_contract ?? true,
+                                                            },
+                                                          ]);
+                                                        }}
+                                                      >
+                                                        Dodaj
+                                                      </Button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
                                       )}
                                     </div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => {
-                                        const currentServices = form.getValues("participant_services") || [];
-                                        const newService: any = {
-                                          type: "diet",
-                                          service_id: diet.id,
-                                          price_cents: diet.price_cents ?? null,
-                                          currency: "PLN",
-                                        };
-                                        
-                                        if (applicantType === "individual") {
-                                          // Dla osoby fizycznej: ustaw pierwszy dostępny indeks uczestnika
-                                          if (fields.length > 0) {
-                                            newService.participant_index = 0;
-                                          }
-                                        } else {
-                                          // Dla firmy: zostaw puste, użytkownik wpisze imię i nazwisko
-                                        }
-                                        
-                                        form.setValue("participant_services", [...currentServices, newService]);
-                                      }}
-                                    >
-                                      Dodaj dietę
-                                    </Button>
-                                  </div>
-                                  
-                                  {dietServices.map((service: any, serviceIndex: number) => {
-                                    // Znajdź indeks usługi w tablicy wszystkich usług
-                                    const serviceArrayIndex = allServices.findIndex((s: any, idx: number) => {
-                                      if (s.type !== "diet" || s.service_id !== diet.id) return false;
-                                      if (applicantType === "individual") {
-                                        return s.participant_index === service.participant_index;
-                                      } else {
-                                        return s.participant_first_name === service.participant_first_name && 
-                                               s.participant_last_name === service.participant_last_name;
-                                      }
-                                    });
-                                    
-                                    if (serviceArrayIndex === -1) return null;
-                                    
-                                    return (
-                                      <div key={serviceIndex} className="border rounded p-3 space-y-2 bg-muted/30">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1 space-y-2">
-                                            {applicantType === "individual" ? (
-                                              <FormField
-                                                control={control}
-                                                name={`participant_services.${serviceArrayIndex}.participant_index`}
-                                                render={({ field: participantField }) => (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Uczestnik</Label>
-                                                    <Select
-                                                      value={participantField.value?.toString() || ""}
-                                                      onValueChange={(value) => {
-                                                        participantField.onChange(parseInt(value, 10));
-                                                      }}
-                                                    >
-                                                      <SelectTrigger className="h-8 text-xs">
-                                                        <SelectValue placeholder="Wybierz uczestnika" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {fields.map((field, idx) => {
-                                                          const p = participantsWatch?.[idx];
-                                                          const name = p 
-                                                            ? `${p.first_name} ${p.last_name}`.trim() 
-                                                            : `Uczestnik ${idx + 1}`;
-                                                          return (
-                                                            <SelectItem key={idx} value={idx.toString()}>
-                                                              {name}
-                                                            </SelectItem>
-                                                          );
-                                                        })}
-                                                      </SelectContent>
-                                                    </Select>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+
+                          // Dla firmy zostaw dotychczasowy układ (per-usługa, z ręcznym wskazaniem osoby).
+                          return (
+                            <div className="space-y-6">
+                              {/* Diety */}
+                              {tripConfig?.diets && tripConfig.diets.filter((d: any) => d.enabled !== false).length > 0 && (
+                                <div className="space-y-4">
+                                  <Label className="text-sm font-semibold">Diety</Label>
+                                  {tripConfig.diets
+                                    .filter((d: any) => d.enabled !== false)
+                                    .map((diet) => {
+                                      const dietServices = allServices.filter(
+                                        (s: any) => s.type === "diet" && s.service_id === diet.id,
+                                      );
+
+                                      return (
+                                        <div key={diet.id} className="border rounded-lg p-4 space-y-3">
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <Label className="text-sm font-medium">{diet.title}</Label>
+                                              {diet.price_cents !== null && diet.price_cents > 0 && (
+                                                <span className="ml-2 text-xs text-muted-foreground">
+                                                  (+{((diet.price_cents || 0) / 100).toFixed(2)} PLN)
+                                                </span>
+                                              )}
+                                            </div>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => {
+                                                const currentServices = form.getValues("participant_services") || [];
+                                                const newService: any = {
+                                                  type: "diet",
+                                                  service_id: diet.id,
+                                                  price_cents: diet.price_cents ?? null,
+                                                  currency: "PLN",
+                                                };
+                                                if (diet.variants && diet.variants.length > 0) {
+                                                  newService.variant_id = diet.variants[0].id;
+                                                  newService.price_cents = diet.variants[0].price_cents ?? newService.price_cents;
+                                                }
+                                                form.setValue("participant_services", [...currentServices, newService]);
+                                              }}
+                                            >
+                                              Dodaj dietę
+                                            </Button>
+                                          </div>
+
+                                          {dietServices.map((service: any) => {
+                                            const serviceArrayIndex = allServices.findIndex((s: any) => {
+                                              if (s.type !== "diet" || s.service_id !== diet.id) return false;
+                                              return (
+                                                s.participant_first_name === service.participant_first_name &&
+                                                s.participant_last_name === service.participant_last_name
+                                              );
+                                            });
+
+                                            if (serviceArrayIndex === -1) return null;
+
+                                            return (
+                                              <div
+                                                key={serviceArrayIndex}
+                                                className="border rounded p-3 space-y-2 border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                              >
+                                                <div className="flex items-start justify-between gap-2">
+                                                  <div className="flex-1 space-y-2">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                      <FormField
+                                                        control={control}
+                                                        name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                        render={({ field: firstNameField }) => (
+                                                          <div className="space-y-1">
+                                                            <Label className="text-xs">Imię uczestnika</Label>
+                                                            <Input
+                                                              {...firstNameField}
+                                                              className="h-8 text-xs"
+                                                              placeholder="Imię"
+                                                            />
+                                                          </div>
+                                                        )}
+                                                      />
+                                                      <FormField
+                                                        control={control}
+                                                        name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                        render={({ field: lastNameField }) => (
+                                                          <div className="space-y-1">
+                                                            <Label className="text-xs">{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                            <Input
+                                                              {...lastNameField}
+                                                              className="h-8 text-xs"
+                                                              placeholder="Nazwisko"
+                                                            />
+                                                          </div>
+                                                        )}
+                                                      />
+                                                    </div>
+
+                                                    {diet.variants && diet.variants.length > 0 && (
+                                                      <FormField
+                                                        control={control}
+                                                        name={`participant_services.${serviceArrayIndex}.variant_id`}
+                                                        render={({ field: variantField }) => (
+                                                          <div className="space-y-1">
+                                                            <Label className="text-xs">Wariant diety</Label>
+                                                            <Select
+                                                              value={variantField.value || ""}
+                                                              onValueChange={(value) => {
+                                                                variantField.onChange(value);
+                                                                const selectedVariant = diet.variants?.find((v) => v.id === value);
+                                                                const currentServices = form.getValues("participant_services") || [];
+                                                                const updatedServices = currentServices.map((s: any, idx: number) => {
+                                                                  if (idx === serviceArrayIndex) {
+                                                                    return {
+                                                                      ...s,
+                                                                      variant_id: value,
+                                                                      price_cents: selectedVariant?.price_cents ?? null,
+                                                                    };
+                                                                  }
+                                                                  return s;
+                                                                });
+                                                                form.setValue("participant_services", updatedServices);
+                                                              }}
+                                                            >
+                                                              <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue placeholder="Wybierz wariant" />
+                                                              </SelectTrigger>
+                                                              <SelectContent>
+                                                                {diet.variants?.map((variant) => (
+                                                                  <SelectItem key={variant.id} value={variant.id}>
+                                                                    {variant.title}
+                                                                    {variant.price_cents !== null && variant.price_cents > 0
+                                                                      ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                      : " (bezpłatna)"}
+                                                                  </SelectItem>
+                                                                )) || []}
+                                                              </SelectContent>
+                                                            </Select>
+                                                          </div>
+                                                        )}
+                                                      />
+                                                    )}
                                                   </div>
-                                                )}
-                                              />
-                                            ) : (
-                                              <div className="grid grid-cols-2 gap-2">
-                                                <FormField
-                                                  control={control}
-                                                  name={`participant_services.${serviceArrayIndex}.participant_first_name`}
-                                                  render={({ field: firstNameField }) => (
-                                                    <div className="space-y-1">
-                                                      <Label className="text-xs">Imię uczestnika</Label>
-                                                      <Input
-                                                        {...firstNameField}
-                                                        className="h-8 text-xs"
-                                                        placeholder="Imię"
-                                                      />
-                                                    </div>
-                                                  )}
-                                                />
-                                                <FormField
-                                                  control={control}
-                                                  name={`participant_services.${serviceArrayIndex}.participant_last_name`}
-                                                  render={({ field: lastNameField }) => (
-                                                    <div className="space-y-1">
-                                                      <Label className="text-xs">Nazwisko uczestnika</Label>
-                                                      <Input
-                                                        {...lastNameField}
-                                                        className="h-8 text-xs"
-                                                        placeholder="Nazwisko"
-                                                      />
-                                                    </div>
-                                                  )}
-                                                />
+                                                  <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                      const currentServices = form.getValues("participant_services") || [];
+                                                      const updatedServices = currentServices.filter(
+                                                        (_: any, idx: number) => idx !== serviceArrayIndex,
+                                                      );
+                                                      form.setValue("participant_services", updatedServices);
+                                                    }}
+                                                  >
+                                                    <X className="h-4 w-4" />
+                                                  </Button>
+                                                </div>
                                               </div>
-                                            )}
-                                            
-                                            {diet.variants && diet.variants.length > 0 && (
-                                              <FormField
-                                                control={control}
-                                                name={`participant_services.${serviceArrayIndex}.variant_id`}
-                                                render={({ field: variantField }) => (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Wariant diety</Label>
-                                                    <Select
-                                                      value={variantField.value || ""}
-                                                      onValueChange={(value) => {
-                                                        variantField.onChange(value);
-                                                        // Aktualizuj cenę na podstawie wariantu
-                                                        const selectedVariant = diet.variants?.find(v => v.id === value);
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              )}
+
+                              {/* Ubezpieczenia */}
+                              {tripConfig?.extra_insurances &&
+                                tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).length > 0 && (
+                                  <div className="space-y-4">
+                                    <Label className="text-sm font-semibold">Ubezpieczenia dodatkowe</Label>
+                                    {tripConfig.extra_insurances
+                                      .filter((i: any) => i.enabled !== false)
+                                      .map((insurance) => {
+                                        const insuranceServices = allServices.filter(
+                                          (s: any) => s.type === "insurance" && s.service_id === insurance.id,
+                                        );
+
+                                        return (
+                                          <div key={insurance.id} className="border rounded-lg p-4 space-y-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                  <Label className="text-sm font-medium">{insurance.title}</Label>
+                                                  {(!insurance.variants || insurance.variants.length === 0) &&
+                                                    insurance.price_cents !== null &&
+                                                    insurance.price_cents !== undefined &&
+                                                    insurance.price_cents > 0 && (
+                                                      <span className="text-xs text-muted-foreground">
+                                                        (+{((insurance.price_cents || 0) / 100).toFixed(2)} PLN)
+                                                      </span>
+                                                    )}
+                                                </div>
+                                                {insurance.description && (
+                                                  <p className="text-xs text-muted-foreground mt-1">
+                                                    {insurance.description}
+                                                  </p>
+                                                )}
+                                                {insurance.owu_url && (
+                                                  <a
+                                                    href={insurance.owu_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                                  >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    OWU
+                                                  </a>
+                                                )}
+                                              </div>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                  const currentServices = form.getValues("participant_services") || [];
+                                                  const newService: any = {
+                                                    type: "insurance",
+                                                    service_id: insurance.id,
+                                                    price_cents: null,
+                                                    currency: "PLN",
+                                                  };
+
+                                                  if (insurance.variants && insurance.variants.length > 0) {
+                                                    newService.variant_id = insurance.variants[0].id;
+                                                    newService.price_cents = insurance.variants[0].price_cents ?? null;
+                                                  } else {
+                                                    // Jeśli nie ma wariantów, użyj głównej ceny ubezpieczenia
+                                                    newService.price_cents = insurance.price_cents ?? null;
+                                                  }
+
+                                                  form.setValue("participant_services", [...currentServices, newService]);
+                                                }}
+                                              >
+                                                Dodaj ubezpieczenie
+                                              </Button>
+                                            </div>
+
+                                            {insuranceServices.map((service: any, serviceIndex: number) => {
+                                              // Znajdź indeks usługi w tablicy wszystkich usług
+                                              const serviceArrayIndex = allServices.findIndex((s: any) => {
+                                                if (s.type !== "insurance" || s.service_id !== insurance.id) return false;
+                                                return (
+                                                  s.participant_first_name === service.participant_first_name &&
+                                                  s.participant_last_name === service.participant_last_name
+                                                );
+                                              });
+
+                                              if (serviceArrayIndex === -1) return null;
+
+                                              return (
+                                                <div
+                                                  key={serviceArrayIndex}
+                                                  className="border rounded p-3 space-y-2 border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                >
+                                                  <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1 space-y-2">
+                                                      <div className="grid grid-cols-2 gap-2">
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                          render={({ field: firstNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className="text-xs">Imię uczestnika</Label>
+                                                              <Input
+                                                                {...firstNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Imię"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                          render={({ field: lastNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className="text-xs">{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                              <Input
+                                                                {...lastNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Nazwisko"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                      </div>
+
+                                                      {insurance.variants && insurance.variants.length > 0 && (
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.variant_id`}
+                                                          render={({ field: variantField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className="text-xs">Wariant ubezpieczenia</Label>
+                                                              <Select
+                                                                value={variantField.value || ""}
+                                                                onValueChange={(value) => {
+                                                                  variantField.onChange(value);
+                                                                  const selectedVariant = insurance.variants?.find(
+                                                                    (v) => v.id === value,
+                                                                  );
+                                                                  const currentServices = form.getValues(
+                                                                    "participant_services",
+                                                                  ) || [];
+                                                                  const updatedServices = currentServices.map(
+                                                                    (s: any, idx: number) => {
+                                                                      if (idx === serviceArrayIndex) {
+                                                                        return {
+                                                                          ...s,
+                                                                          variant_id: value,
+                                                                          price_cents: selectedVariant?.price_cents ?? null,
+                                                                        };
+                                                                      }
+                                                                      return s;
+                                                                    },
+                                                                  );
+                                                                  form.setValue("participant_services", updatedServices);
+                                                                }}
+                                                              >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                  <SelectValue placeholder="Wybierz wariant" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                  {insurance.variants?.map((variant) => (
+                                                                    <SelectItem key={variant.id} value={variant.id}>
+                                                                      {variant.title}
+                                                                      {variant.price_cents !== null && variant.price_cents > 0
+                                                                        ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                        : ""}
+                                                                    </SelectItem>
+                                                                  )) || []}
+                                                                </SelectContent>
+                                                              </Select>
+                                                            </div>
+                                                          )}
+                                                        />
+                                                      )}
+                                                    </div>
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      onClick={() => {
                                                         const currentServices = form.getValues("participant_services") || [];
-                                                        const updatedServices = currentServices.map((s: any, idx: number) => {
-                                                          if (idx === serviceArrayIndex) {
-                                                            return {
-                                                              ...s,
-                                                              variant_id: value,
-                                                              price_cents: selectedVariant?.price_cents ?? null,
-                                                            };
-                                                          }
-                                                          return s;
-                                                        });
+                                                        const updatedServices = currentServices.filter(
+                                                          (_: any, idx: number) => idx !== serviceArrayIndex,
+                                                        );
                                                         form.setValue("participant_services", updatedServices);
                                                       }}
                                                     >
-                                                      <SelectTrigger className="h-8 text-xs">
-                                                        <SelectValue placeholder="Wybierz wariant" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {diet.variants?.map((variant) => (
-                                                          <SelectItem key={variant.id} value={variant.id}>
-                                                            {variant.title}
-                                                            {variant.price_cents !== null && variant.price_cents > 0 
-                                                              ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
-                                                              : " (bezpłatna)"
-                                                            }
-                                                          </SelectItem>
-                                                        )) || []}
-                                                      </SelectContent>
-                                                    </Select>
+                                                      <X className="h-4 w-4" />
+                                                    </Button>
                                                   </div>
-                                                )}
-                                              />
-                                            )}
+                                                </div>
+                                              );
+                                            })}
                                           </div>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                              const currentServices = form.getValues("participant_services") || [];
-                                              const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceArrayIndex);
-                                              form.setValue("participant_services", updatedServices);
-                                            }}
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Ubezpieczenia */}
-                        {tripConfig?.extra_insurances && tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).length > 0 && (
-                          <div className="space-y-4">
-                            <Label className="text-sm font-semibold">Ubezpieczenia dodatkowe</Label>
-                            {tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).map((insurance) => {
-                              const allServices = form.watch("participant_services") || [];
-                              const insuranceServices = allServices.filter((s: any) => s.type === "insurance" && s.service_id === insurance.id);
-                              
-                              return (
-                                <div key={insurance.id} className="border rounded-lg p-4 space-y-3">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2">
-                                        <Label className="text-sm font-medium">{insurance.title}</Label>
-                                        {(!insurance.variants || insurance.variants.length === 0) && insurance.price_cents !== null && insurance.price_cents !== undefined && insurance.price_cents > 0 && (
-                                          <span className="text-xs text-muted-foreground">
-                                            (+{((insurance.price_cents || 0) / 100).toFixed(2)} PLN)
-                                          </span>
-                                        )}
-                                      </div>
-                                      {insurance.description && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          {insurance.description}
-                                        </p>
-                                      )}
-                                      {insurance.owu_url && (
-                                        <a
-                                          href={insurance.owu_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          OWU
-                                        </a>
-                                      )}
-                                    </div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => {
-                                        const currentServices = form.getValues("participant_services") || [];
-                                        const newService: any = {
-                                          type: "insurance",
-                                          service_id: insurance.id,
-                                          price_cents: null,
-                                          currency: "PLN",
-                                        };
-                                        
-                                        if (insurance.variants && insurance.variants.length > 0) {
-                                          newService.variant_id = insurance.variants[0].id;
-                                          newService.price_cents = insurance.variants[0].price_cents ?? null;
-                                        } else {
-                                          // Jeśli nie ma wariantów, użyj głównej ceny ubezpieczenia
-                                          newService.price_cents = insurance.price_cents ?? null;
-                                        }
-                                        
-                                        if (applicantType === "individual") {
-                                          if (fields.length > 0) {
-                                            newService.participant_index = 0;
-                                          }
-                                        }
-                                        
-                                        form.setValue("participant_services", [...currentServices, newService]);
-                                      }}
-                                    >
-                                      Dodaj ubezpieczenie
-                                    </Button>
+                                        );
+                                      })}
                                   </div>
-                                  
-                                  {insuranceServices.map((service: any, serviceIndex: number) => {
-                                    // Znajdź indeks usługi w tablicy wszystkich usług
-                                    const serviceArrayIndex = allServices.findIndex((s: any, idx: number) => {
-                                      if (s.type !== "insurance" || s.service_id !== insurance.id) return false;
-                                      if (applicantType === "individual") {
-                                        return s.participant_index === service.participant_index;
-                                      } else {
-                                        return s.participant_first_name === service.participant_first_name && 
-                                               s.participant_last_name === service.participant_last_name;
-                                      }
-                                    });
-                                    
-                                    if (serviceArrayIndex === -1) return null;
-                                    
-                                    return (
-                                      <div key={serviceIndex} className="border rounded p-3 space-y-2 bg-muted/30">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1 space-y-2">
-                                            {applicantType === "individual" ? (
-                                              <FormField
-                                                control={control}
-                                                name={`participant_services.${serviceArrayIndex}.participant_index`}
-                                                render={({ field: participantField }) => (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Uczestnik</Label>
-                                                    <Select
-                                                      value={participantField.value?.toString() || ""}
-                                                      onValueChange={(value) => {
-                                                        participantField.onChange(parseInt(value, 10));
-                                                      }}
-                                                    >
-                                                      <SelectTrigger className="h-8 text-xs">
-                                                        <SelectValue placeholder="Wybierz uczestnika" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {fields.map((field, idx) => {
-                                                          const p = participantsWatch?.[idx];
-                                                          const name = p 
-                                                            ? `${p.first_name} ${p.last_name}`.trim() 
-                                                            : `Uczestnik ${idx + 1}`;
-                                                          return (
-                                                            <SelectItem key={idx} value={idx.toString()}>
-                                                              {name}
-                                                            </SelectItem>
-                                                          );
-                                                        })}
-                                                      </SelectContent>
-                                                    </Select>
-                                                  </div>
+                                )}
+
+                              {/* Atrakcje dodatkowe */}
+                              {tripConfig?.additional_attractions &&
+                                tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).length > 0 && (
+                                  <div className="space-y-4">
+                                    <Label className="text-sm font-semibold">Atrakcje dodatkowe</Label>
+                                    {tripConfig.additional_attractions
+                                      .filter((a: any) => a.enabled !== false)
+                                      .map((attraction) => {
+                                        const attractionServices = allServices.filter(
+                                          (s: any) => s.type === "attraction" && s.service_id === attraction.id,
+                                        );
+
+                                        return (
+                                          <div key={attraction.id} className="border rounded-lg p-4 space-y-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1">
+                                                <Label className="text-sm font-medium">{attraction.title}</Label>
+                                                {attraction.description && (
+                                                  <p className="text-xs text-muted-foreground mt-1">
+                                                    {attraction.description}
+                                                  </p>
                                                 )}
-                                              />
-                                            ) : (
-                                              <div className="grid grid-cols-2 gap-2">
-                                                <FormField
-                                                  control={control}
-                                                  name={`participant_services.${serviceArrayIndex}.participant_first_name`}
-                                                  render={({ field: firstNameField }) => (
-                                                    <div className="space-y-1">
-                                                      <Label className="text-xs">Imię uczestnika</Label>
-                                                      <Input
-                                                        {...firstNameField}
-                                                        className="h-8 text-xs"
-                                                        placeholder="Imię"
-                                                      />
-                                                    </div>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                  {attraction.price_cents !== null && attraction.price_cents > 0 && (
+                                                    <span className="text-xs font-medium">
+                                                      {(attraction.price_cents / 100).toFixed(2)}{" "}
+                                                      {attraction.currency || "PLN"}
+                                                    </span>
                                                   )}
-                                                />
-                                                <FormField
-                                                  control={control}
-                                                  name={`participant_services.${serviceArrayIndex}.participant_last_name`}
-                                                  render={({ field: lastNameField }) => (
-                                                    <div className="space-y-1">
-                                                      <Label className="text-xs">Nazwisko uczestnika</Label>
-                                                      <Input
-                                                        {...lastNameField}
-                                                        className="h-8 text-xs"
-                                                        placeholder="Nazwisko"
-                                                      />
-                                                    </div>
+                                                  {attraction.currency && attraction.currency !== "PLN" && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                      (nie wlicza się do umowy)
+                                                    </span>
                                                   )}
-                                                />
+                                                </div>
                                               </div>
-                                            )}
-                                            
-                                            {insurance.variants && insurance.variants.length > 0 && (
-                                              <FormField
-                                                control={control}
-                                                name={`participant_services.${serviceArrayIndex}.variant_id`}
-                                                render={({ field: variantField }) => (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Wariant ubezpieczenia</Label>
-                                                    <Select
-                                                      value={variantField.value || ""}
-                                                      onValueChange={(value) => {
-                                                        variantField.onChange(value);
-                                                        const selectedVariant = insurance.variants?.find(v => v.id === value);
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                  const currentServices = form.getValues("participant_services") || [];
+                                                  const newService: any = {
+                                                    type: "attraction",
+                                                    service_id: attraction.id,
+                                                    price_cents: attraction.price_cents ?? null,
+                                                    currency: attraction.currency || "PLN",
+                                                    include_in_contract: attraction.include_in_contract ?? true,
+                                                  };
+                                                  form.setValue("participant_services", [...currentServices, newService]);
+                                                }}
+                                              >
+                                                Dodaj atrakcję
+                                              </Button>
+                                            </div>
+
+                                            {attractionServices.map((service: any, serviceIndex: number) => {
+                                              const serviceArrayIndex = allServices.findIndex((s: any) => {
+                                                if (s.type !== "attraction" || s.service_id !== attraction.id) return false;
+                                                return (
+                                                  s.participant_first_name === service.participant_first_name &&
+                                                  s.participant_last_name === service.participant_last_name
+                                                );
+                                              });
+
+                                              if (serviceArrayIndex === -1) return null;
+
+                                              return (
+                                                <div
+                                                  key={serviceArrayIndex}
+                                                  className="border rounded p-3 space-y-2 border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                >
+                                                  <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1">
+                                                      <div className="grid grid-cols-2 gap-2">
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                          render={({ field: firstNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className="text-xs">Imię uczestnika</Label>
+                                                              <Input
+                                                                {...firstNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Imię"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                          render={({ field: lastNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className="text-xs">{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                              <Input
+                                                                {...lastNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Nazwisko"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      onClick={() => {
                                                         const currentServices = form.getValues("participant_services") || [];
-                                                        const updatedServices = currentServices.map((s: any, idx: number) => {
-                                                          if (idx === serviceArrayIndex) {
-                                                            return {
-                                                              ...s,
-                                                              variant_id: value,
-                                                              price_cents: selectedVariant?.price_cents ?? null,
-                                                            };
-                                                          }
-                                                          return s;
-                                                        });
+                                                        const updatedServices = currentServices.filter(
+                                                          (_: any, idx: number) => idx !== serviceArrayIndex,
+                                                        );
                                                         form.setValue("participant_services", updatedServices);
                                                       }}
                                                     >
-                                                      <SelectTrigger className="h-8 text-xs">
-                                                        <SelectValue placeholder="Wybierz wariant" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {insurance.variants?.map((variant) => (
-                                                          <SelectItem key={variant.id} value={variant.id}>
-                                                            {variant.title}
-                                                            {variant.price_cents !== null && variant.price_cents > 0
-                                                              ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
-                                                              : ""
-                                                            }
-                                                          </SelectItem>
-                                                        )) || []}
-                                                      </SelectContent>
-                                                    </Select>
+                                                      <X className="h-4 w-4" />
+                                                    </Button>
                                                   </div>
-                                                )}
-                                              />
-                                            )}
+                                                </div>
+                                              );
+                                            })}
                                           </div>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                              const currentServices = form.getValues("participant_services") || [];
-                                              const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceArrayIndex);
-                                              form.setValue("participant_services", updatedServices);
-                                            }}
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Atrakcje dodatkowe */}
-                        {tripConfig?.additional_attractions && tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).length > 0 && (
-                          <div className="space-y-4">
-                            <Label className="text-sm font-semibold">Atrakcje dodatkowe</Label>
-                            {tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).map((attraction) => {
-                              const allServices = form.watch("participant_services") || [];
-                              const attractionServices = allServices.filter((s: any) => s.type === "attraction" && s.service_id === attraction.id);
-                              
-                              return (
-                                <div key={attraction.id} className="border rounded-lg p-4 space-y-3">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1">
-                                      <Label className="text-sm font-medium">{attraction.title}</Label>
-                                      {attraction.description && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          {attraction.description}
-                                        </p>
-                                      )}
-                                      <div className="flex items-center gap-2 mt-1">
-                                        {attraction.price_cents !== null && attraction.price_cents > 0 && (
-                                          <span className="text-xs font-medium">
-                                            {(attraction.price_cents / 100).toFixed(2)} {attraction.currency || "PLN"}
-                                          </span>
-                                        )}
-                                        {attraction.currency && attraction.currency !== "PLN" && (
-                                          <span className="text-xs text-muted-foreground">
-                                            (nie wlicza się do umowy)
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => {
-                                        const currentServices = form.getValues("participant_services") || [];
-                                        const newService: any = {
-                                          type: "attraction",
-                                          service_id: attraction.id,
-                                          price_cents: attraction.price_cents ?? null,
-                                          currency: attraction.currency || "PLN",
-                                          include_in_contract: attraction.include_in_contract ?? true,
-                                        };
-                                        
-                                        if (applicantType === "individual") {
-                                          if (fields.length > 0) {
-                                            newService.participant_index = 0;
-                                          }
-                                        }
-                                        
-                                        form.setValue("participant_services", [...currentServices, newService]);
-                                      }}
-                                    >
-                                      Dodaj atrakcję
-                                    </Button>
+                                        );
+                                      })}
                                   </div>
-                                  
-                                  {attractionServices.map((service: any, serviceIndex: number) => {
-                                    // Znajdź indeks usługi w tablicy wszystkich usług
-                                    const serviceArrayIndex = allServices.findIndex((s: any, idx: number) => {
-                                      if (s.type !== "attraction" || s.service_id !== attraction.id) return false;
-                                      if (applicantType === "individual") {
-                                        return s.participant_index === service.participant_index;
-                                      } else {
-                                        return s.participant_first_name === service.participant_first_name && 
-                                               s.participant_last_name === service.participant_last_name;
-                                      }
-                                    });
-                                    
-                                    if (serviceArrayIndex === -1) return null;
-                                    
-                                    return (
-                                      <div key={serviceIndex} className="border rounded p-3 space-y-2 bg-muted/30">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1">
-                                            {applicantType === "individual" ? (
-                                              <FormField
-                                                control={control}
-                                                name={`participant_services.${serviceArrayIndex}.participant_index`}
-                                                render={({ field: participantField }) => (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Uczestnik</Label>
-                                                    <Select
-                                                      value={participantField.value?.toString() || ""}
-                                                      onValueChange={(value) => {
-                                                        participantField.onChange(parseInt(value, 10));
-                                                      }}
-                                                    >
-                                                      <SelectTrigger className="h-8 text-xs">
-                                                        <SelectValue placeholder="Wybierz uczestnika" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {fields.map((field, idx) => {
-                                                          const p = participantsWatch?.[idx];
-                                                          const name = p 
-                                                            ? `${p.first_name} ${p.last_name}`.trim() 
-                                                            : `Uczestnik ${idx + 1}`;
-                                                          return (
-                                                            <SelectItem key={idx} value={idx.toString()}>
-                                                              {name}
-                                                            </SelectItem>
-                                                          );
-                                                        })}
-                                                      </SelectContent>
-                                                    </Select>
-                                                  </div>
-                                                )}
-                                              />
-                                            ) : (
-                                              <div className="grid grid-cols-2 gap-2">
-                                                <FormField
-                                                  control={control}
-                                                  name={`participant_services.${serviceArrayIndex}.participant_first_name`}
-                                                  render={({ field: firstNameField }) => (
-                                                    <div className="space-y-1">
-                                                      <Label className="text-xs">Imię uczestnika</Label>
-                                                      <Input
-                                                        {...firstNameField}
-                                                        className="h-8 text-xs"
-                                                        placeholder="Imię"
-                                                      />
-                                                    </div>
-                                                  )}
-                                                />
-                                                <FormField
-                                                  control={control}
-                                                  name={`participant_services.${serviceArrayIndex}.participant_last_name`}
-                                                  render={({ field: lastNameField }) => (
-                                                    <div className="space-y-1">
-                                                      <Label className="text-xs">Nazwisko uczestnika</Label>
-                                                      <Input
-                                                        {...lastNameField}
-                                                        className="h-8 text-xs"
-                                                        placeholder="Nazwisko"
-                                                      />
-                                                    </div>
-                                                  )}
-                                                />
-                                              </div>
-                                            )}
-                                          </div>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                              const currentServices = form.getValues("participant_services") || [];
-                                              const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceArrayIndex);
-                                              form.setValue("participant_services", updatedServices);
-                                            }}
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                                )}
+                            </div>
+                          );
+                        })()}
+
                       </div>
                     )}
                   </CardContent>
@@ -3258,28 +3567,36 @@ export function BookingForm({ slug }: BookingFormProps) {
                       <Separator />
                       {/* Potem DANE OSOBY DO KONTAKTU */}
                       <section className="space-y-3">
-                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane osoby do kontaktu</h3>
-                        <div className="grid gap-2 text-sm">
+                        <h3 className="font-medium text-sm text-muted-foreground">Dane osoby do kontaktu</h3>
+                        <div className="grid gap-2 text-sm sm:grid-cols-2">
                           {(contactSummary.first_name || contactSummary.last_name) && (
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">Imię i nazwisko</span>
-                              <span>{[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}</span>
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">Imię i nazwisko</div>
+                              <div className="font-medium">
+                                {[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}
+                              </div>
                             </div>
                           )}
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">E-mail</span>
-                            <span>{contactSummary.email || "—"}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">Telefon</span>
-                            <span>{contactSummary.phone || "—"}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">Adres</span>
-                            <span>
-                              {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
-                            </span>
-                          </div>
+                          {(tripConfig?.form_required_contact_fields?.email !== false) && (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">E-mail</div>
+                              <div className="font-medium">{contactSummary.email || "—"}</div>
+                            </div>
+                          )}
+                          {(tripConfig?.form_required_contact_fields?.phone !== false) && (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">Telefon</div>
+                              <div className="font-medium">{contactSummary.phone || "—"}</div>
+                            </div>
+                          )}
+                          {(tripConfig?.form_required_contact_fields?.address ?? false) && (
+                            <div className="space-y-0.5 sm:col-span-2">
+                              <div className="text-xs text-muted-foreground">Adres</div>
+                              <div className="font-medium">
+                                {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </section>
                     </>
@@ -3287,28 +3604,36 @@ export function BookingForm({ slug }: BookingFormProps) {
                     <>
                       {/* Dla osoby fizycznej: standardowa kolejność */}
                       <section className="space-y-3">
-                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Dane osoby Zgłaszającej</h3>
-                        <div className="grid gap-2 text-sm">
+                        <h3 className="font-medium text-sm text-muted-foreground">Dane Osoby Zgłaszającej</h3>
+                        <div className="grid gap-2 text-sm sm:grid-cols-2">
                           {(contactSummary.first_name || contactSummary.last_name) && (
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground">Imię i nazwisko</span>
-                              <span>{[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}</span>
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">Imię i nazwisko</div>
+                              <div className="font-medium">
+                                {[contactSummary.first_name, contactSummary.last_name].filter(Boolean).join(" ") || "—"}
+                              </div>
                             </div>
                           )}
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">E-mail</span>
-                            <span>{contactSummary.email || "—"}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">Telefon</span>
-                            <span>{contactSummary.phone || "—"}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-muted-foreground">Adres</span>
-                            <span>
-                              {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
-                            </span>
-                          </div>
+                          {(tripConfig?.form_required_contact_fields?.email !== false) && (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">E-mail</div>
+                              <div className="font-medium">{contactSummary.email || "—"}</div>
+                            </div>
+                          )}
+                          {(tripConfig?.form_required_contact_fields?.phone !== false) && (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">Telefon</div>
+                              <div className="font-medium">{contactSummary.phone || "—"}</div>
+                            </div>
+                          )}
+                          {(tripConfig?.form_required_contact_fields?.address ?? false) && (
+                            <div className="space-y-0.5 sm:col-span-2">
+                              <div className="text-xs text-muted-foreground">Adres</div>
+                              <div className="font-medium">
+                                {[contactSummary.street, contactSummary.zip, contactSummary.city].filter(Boolean).join(", ") || "—"}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </section>
                     </>
@@ -3356,19 +3681,21 @@ export function BookingForm({ slug }: BookingFormProps) {
                                 <span>
                                   {index + 1}. {participant.first_name} {participant.last_name}
                                 </span>
-                                <span>{participant.document_type}</span>
+                                {showParticipantDocument && <span>{participant.document_type || "—"}</span>}
                               </div>
                               <div className="grid gap-1 text-xs text-muted-foreground">
-                                <span>
-                                  Płeć:{" "}
-                                  {participant.gender_code === "F"
-                                    ? "Kobieta"
-                                    : participant.gender_code === "M"
-                                    ? "Mężczyzna"
-                                    : "—"}
-                                </span>
-                                <span>Telefon: {participant.phone || "—"}</span>
-                                <span>Dokument: {participant.document_number || "—"}</span>
+                                {showParticipantGender && (
+                                  <span>
+                                    Płeć:{" "}
+                                    {participant.gender_code === "F"
+                                      ? "Kobieta"
+                                      : participant.gender_code === "M"
+                                      ? "Mężczyzna"
+                                      : "—"}
+                                  </span>
+                                )}
+                                {showParticipantPhone && <span>Telefon: {participant.phone || "—"}</span>}
+                                {showParticipantDocument && <span>Dokument: {participant.document_number || "—"}</span>}
                               </div>
                               {participantServices.length > 0 && (
                                 <div className="mt-3 pt-3 border-t space-y-2">
@@ -3524,45 +3851,78 @@ export function BookingForm({ slug }: BookingFormProps) {
                             </>
                           ) : (
                             <>
-                              {/* Dla osoby fizycznej: standardowe obliczenia */}
-                              <div className="flex items-center justify-between gap-4">
-                                <span className="text-muted-foreground">Cena za osobę</span>
-                                <span className="font-semibold">
-                                  {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}{" "}
-                                  PLN
-                                </span>
-                              </div>
-                              {participantsSummary.length > 1 && (
-                                <div className="flex items-center justify-between gap-4">
-                                  <span className="text-muted-foreground">
-                                    Cena za {participantsSummary.length} osoby
-                                  </span>
-                                  <span className="font-semibold">
-                                    {((tripPrice * participantsSummary.length) / 100).toLocaleString("pl-PL", {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}{" "}
-                                    PLN
-                                  </span>
-                                </div>
-                              )}
-                              <Separator className="my-2" />
-                              <div className="flex items-center justify-between gap-4">
-                                <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
-                                <span className="font-semibold text-lg">
-                                  {((tripPrice * participantsSummary.length * paymentSplitFirstPercent) / 10000).toLocaleString("pl-PL", {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}{" "}
-                                  PLN
-                                </span>
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
-                              </p>
+                              {/* Dla osoby fizycznej: per-uczestnik + suma */}
+                              {(() => {
+                                const allServices = form.watch("participant_services") || [];
+                                const rows = participantsSummary.map((p, index) => {
+                                  const label = [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || `Uczestnik ${index + 1}`;
+                                  const additionalCents = allServices
+                                    .filter((s: any) => s.participant_index === index)
+                                    // Waluty inne niż PLN nie wliczają się do ceny umowy
+                                    .filter((s: any) => !s.currency || s.currency === "PLN")
+                                    .reduce((sum: number, s: any) => sum + (s.price_cents && s.price_cents > 0 ? (s.price_cents || 0) : 0), 0);
+                                  const totalCents = (tripPrice || 0) + additionalCents;
+                                  return { label, additionalCents, totalCents };
+                                });
+
+                                const sumCents = rows.reduce((s, r) => s + r.totalCents, 0);
+                                const depositCents = Math.round((sumCents * paymentSplitFirstPercent) / 100);
+
+                                return (
+                                  <>
+                                    {rows.map((r, idx) => (
+                                      <div key={idx} className="space-y-1">
+                                        <div className="flex items-center justify-between gap-4">
+                                          <span className="text-muted-foreground">{r.label}</span>
+                                          <span className="font-semibold">
+                                            {(r.totalCents / 100).toLocaleString("pl-PL", {
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                            })}{" "}
+                                            PLN
+                                          </span>
+                                        </div>
+                                        {r.additionalCents > 0 && (
+                                          <div className="flex items-center justify-between gap-4 text-xs">
+                                            <span className="text-muted-foreground">Usługi dodatkowe (PLN)</span>
+                                            <span className="text-muted-foreground">
+                                              +{(r.additionalCents / 100).toLocaleString("pl-PL", {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              })}{" "}
+                                              PLN
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                    <Separator className="my-2" />
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-muted-foreground">Suma</span>
+                                      <span className="font-semibold text-lg">
+                                        {(sumCents / 100).toLocaleString("pl-PL", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}{" "}
+                                        PLN
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
+                                      <span className="font-semibold text-lg">
+                                        {(depositCents / 100).toLocaleString("pl-PL", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}{" "}
+                                        PLN
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                      Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
+                                    </p>
+                                  </>
+                                );
+                              })()}
                             </>
                           )}
                         </div>

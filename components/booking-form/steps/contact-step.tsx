@@ -56,7 +56,7 @@ export function ContactStep({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dane osoby Zgłaszającej</CardTitle>
+        <CardTitle>Dane Osoby Zgłaszającej</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {tripConfig?.registration_mode === "both" && (
@@ -125,7 +125,7 @@ export function ContactStep({
               name="contact.pesel"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>PESEL *</FormLabel>
+                  <FormLabel>PESEL</FormLabel>
                   <FormControl>
                     <Input placeholder="12345678901" {...field} maxLength={11} />
                   </FormControl>
@@ -143,7 +143,7 @@ export function ContactStep({
               name="contact.email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>E-mail {(tripConfig?.form_required_contact_fields?.email !== false) && "*"}</FormLabel>
+                  <FormLabel>E-mail</FormLabel>
                   <FormControl>
                     <Input type="email" placeholder="ania@example.com" {...field} />
                   </FormControl>
@@ -158,7 +158,7 @@ export function ContactStep({
               name="contact.phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Telefon {(tripConfig?.form_required_contact_fields?.phone !== false) && "*"}</FormLabel>
+                  <FormLabel>Telefon</FormLabel>
                   <FormControl>
                     <Input placeholder="+48 600 000 000" {...field} />
                   </FormControl>
@@ -168,6 +168,55 @@ export function ContactStep({
             />
           )}
         </div>
+
+        {applicantType === "individual" && (
+          <div className="space-y-2">
+            <h3 className="font-medium text-sm">
+              Adres {tripConfig?.form_required_contact_fields?.address ? "(wymagany)" : "(opcjonalny)"}
+            </h3>
+            <div className="grid gap-4 md:grid-cols-3">
+              <FormField
+                control={control}
+                name="contact.address.street"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ulica i numer</FormLabel>
+                    <FormControl>
+                      <Input placeholder="ul. Słoneczna 12/5" {...field} value={field.value || ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name="contact.address.city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Miasto</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Warszawa" {...field} value={field.value || ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name="contact.address.zip"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Kod pocztowy</FormLabel>
+                    <FormControl>
+                      <Input placeholder="00-001" {...field} value={field.value || ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+        )}
 
         {applicantType === "company" && (
           <div className="space-y-4">

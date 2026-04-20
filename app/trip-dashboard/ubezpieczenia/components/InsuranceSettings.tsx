@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { IconPlus, IconEdit, IconPower } from "@tabler/icons-react"
+import { IconPlus, IconEdit } from "@tabler/icons-react"
 import { EmailTemplate, InsuranceVariant } from "../types"
 
 const TYPE_LABELS: Record<number, string> = {
@@ -320,15 +321,16 @@ export function InsuranceSettings() {
                           </div>
                           <div className="text-xs text-muted-foreground">{v.provider}</div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title={v.is_active ? "Dezaktywuj" : "Aktywuj"}
-                          onClick={() => handleToggleVariant(v)}
-                        >
-                          <IconPower className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            {v.is_active ? "Aktywny" : "Nieaktywny"}
+                          </span>
+                          <Switch
+                            checked={Boolean(v.is_active)}
+                            onCheckedChange={() => handleToggleVariant(v)}
+                            aria-label={v.is_active ? "Dezaktywuj wariant" : "Aktywuj wariant"}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>

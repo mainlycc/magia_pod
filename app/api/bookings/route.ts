@@ -383,14 +383,13 @@ export async function POST(req: Request) {
         booking_id: booking.id,
         first_name: participant.first_name.trim(),
         last_name: participant.last_name.trim(),
+        birth_date: participant.birth_date,
         pesel: participant.pesel && participant.pesel.trim() !== "" ? participant.pesel.trim() : null,
         email: participant.email && participant.email.trim() !== "" ? participant.email.trim() : null,
         phone: participant.phone && participant.phone.trim() !== "" ? participant.phone.trim() : null,
         document_type: participant.document_type ?? null,
         document_number: participant.document_number && participant.document_number.trim() !== "" ? participant.document_number.trim() : null,
-        // gender_code - tymczasowo usunięte, ponieważ kolumna nie istnieje w bazie
-        // Aby dodać z powrotem, uruchom migrację 017_insurance_hdi_enhancements.sql
-        // gender_code: participant.gender_code ?? null,
+        gender_code: participant.gender_code ?? null,
       };
       
       // Obsługa dat dokumentu - konwersja string na Date tylko jeśli data jest poprawna
@@ -520,6 +519,7 @@ export async function POST(req: Request) {
             phone: p.phone || undefined,
             document_type: p.document_type || undefined,
             document_number: p.document_number || undefined,
+            selected_services: (p as any).selected_services,
           })),
         }),
       });
@@ -827,7 +827,7 @@ export async function POST(req: Request) {
     const responseData = {
       booking_ref: booking.booking_ref,
       agreement_pdf_url: agreementPdfUrl,
-      booking_url: bookingUrl, // URL do strony rezerwacji (załączanie umowy + płatność)
+      booking_url: bookingUrl, // URL do strony rezerwacji (szczegóły + płatność)
       redirect_url: redirectUrl, // Opcjonalny URL do Paynow (jeśli płatność została utworzona)
     };
     

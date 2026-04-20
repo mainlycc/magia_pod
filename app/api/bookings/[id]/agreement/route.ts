@@ -45,6 +45,7 @@ export async function POST(
           phone: p.phone || undefined,
           document_type: p.document_type || undefined,
           document_number: p.document_number || undefined,
+          selected_services: p.selected_services,
         }))
       : [];
 

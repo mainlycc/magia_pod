@@ -63,7 +63,7 @@ export function useTripConfig(slug: string) {
               typeof trip.form_required_contact_fields === "object" &&
               !Array.isArray(trip.form_required_contact_fields)
               ? trip.form_required_contact_fields as TripConfig["form_required_contact_fields"]
-              : { pesel: false, phone: true, email: true },
+              : { pesel: false, phone: true, email: true, address: false },
           });
 
           if (trip.registration_mode === "company") {

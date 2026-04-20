@@ -45,6 +45,7 @@ export type TripConfig = {
     pesel?: boolean;
     phone?: boolean;
     email?: boolean;
+    address?: boolean;
   } | null;
 };
 
@@ -52,7 +53,7 @@ export const steps = [
   {
     id: "contact",
     label: "Kontakt",
-    description: "Dane osoby Zgłaszającej i adres",
+    description: "Dane Osoby Zgłaszającej i adres",
   },
   {
     id: "participants",

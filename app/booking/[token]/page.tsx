@@ -5,10 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { CheckCircle2, Upload, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 type BookingData = {
   booking: {
@@ -19,7 +16,6 @@ type BookingData = {
     address: any;
     status: string;
     payment_status: string;
-    agreement_pdf_url: string | null;
     created_at: string;
     trip: {
       id: string;
@@ -44,9 +40,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploadingAgreement, setUploadingAgreement] = useState(false);
-  const [agreementUploaded, setAgreementUploaded] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -67,48 +60,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
     fetchBooking();
   }, [token]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      toast.error("Tylko pliki PDF są dozwolone");
-      return;
-    }
-
-    setSelectedFile(file);
-  };
-
-  const handleSendAgreement = async () => {
-    if (!selectedFile) {
-      toast.error("Najpierw wybierz plik PDF");
-      return;
-    }
-
-    setUploadingAgreement(true);
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    try {
-      const response = await fetch(`/api/bookings/by-token/${token}/upload-agreement`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || "Nie udało się przesłać umowy");
-      }
-
-      setAgreementUploaded(true);
-      setSelectedFile(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Błąd podczas przesyłania umowy");
-    } finally {
-      setUploadingAgreement(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -146,7 +97,9 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     <div className="container mx-auto max-w-4xl space-y-6 p-6">
       <div>
         <h1 className="text-3xl font-semibold mb-2">Rezerwacja {booking.booking_ref}</h1>
-        <p className="text-muted-foreground">Prześlij podpisaną umowę i dokonaj płatności</p>
+        <p className="text-muted-foreground">
+          Płatność jest potwierdzeniem zawarcia umowy. Poniżej znajdziesz szczegóły rezerwacji.
+        </p>
       </div>
 
       {/* Szczegóły rezerwacji */}
@@ -189,65 +142,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
               ))}
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Upload umowy */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Załączam umowę pdf</CardTitle>
-          <CardDescription>Prześlij podpisaną umowę w formacie PDF</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {agreementUploaded ? (
-            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-              <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-              <AlertTitle className="text-xl font-semibold text-green-900 dark:text-green-100">
-                Dziękujemy za wysłanie umowy
-              </AlertTitle>
-              <AlertDescription className="text-base text-green-800 dark:text-green-200">
-                Podpisana umowa została pomyślnie przesłana.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="agreement-upload" className="cursor-pointer">
-                  <div className="flex items-center gap-2 p-4 border-2 border-dashed rounded-lg hover:bg-muted/50 transition-colors">
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {selectedFile ? selectedFile.name : "Kliknij, aby wybrać plik PDF"}
-                    </span>
-                  </div>
-                </Label>
-                <Input
-                  id="agreement-upload"
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  onChange={handleFileSelect}
-                  disabled={uploadingAgreement}
-                  className="hidden"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Maksymalny rozmiar pliku: 10MB. Tylko pliki PDF są dozwolone.
-              </p>
-              <Button
-                onClick={handleSendAgreement}
-                disabled={!selectedFile || uploadingAgreement}
-                className="w-full"
-              >
-                {uploadingAgreement ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Wysyłanie...
-                  </>
-                ) : (
-                  "Wyślij umowę"
-                )}
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
 

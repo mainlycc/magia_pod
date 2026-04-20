@@ -137,7 +137,7 @@ const DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; l
   </tr>
   <tr>
     <td>Cena imprezy turystycznej:</td>
-    <td>{{trip_price_per_person}} zł/os. brutto na podstawie faktury VAT Marża</td>
+    <td>{{trip_total_price}} zł brutto (łącznie za wszystkich uczestników, wraz z usługami dodatkowymi)</td>
   </tr>
   <tr>
     <td>Dodatkowe koszty:</td>

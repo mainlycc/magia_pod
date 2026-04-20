@@ -52,17 +52,24 @@ export function ParticipantsStep({
   // Automatycznie dodaj pierwszego uczestnika z pustymi polami, jeśli nie ma żadnego (tylko dla osób fizycznych)
   useEffect(() => {
     if (applicantType === "individual" && fields.length === 0) {
-      append({
+      const baseParticipant = {
         first_name: "",
         last_name: "",
         birth_date: "",
         email: "",
-        phone: "",
-        document_type: "ID",
-        document_number: "",
-      });
+      } as const;
+
+      const participant = {
+        ...baseParticipant,
+        ...(tripConfig?.form_required_participant_fields?.phone !== false ? { phone: "" } : {}),
+        ...(tripConfig?.form_required_participant_fields?.document !== false
+          ? { document_type: "ID" as const, document_number: "" }
+          : {}),
+      };
+
+      append(participant);
     }
-  }, [applicantType, fields.length, append]);
+  }, [applicantType, fields.length, append, tripConfig?.form_required_participant_fields]);
 
   return (
     <Card>
@@ -77,7 +84,7 @@ export function ParticipantsStep({
               name="participants_count"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Liczba uczestników *</FormLabel>
+                  <FormLabel>Liczba uczestników</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -133,7 +140,7 @@ export function ParticipantsStep({
                     name={`participants.${index}.first_name`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Imię *</FormLabel>
+                        <FormLabel>Imię</FormLabel>
                         <FormControl>
                           <Input placeholder="Jan" {...field} />
                         </FormControl>
@@ -146,7 +153,7 @@ export function ParticipantsStep({
                     name={`participants.${index}.last_name`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nazwisko *</FormLabel>
+                        <FormLabel>Nazwisko</FormLabel>
                         <FormControl>
                           <Input placeholder="Kowalski" {...field} />
                         </FormControl>
@@ -162,7 +169,7 @@ export function ParticipantsStep({
                     name={`participants.${index}.birth_date`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Data urodzenia *</FormLabel>
+                        <FormLabel>Data urodzenia</FormLabel>
                         <FormControl>
                           <Input
                             type="date"
@@ -179,9 +186,7 @@ export function ParticipantsStep({
                     name={`participants.${index}.gender_code`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
-                          Płeć{tripConfig?.form_required_participant_fields?.gender ? " *" : ""}
-                        </FormLabel>
+                        <FormLabel>Płeć</FormLabel>
                         <Select
                           onValueChange={field.onChange}
                           defaultValue={field.value}
@@ -200,103 +205,103 @@ export function ParticipantsStep({
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={control}
-                    name={`participants.${index}.phone`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Telefon{tripConfig?.form_required_participant_fields?.phone ? " *" : ""}
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="+48 600 000 000" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
-                  <FormField
-                    control={control}
-                    name={`participants.${index}.document_type`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Dokument{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
-                        </FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
+                  {tripConfig?.form_required_participant_fields?.phone !== false && (
+                    <FormField
+                      control={control}
+                      name={`participants.${index}.phone`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Telefon</FormLabel>
                           <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Wybierz dokument" />
-                            </SelectTrigger>
+                            <Input placeholder="+48 600 000 000" {...field} />
                           </FormControl>
-                          <SelectContent>
-                            <SelectItem value="ID">Dowód osobisty</SelectItem>
-                            <SelectItem value="PASSPORT">Paszport</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`participants.${index}.document_number`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Seria i numer dokumentu{tripConfig?.form_required_participant_fields?.document ? " *" : ""}
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="ABC123456" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3 mt-4">
-                  <FormField
-                    control={control}
-                    name={`participants.${index}.document_issue_date`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Data wydania</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            value={field.value || ""}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`participants.${index}.document_expiry_date`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Data ważności</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            value={field.value || ""}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                {tripConfig?.form_required_participant_fields?.document !== false && (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
+                      <FormField
+                        control={control}
+                        name={`participants.${index}.document_type`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Dokument</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Wybierz dokument" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="ID">Dowód osobisty</SelectItem>
+                                <SelectItem value="PASSPORT">Paszport</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={control}
+                        name={`participants.${index}.document_number`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Seria i numer dokumentu</FormLabel>
+                            <FormControl>
+                              <Input placeholder="ABC123456" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3 mt-4">
+                      <FormField
+                        control={control}
+                        name={`participants.${index}.document_issue_date`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Data wydania</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                {...field}
+                                value={field.value || ""}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={control}
+                        name={`participants.${index}.document_expiry_date`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Data ważności</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                {...field}
+                                value={field.value || ""}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             ))}
             <Button
@@ -308,9 +313,10 @@ export function ParticipantsStep({
                   last_name: "",
                   birth_date: "",
                   email: "",
-                  phone: "",
-                  document_type: "ID",
-                  document_number: "",
+                  ...(tripConfig?.form_required_participant_fields?.phone !== false ? { phone: "" } : {}),
+                  ...(tripConfig?.form_required_participant_fields?.document !== false
+                    ? { document_type: "ID" as const, document_number: "" }
+                    : {}),
                 })
               }
             >

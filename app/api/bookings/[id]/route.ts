@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-status";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
+import { deriveInstallmentStatuses } from "@/lib/bookings/recalculate-booking-payments";
 
 const updateSchema = z.object({
   payment_status: z.enum(PAYMENT_STATUS_VALUES).optional(),
@@ -131,14 +132,14 @@ export async function PATCH(
       const firstAmount = currentBooking.first_payment_amount_cents ?? 0;
       const secondAmount = currentBooking.second_payment_amount_cents ?? 0;
 
-      // Przelicz statusy rat na podstawie wpłaconej kwoty
+      // Przelicz statusy rat na podstawie wpłaconej kwoty (ta sama logika co historia wpłat / reconcile)
       if (payload.paid_amount_cents !== undefined) {
-        if (firstAmount > 0) {
-          updateData.first_payment_status = paidCents >= firstAmount ? "paid" : "unpaid";
+        const derived = deriveInstallmentStatuses(paidCents, totalCents, firstAmount, secondAmount);
+        if (derived.first_payment_status !== null) {
+          updateData.first_payment_status = derived.first_payment_status;
         }
-        if (secondAmount > 0) {
-          updateData.second_payment_status =
-            paidCents >= firstAmount + secondAmount ? "paid" : "unpaid";
+        if (derived.second_payment_status !== null) {
+          updateData.second_payment_status = derived.second_payment_status;
         }
       }
 

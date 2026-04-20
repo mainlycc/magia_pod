@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPaynowPaymentStatus } from "@/lib/paynow";
+import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -301,6 +302,11 @@ export async function POST(request: NextRequest) {
             },
             { status: 500 }
           );
+        }
+
+        const syncPaid = await recalculateBookingPaymentsFromHistory(adminClient, booking.id);
+        if (!syncPaid.ok) {
+          console.error("[Paynow Check Status] recalculateBookingPaymentsFromHistory failed:", syncPaid.error);
         }
 
         return NextResponse.json({
