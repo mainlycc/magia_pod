@@ -432,7 +432,43 @@ export async function POST(req: Request) {
     console.log("📝 Participants payload prepared:", JSON.stringify(participantsPayload, null, 2));
 
     const adminSupabase = createAdminClient();
-    const { error: participantsErr, data: participantsData } = await adminSupabase.from("participants").insert(participantsPayload).select();
+    const extractMissingColumnFromPostgrestMessage = (message: string | null | undefined) => {
+      if (!message) return null;
+      const match = message.match(/Could not find the '(.+?)' column of 'participants'/);
+      return match?.[1] ?? null;
+    };
+
+    // PostgREST zwraca PGRST204 gdy w payloadzie jest kolumna, której nie ma w tabeli.
+    // To często oznacza, że lokalna baza nie ma odpalonych najnowszych migracji.
+    // Żeby nie blokować rezerwacji, próbujemy ponownie po usunięciu brakującej kolumny.
+    let participantsPayloadForInsert = participantsPayload as Array<Record<string, unknown>>;
+    let participantsErr: any = null;
+    let participantsData: any = null;
+    const strippedColumns = new Set<string>();
+    const maxRetries = 8;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const res = await adminSupabase.from("participants").insert(participantsPayloadForInsert).select();
+      participantsErr = res.error;
+      participantsData = res.data;
+
+      if (!participantsErr) break;
+
+      const missingColumn = extractMissingColumnFromPostgrestMessage(participantsErr.message);
+      if (participantsErr.code === "PGRST204" && missingColumn && !strippedColumns.has(missingColumn)) {
+        strippedColumns.add(missingColumn);
+        console.warn(
+          `⚠️ participants: brak kolumny '${missingColumn}' w DB (PGRST204). Usuwam z payloadu i ponawiam insert.`
+        );
+        participantsPayloadForInsert = participantsPayloadForInsert.map((row) => {
+          const { [missingColumn]: _omitted, ...rest } = row as Record<string, unknown>;
+          return rest;
+        });
+        continue;
+      }
+
+      break;
+    }
 
     if (participantsErr) {
       console.error("❌ Error inserting participants:", {
@@ -441,7 +477,8 @@ export async function POST(req: Request) {
         code: participantsErr.code,
         details: participantsErr.details,
         hint: participantsErr.hint,
-        participantsPayload: JSON.stringify(participantsPayload, null, 2),
+        strippedColumns: Array.from(strippedColumns),
+        participantsPayload: JSON.stringify(participantsPayloadForInsert, null, 2),
       });
       await adminSupabase.from("bookings").delete().eq("id", booking.id);
       await rollbackSeats();
@@ -451,6 +488,7 @@ export async function POST(req: Request) {
           details: participantsErr.message || "Unknown error",
           code: participantsErr.code,
           hint: participantsErr.hint,
+          stripped_columns: Array.from(strippedColumns),
         },
         { status: 500 }
       );

@@ -327,6 +327,21 @@ export const createBookingFormSchema = (requiredFields?: {
       }
       // Dla osoby fizycznej nie waliduj company - przejdź dalej do walidacji uczestników
     } else if (value.applicant_type === "company") {
+      // Dla firmy również wymagaj imienia i nazwiska osoby zgłaszającej
+      if (!value.contact.first_name || value.contact.first_name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj imię",
+          path: ["contact", "first_name"],
+        });
+      }
+      if (!value.contact.last_name || value.contact.last_name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj nazwisko",
+          path: ["contact", "last_name"],
+        });
+      }
       // Dla firmy wymagaj danych firmy
       if (!value.company?.name || value.company.name.trim() === "") {
         ctx.addIssue({

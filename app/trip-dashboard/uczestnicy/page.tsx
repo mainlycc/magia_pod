@@ -70,6 +70,8 @@ type Participant = {
     booking_ref: string
     trip_id: string
     company_name: string | null
+    contact_first_name: string | null
+    contact_last_name: string | null
     payment_status: PaymentStatusValue
     first_payment_status: string | null
     second_payment_status: string | null
@@ -117,6 +119,36 @@ const formatCurrency = (cents: number | null | undefined): string => {
 const formatDate = (date: string | null | undefined): string => {
   if (!date) return "-"
   return new Date(date).toLocaleDateString("pl-PL")
+}
+
+function getSelectedServicesTotalCents(selectedServices: unknown): number {
+  if (!selectedServices || typeof selectedServices !== "object") return 0
+  const o = selectedServices as Record<string, unknown>
+
+  const sumPriceCents = (items: unknown[], opts?: { currencyKey?: string }): number =>
+    items.reduce<number>((sum, item) => {
+      if (!item || typeof item !== "object") return sum
+      const i = item as Record<string, unknown>
+      const price = i.price_cents
+      if (typeof price !== "number" || !Number.isFinite(price)) return sum
+
+      if (opts?.currencyKey) {
+        const currency = i[opts.currencyKey]
+        if (currency && typeof currency === "string" && currency.toUpperCase() !== "PLN") return sum
+      }
+
+      return sum + Math.round(price)
+    }, 0)
+
+  const diets = Array.isArray(o.diets) ? o.diets : []
+  const insurances = Array.isArray(o.insurances) ? o.insurances : []
+  const attractions = Array.isArray(o.attractions) ? o.attractions : []
+
+  return (
+    sumPriceCents(diets) +
+    sumPriceCents(insurances) +
+    sumPriceCents(attractions, { currencyKey: "currency" })
+  )
 }
 
 const getAgreementStatusLabel = (status: string) => {
@@ -219,6 +251,8 @@ export default function UczestnicyPage() {
             booking_ref,
             trip_id,
             company_name,
+            contact_first_name,
+            contact_last_name,
             payment_status,
             first_payment_status,
             second_payment_status,
@@ -429,7 +463,10 @@ export default function UczestnicyPage() {
       0
     )
     const totalDueCents = participants.reduce(
-      (sum, p) => sum + (p.bookings?.trips?.price_cents ?? 0),
+      (sum, p) =>
+        sum +
+        (p.bookings?.trips?.price_cents ?? 0) +
+        getSelectedServicesTotalCents(p.selected_services),
       0
     )
 
@@ -638,8 +675,6 @@ export default function UczestnicyPage() {
                     <TableHead>ID zamówienia</TableHead>
                     <TableHead>Zamawiający</TableHead>
                     <TableHead>Stan wpłaty</TableHead>
-                    <TableHead>Nazwa usługi</TableHead>
-                    <TableHead className="w-[120px]">Cena usługi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -648,7 +683,9 @@ export default function UczestnicyPage() {
                     const isExpanded = expandedRows.has(participant.id)
                     const paymentStatus = booking?.payment_status || "unpaid"
                     const paidAmount = booking?.paid_amount_cents ?? 0
-                    const totalAmount = booking?.trips?.price_cents || 0
+                    const baseAmount = booking?.trips?.price_cents || 0
+                    const additionalServicesAmount = getSelectedServicesTotalCents(participant.selected_services)
+                    const totalAmount = baseAmount + additionalServicesAmount
                     const paidPercent = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0
                     const agreementList = booking?.agreements ?? []
                     const { previewAgreement, sentAt, statusBadgeSource } =
@@ -689,7 +726,9 @@ export default function UczestnicyPage() {
                           </TableCell>
                           <TableCell className="truncate">
                             {booking?.company_name ||
-                              `${participant.first_name} ${participant.last_name}`}
+                              ([booking?.contact_first_name, booking?.contact_last_name]
+                                .filter(Boolean)
+                                .join(" ") || "-")}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -702,16 +741,10 @@ export default function UczestnicyPage() {
                               {formatCurrency(paidAmount)} / {formatCurrency(totalAmount)} ({paidPercent}%)
                             </Badge>
                           </TableCell>
-                          <TableCell className="truncate">
-                            {booking?.trips?.title || "Główna usługa"}
-                          </TableCell>
-                          <TableCell className="w-[120px]">
-                            {formatCurrency(booking?.trips?.price_cents)}
-                          </TableCell>
                         </TableRow>
                         {isExpanded && (
                           <TableRow>
-                            <TableCell colSpan={7} className="bg-muted/30 p-0">
+                            <TableCell colSpan={5} className="bg-muted/30 p-0">
                               <div className="p-4 space-y-4">
                                 <div>
                                   <h4 className="font-semibold text-sm mb-2">
@@ -882,6 +915,11 @@ export default function UczestnicyPage() {
                                         >
                                           {paidPercent}%
                                         </Badge>
+                                        {additionalServicesAmount > 0 && (
+                                          <span className="text-xs text-muted-foreground">
+                                            (w tym usługi: {formatCurrency(additionalServicesAmount)})
+                                          </span>
+                                        )}
                                       </div>
 
                                       {/* Raty - informacje */}

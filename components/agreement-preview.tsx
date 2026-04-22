@@ -288,10 +288,21 @@ export function AgreementPreview({ template, tripFullData, tripContentData, form
       <CardContent>
         <style dangerouslySetInnerHTML={{ __html: `
           @media screen {
+            .agreement-scroll {
+              overflow-x: auto;
+              overflow-y: hidden;
+              max-width: 100%;
+            }
+            .agreement-scroll-inner {
+              min-width: 100%;
+              display: flex;
+              justify-content: center;
+            }
             .agreement-container {
               display: flex;
               flex-direction: column;
               gap: 1rem;
+              width: max-content;
             }
             .agreement-page {
               width: 210mm;
@@ -312,6 +323,7 @@ export function AgreementPreview({ template, tripFullData, tripContentData, form
             }
             .agreement-container {
               display: block;
+              width: auto;
             }
             .agreement-page {
               width: 100%;
@@ -382,15 +394,19 @@ export function AgreementPreview({ template, tripFullData, tripContentData, form
             break-before: page;
           }
         ` }} />
-        <div className="agreement-container">
-          {pages.map((pageHtml, index) => (
-            <div key={index} className="agreement-page">
-              <div
-                className="agreement-content"
-                dangerouslySetInnerHTML={{ __html: pageHtml }}
-              />
+        <div className="agreement-scroll">
+          <div className="agreement-scroll-inner">
+            <div className="agreement-container">
+              {pages.map((pageHtml, index) => (
+                <div key={index} className="agreement-page">
+                  <div
+                    className="agreement-content"
+                    dangerouslySetInnerHTML={{ __html: pageHtml }}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
         {!formData && (
           <div className="mt-4 p-3 bg-muted/50 rounded-lg">

@@ -1,10 +1,12 @@
 "use client";
 
 import { use, useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSearchParams } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 
 type BookingData = {
@@ -37,6 +39,7 @@ type BookingData = {
 
 export default function BookingPage({ params }: { params: Promise<{ token: string }> | { token: string } }) {
   const { token } = use(params instanceof Promise ? params : Promise.resolve(params));
+  const searchParams = useSearchParams();
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,14 +96,37 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     }
   };
 
+  const paymentStatusFromUrl = (searchParams.get("paymentStatus") || "").trim();
+  const resolvedPaymentStatus = (paymentStatusFromUrl || booking.payment_status || "").toUpperCase();
+  const paymentUi =
+    resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID"
+      ? { label: "Płatność potwierdzona", variant: "default" as const }
+      : resolvedPaymentStatus === "PENDING"
+        ? { label: "Oczekuje na płatność", variant: "secondary" as const }
+        : resolvedPaymentStatus
+          ? { label: `Status płatności: ${resolvedPaymentStatus}`, variant: "outline" as const }
+          : { label: "Status płatności: —", variant: "outline" as const };
+
   return (
     <div className="container mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-semibold mb-2">Rezerwacja {booking.booking_ref}</h1>
-        <p className="text-muted-foreground">
-          Płatność jest potwierdzeniem zawarcia umowy. Poniżej znajdziesz szczegóły rezerwacji.
-        </p>
-      </div>
+      <Card className="overflow-hidden">
+        <div className="bg-gradient-to-b from-muted/60 to-background">
+          <CardHeader className="gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Rezerwacja</p>
+                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{booking.booking_ref}</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={paymentUi.variant}>{paymentUi.label}</Badge>
+              </div>
+            </div>
+            <p className="text-muted-foreground">
+              Płatność jest potwierdzeniem zawarcia umowy. Poniżej znajdziesz szczegóły rezerwacji.
+            </p>
+          </CardHeader>
+        </div>
+      </Card>
 
       {/* Szczegóły rezerwacji */}
       <Card>
@@ -133,11 +159,23 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
           <div>
             <Label className="text-muted-foreground text-sm mb-2 block">Uczestnicy</Label>
-            <div className="space-y-2">
-              {booking.participants.map((participant) => (
-                <div key={participant.id} className="text-sm">
-                  {participant.first_name} {participant.last_name}
-                  {participant.email && ` • ${participant.email}`}
+            <div className="divide-y rounded-lg border bg-muted/10">
+              {booking.participants.map((participant, idx) => (
+                <div key={participant.id} className="flex items-start gap-3 p-3">
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
+                    {idx + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium leading-5">
+                      {participant.first_name} {participant.last_name}
+                    </div>
+                    {(participant.email || participant.phone) && (
+                      <div className="text-xs text-muted-foreground">
+                        {participant.email ? participant.email : "—"}
+                        {participant.phone ? ` • ${participant.phone}` : ""}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

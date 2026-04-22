@@ -376,6 +376,8 @@ export function getFieldsToValidate(
     } else if (applicantType === "company") {
       return [
         "applicant_type",
+        "contact.first_name",
+        "contact.last_name",
         "contact.email",
         "contact.phone",
         "company.name",
