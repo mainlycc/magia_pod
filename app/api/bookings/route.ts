@@ -87,8 +87,15 @@ const bookingPayloadSchema = z.object({
     .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
     .optional()
     .or(z.literal("").transform(() => undefined)),
-  contact_email: z.string().email("Niepoprawny adres e-mail"),
-  contact_phone: z.string().min(7, "Podaj numer telefonu"),
+  // Puste stringi są OK, gdy wycieczka ma wyłączone pole e-mail/telefon w konfiguracji (klient i tak wysyła klucze po stronie JSON).
+  contact_email: z
+    .union([z.literal(""), z.string().email("Niepoprawny adres e-mail")])
+    .optional()
+    .transform((v) => (v === undefined || v === null ? "" : v)),
+  contact_phone: z
+    .union([z.literal(""), z.string().min(7, "Podaj numer telefonu")])
+    .optional()
+    .transform((v) => (v === undefined || v === null ? "" : v)),
   address: addressSchema.optional(),
   company_name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
   company_nip: z.string().regex(/^\d{10}$/, "NIP musi mieć dokładnie 10 cyfr").optional().or(z.literal("").transform(() => undefined)),

@@ -300,8 +300,10 @@ describe("booking-form-utils", () => {
 
   describe("getFieldsToValidate", () => {
     it("powinien zwrócić pola kontaktowe dla osoby fizycznej", () => {
-      const fields = getFieldsToValidate("contact", "individual");
-      
+      const fields = getFieldsToValidate("contact", "individual", {
+        pesel: true,
+      });
+
       expect(fields).toContain("applicant_type");
       expect(fields).toContain("contact.first_name");
       expect(fields).toContain("contact.last_name");

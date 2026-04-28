@@ -291,35 +291,18 @@ const companySchema = z
     })
   );
 
-const participantSchema = z.object({
-  first_name: z.string().min(2, "Podaj imię"),
-  last_name: z.string().min(2, "Podaj nazwisko"),
-  birth_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Podaj datę urodzenia w formacie RRRR-MM-DD")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  pesel: z
-    .string()
-    .regex(/^$|^\d{11}$/, "PESEL musi mieć dokładnie 11 cyfr")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  email: z.string().email("Podaj poprawny e-mail").optional().or(z.literal("").transform(() => undefined)),
-  phone: z.string().min(7, "Telefon jest zbyt krótki").optional().or(z.literal("").transform(() => undefined)),
+/** Wiersz uczestnika w stanie formularza — dla firmy lista może być pusta (placeholder); walidacja imion w superRefine tylko dla osoby fizycznej. */
+const participantRowSchema = z.object({
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  birth_date: z.string().optional(),
+  pesel: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
   document_type: z.enum(["ID", "PASSPORT"]).optional(),
-  document_number: z
-    .string()
-    .min(3, "Podaj numer dokumentu")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  document_issue_date: z
-    .string()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  document_expiry_date: z
-    .string()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+  document_number: z.string().optional(),
+  document_issue_date: z.string().optional(),
+  document_expiry_date: z.string().optional(),
   gender_code: z.enum(["F", "M"]).optional(),
 });
 
@@ -439,7 +422,7 @@ const createBookingFormSchema = (requiredFields?: {
       address: optionalAddressSchema,
     }),
     company: companySchema.optional(),
-    participants: z.array(participantSchema),
+    participants: z.array(participantRowSchema),
   participants_count: z.number().optional(),
     participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
@@ -556,11 +539,171 @@ const createBookingFormSchema = (requiredFields?: {
           });
         }
       }
+
+      // Lista uczestników — pełna walidacja tylko dla osoby fizycznej
+      value.participants.forEach((participant, index) => {
+        if (!participant.first_name || participant.first_name.trim().length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj imię",
+            path: ["participants", index, "first_name"],
+          });
+        }
+        if (!participant.last_name || participant.last_name.trim().length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj nazwisko",
+            path: ["participants", index, "last_name"],
+          });
+        }
+        if (!participant.birth_date || participant.birth_date.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Data urodzenia jest wymagana",
+            path: ["participants", index, "birth_date"],
+          });
+        } else if (!/^\d{4}-\d{2}-\d{2}$/.test(participant.birth_date)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Data urodzenia musi być w formacie RRRR-MM-DD",
+            path: ["participants", index, "birth_date"],
+          });
+        }
+        if (participant.email && participant.email.trim() !== "") {
+          const ok = z.string().email().safeParse(participant.email).success;
+          if (!ok) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Podaj poprawny e-mail",
+              path: ["participants", index, "email"],
+            });
+          }
+        }
+        if (participant.phone && participant.phone.trim() !== "" && participant.phone.length < 7) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon jest zbyt krótki",
+            path: ["participants", index, "phone"],
+          });
+        }
+        if (
+          participant.document_number &&
+          participant.document_number.trim() !== "" &&
+          participant.document_number.trim().length < 3
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj numer dokumentu",
+            path: ["participants", index, "document_number"],
+          });
+        }
+        if (participant.pesel && participant.pesel.trim() !== "" && !/^\d{11}$/.test(participant.pesel)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "PESEL musi mieć dokładnie 11 cyfr",
+            path: ["participants", index, "pesel"],
+          });
+        }
+        if (requiredFields?.pesel) {
+          if (!participant.pesel || participant.pesel.trim() === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "PESEL jest wymagany",
+              path: ["participants", index, "pesel"],
+            });
+          } else if (!/^\d{11}$/.test(participant.pesel)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "PESEL musi mieć dokładnie 11 cyfr",
+              path: ["participants", index, "pesel"],
+            });
+          }
+        }
+        if (requiredFields?.document) {
+          if (!participant.document_type) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Wybierz typ dokumentu",
+              path: ["participants", index, "document_type"],
+            });
+          }
+          if (!participant.document_number || participant.document_number.trim() === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Podaj numer dokumentu",
+              path: ["participants", index, "document_number"],
+            });
+          }
+        }
+        if (requiredFields?.gender) {
+          if (!participant.gender_code) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Wybierz płeć",
+              path: ["participants", index, "gender_code"],
+            });
+          }
+        }
+        if (requiredFields?.phone) {
+          if (!participant.phone || participant.phone.trim() === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Podaj telefon",
+              path: ["participants", index, "phone"],
+            });
+          } else if (participant.phone.length < 7) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Telefon jest zbyt krótki",
+              path: ["participants", index, "phone"],
+            });
+          }
+        }
+      });
+
       // Dla osoby fizycznej nie waliduj company - zakończ tutaj
       return;
     }
-    // Dla firmy wymagaj danych firmy
+    // Dla firmy: osoba kontaktowa + firma (e-mail/telefon wg konfiguracji wycieczki)
     if (value.applicant_type === "company") {
+      if (!value.contact.first_name || value.contact.first_name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj imię",
+          path: ["contact", "first_name"],
+        });
+      }
+      if (!value.contact.last_name || value.contact.last_name.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Podaj nazwisko",
+          path: ["contact", "last_name"],
+        });
+      }
+      if (requiredContactFields?.email !== false) {
+        if (!value.contact.email || value.contact.email.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj poprawny e-mail",
+            path: ["contact", "email"],
+          });
+        }
+      }
+      if (requiredContactFields?.phone !== false) {
+        if (!value.contact.phone || value.contact.phone.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj telefon",
+            path: ["contact", "phone"],
+          });
+        } else if (value.contact.phone.length < 7) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon jest zbyt krótki",
+            path: ["contact", "phone"],
+          });
+        }
+      }
       if (!value.company?.name || value.company.name.trim() === "") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -596,81 +739,6 @@ const createBookingFormSchema = (requiredFields?: {
           path: ["company", "address", "zip"],
         });
       }
-    }
-
-    // Walidacja pól uczestników na podstawie konfiguracji
-    if (requiredFields && value.applicant_type !== "company") {
-      value.participants.forEach((participant, index) => {
-        // Data urodzenia zawsze wymagana dla osoby fizycznej
-        if (!participant.birth_date || participant.birth_date.trim() === "") {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Data urodzenia jest wymagana",
-            path: ["participants", index, "birth_date"],
-          });
-        } else if (!/^\d{4}-\d{2}-\d{2}$/.test(participant.birth_date)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Data urodzenia musi być w formacie RRRR-MM-DD",
-            path: ["participants", index, "birth_date"],
-          });
-        }
-        if (requiredFields.pesel) {
-          if (!participant.pesel || participant.pesel.trim() === "") {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "PESEL jest wymagany",
-              path: ["participants", index, "pesel"],
-            });
-          } else if (!/^\d{11}$/.test(participant.pesel)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "PESEL musi mieć dokładnie 11 cyfr",
-              path: ["participants", index, "pesel"],
-            });
-          }
-        }
-        if (requiredFields.document) {
-          if (!participant.document_type) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Wybierz typ dokumentu",
-              path: ["participants", index, "document_type"],
-            });
-          }
-          if (!participant.document_number || participant.document_number.trim() === "") {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Podaj numer dokumentu",
-              path: ["participants", index, "document_number"],
-            });
-          }
-        }
-        if (requiredFields.gender) {
-          if (!participant.gender_code) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Wybierz płeć",
-              path: ["participants", index, "gender_code"],
-            });
-          }
-        }
-        if (requiredFields.phone) {
-          if (!participant.phone || participant.phone.trim() === "") {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Podaj telefon",
-              path: ["participants", index, "phone"],
-            });
-          } else if (participant.phone.length < 7) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Telefon jest zbyt krótki",
-              path: ["participants", index, "phone"],
-            });
-          }
-        }
-      });
     }
   });
 
@@ -949,7 +1017,8 @@ export function BookingForm({ slug }: BookingFormProps) {
           // Pobierz dokumenty dla wycieczki
           try {
             const docsRes = await fetch(`/api/documents/trip/${trip.id}`);
-            if (docsRes.ok) {
+            const contentType = docsRes.headers.get("content-type") ?? "";
+            if (docsRes.ok && contentType.includes("application/json")) {
               const docsData = await docsRes.json();
               const docsMap: typeof documents = {};
               docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
@@ -966,6 +1035,15 @@ export function BookingForm({ slug }: BookingFormProps) {
                 }
               });
               setDocuments(docsMap);
+            } else if (docsRes.ok) {
+              const bodyPreview = await docsRes.text().catch(() => "");
+              console.warn("Documents API returned non-JSON response", {
+                status: docsRes.status,
+                redirected: docsRes.redirected,
+                url: docsRes.url,
+                contentType,
+                bodyPreview: bodyPreview.slice(0, 200),
+              });
             }
           } catch (docsErr) {
             console.error("Error loading documents:", docsErr);
@@ -1369,8 +1447,8 @@ export function BookingForm({ slug }: BookingFormProps) {
             ? values.contact.last_name
             : undefined,
         contact_pesel: values.contact.pesel,
-        contact_email: values.contact.email,
-        contact_phone: values.contact.phone,
+        contact_email: values.contact.email ?? "",
+        contact_phone: values.contact.phone ?? "",
         address: (() => {
           const a = values.contact.address;
           if (!a || !(a.street?.trim() || a.city?.trim() || a.zip?.trim())) return undefined;
@@ -1992,7 +2070,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                     )}
                   </div>
 
-                  {applicantType === "individual" && (
+                  {applicantType === "individual" && tripConfig?.form_required_contact_fields?.address && (
                     <div className="space-y-3">
                       <div className="grid gap-4 md:grid-cols-3">
                         <FormField
@@ -4228,6 +4306,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                             },
                             company: applicantType === "company" ? form.watch("company") : undefined,
                             participants: form.watch("participants"),
+                            participants_count: form.watch("participants_count"),
                             participant_services: mappedServices as Array<{ service_type?: string; service_title?: string }>,
                           }}
                         />

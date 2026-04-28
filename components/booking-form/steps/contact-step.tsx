@@ -169,11 +169,9 @@ export function ContactStep({
           )}
         </div>
 
-        {applicantType === "individual" && (
+        {applicantType === "individual" && tripConfig?.form_required_contact_fields?.address && (
           <div className="space-y-2">
-            <h3 className="font-medium text-sm">
-              Adres {tripConfig?.form_required_contact_fields?.address ? "(wymagany)" : "(opcjonalny)"}
-            </h3>
+            <h3 className="font-medium text-sm">Adres</h3>
             <div className="grid gap-4 md:grid-cols-3">
               <FormField
                 control={control}

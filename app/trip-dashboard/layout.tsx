@@ -1,6 +1,6 @@
 import { TripProvider } from "@/contexts/trip-context"
-import { TripSidebar } from "@/components/trip-sidebar"
 import { PageTitle } from "@/components/page-title"
+import { TripSidebar } from "@/components/trip-sidebar"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   SidebarInset,

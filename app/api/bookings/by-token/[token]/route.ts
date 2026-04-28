@@ -48,7 +48,7 @@ export async function GET(
           agreement_pdf_url,
           created_at,
           trip_id,
-          trips:trips(id, title, start_date, end_date, price_cents)
+          trips:trips(id, title, start_date, end_date, price_cents, company_participants_info)
         `)
         .eq("booking_ref", token)
         .single();
@@ -75,6 +75,7 @@ export async function GET(
           trip_start_date: trip?.start_date || null,
           trip_end_date: trip?.end_date || null,
           trip_price_cents: trip?.price_cents || null,
+          trip_company_participants_info: trip?.company_participants_info ?? null,
         }];
       }
     }
@@ -93,6 +94,19 @@ export async function GET(
     // Pobierz uczestników - używamy admin clienta aby ominąć RLS dla publicznego dostępu
     const { createAdminClient } = await import("@/lib/supabase/admin");
     const adminSupabase = createAdminClient();
+
+    let tripCompanyParticipantsInfo: string | null =
+      typeof booking.trip_company_participants_info === "string"
+        ? booking.trip_company_participants_info
+        : null;
+    if (booking.trip_company_participants_info === undefined && booking.trip_id) {
+      const { data: tripRow } = await adminSupabase
+        .from("trips")
+        .select("company_participants_info")
+        .eq("id", booking.trip_id)
+        .single();
+      tripCompanyParticipantsInfo = tripRow?.company_participants_info ?? null;
+    }
     
     const { data: participants, error: participantsError } = await adminSupabase
       .from("participants")
@@ -121,6 +135,7 @@ export async function GET(
           start_date: booking.trip_start_date,
           end_date: booking.trip_end_date,
           price_cents: booking.trip_price_cents,
+          company_participants_info: tripCompanyParticipantsInfo,
         },
         participants: participants || [],
       },

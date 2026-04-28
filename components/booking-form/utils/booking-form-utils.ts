@@ -25,8 +25,8 @@ export async function submitBooking(
         ? values.contact.last_name
         : undefined,
     contact_pesel: values.contact.pesel,
-    contact_email: values.contact.email,
-    contact_phone: values.contact.phone,
+    contact_email: values.contact.email ?? "",
+    contact_phone: values.contact.phone ?? "",
     address: (() => {
       const a = values.contact.address;
       if (!a || !(a.street?.trim() || a.city?.trim() || a.zip?.trim())) return undefined;

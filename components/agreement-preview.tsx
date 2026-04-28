@@ -34,11 +34,15 @@ interface AgreementPreviewProps {
         city?: string;
         zip?: string;
       };
+      has_representative?: boolean;
+      representative_first_name?: string;
+      representative_last_name?: string;
     };
     participants?: Array<{
       first_name?: string;
       last_name?: string;
     }>;
+    participants_count?: number;
     participant_services?: Array<{
       service_type?: string;
       service_title?: string;

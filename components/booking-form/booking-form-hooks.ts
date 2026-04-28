@@ -82,7 +82,8 @@ export function useTripConfig(slug: string) {
           // Pobierz dokumenty dla wycieczki
           try {
             const docsRes = await fetch(`/api/documents/trip/${trip.id}`);
-            if (docsRes.ok) {
+            const contentType = docsRes.headers.get("content-type") ?? "";
+            if (docsRes.ok && contentType.includes("application/json")) {
               const docsData = await docsRes.json();
               const docsMap: typeof documents = {};
               docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
@@ -99,6 +100,15 @@ export function useTripConfig(slug: string) {
                 }
               });
               setDocuments(docsMap);
+            } else if (docsRes.ok) {
+              const bodyPreview = await docsRes.text().catch(() => "");
+              console.warn("Documents API returned non-JSON response", {
+                status: docsRes.status,
+                redirected: docsRes.redirected,
+                url: docsRes.url,
+                contentType,
+                bodyPreview: bodyPreview.slice(0, 200),
+              });
             }
           } catch (docsErr) {
             console.error("Error loading documents:", docsErr);

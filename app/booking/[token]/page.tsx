@@ -9,6 +9,17 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 
+/** Placeholdery tworzone przy zgłoszeniu firmy bez listy imion (booking-form). */
+function isPlaceholderCompanyParticipants(
+  participants: Array<{ last_name: string }>,
+): boolean {
+  if (participants.length === 0) return false;
+  return participants.every((p) => p.last_name.trim() === "(dane do uzupełnienia)");
+}
+
+const DEFAULT_COMPANY_PARTICIPANTS_INFO =
+  "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista powinna zawierać imię i nazwisko oraz datę urodzenia każdego uczestnika.";
+
 type BookingData = {
   booking: {
     id: string;
@@ -25,6 +36,7 @@ type BookingData = {
       start_date: string | null;
       end_date: string | null;
       price_cents: number | null;
+      company_participants_info?: string | null;
     };
     participants: Array<{
       id: string;
@@ -87,6 +99,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
   const { booking } = bookingData;
   const totalPrice = (booking.trip.price_cents || 0) * booking.participants.length;
+  const showDetailedParticipantList = !isPlaceholderCompanyParticipants(booking.participants);
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
     try {
@@ -159,26 +172,41 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
           <div>
             <Label className="text-muted-foreground text-sm mb-2 block">Uczestnicy</Label>
-            <div className="divide-y rounded-lg border bg-muted/10">
-              {booking.participants.map((participant, idx) => (
-                <div key={participant.id} className="flex items-start gap-3 p-3">
-                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
-                    {idx + 1}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium leading-5">
-                      {participant.first_name} {participant.last_name}
+            {showDetailedParticipantList ? (
+              <div className="divide-y rounded-lg border bg-muted/10">
+                {booking.participants.map((participant, idx) => (
+                  <div key={participant.id} className="flex items-start gap-3 p-3">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
+                      {idx + 1}
                     </div>
-                    {(participant.email || participant.phone) && (
-                      <div className="text-xs text-muted-foreground">
-                        {participant.email ? participant.email : "—"}
-                        {participant.phone ? ` • ${participant.phone}` : ""}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium leading-5">
+                        {participant.first_name} {participant.last_name}
                       </div>
-                    )}
+                      {(participant.email || participant.phone) && (
+                        <div className="text-xs text-muted-foreground">
+                          {participant.email ? participant.email : "—"}
+                          {participant.phone ? ` • ${participant.phone}` : ""}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+                <p className="text-sm leading-relaxed">
+                  Przy zgłoszeniu grupowym nie wyświetlamy tu imion i nazwisk — lista uczestników zostanie przekazana mailem zgodnie z zasadami podanymi przez organizatora. Liczba uczestników odpowiada liczbie miejsc z sekcji powyżej (
+                  <span className="font-medium">{booking.participants.length}</span>
+                  ).
+                </p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {booking.trip.company_participants_info?.trim()
+                    ? booking.trip.company_participants_info
+                    : DEFAULT_COMPANY_PARTICIPANTS_INFO}
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

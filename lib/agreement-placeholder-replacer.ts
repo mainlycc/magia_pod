@@ -128,6 +128,29 @@ export function replaceTripPlaceholders(
 }
 
 /**
+ * Wiersze generowane dla firmy zanim są znane prawdziwe dane uczestników
+ * (patrz mapowanie w booking-form / booking-form-utils).
+ */
+function isPlaceholderParticipantRow(p: { first_name?: string; last_name?: string }): boolean {
+  const last = (p.last_name ?? "").trim();
+  if (/\(dane\s+do\s+uzupełnienia\)/i.test(last)) {
+    return true;
+  }
+  const first = (p.first_name ?? "").trim();
+  if (/^uczestnik(\s+\d+)?$/i.test(first) && (!last || /\(dane\s+do\s+uzupełnienia\)/i.test(last))) {
+    return true;
+  }
+  return false;
+}
+
+/** Rekord bez imienia/nazwiska — np. domyślny pusty uczestnik z defaultValues przy trybie firma */
+function hasParticipantNameEntered(p: { first_name?: string; last_name?: string }): boolean {
+  const first = (p.first_name ?? "").trim();
+  const last = (p.last_name ?? "").trim();
+  return first.length > 0 && last.length > 0;
+}
+
+/**
  * Zastępuje placeholdery związane z klientem/rezerwacją danymi z formularza
  */
 export function replaceBookingPlaceholders(
@@ -153,11 +176,15 @@ export function replaceBookingPlaceholders(
         city?: string;
         zip?: string;
       };
+      has_representative?: boolean;
+      representative_first_name?: string;
+      representative_last_name?: string;
     };
     participants?: Array<{
       first_name?: string;
       last_name?: string;
     }>;
+    participants_count?: number;
     participant_services?: Array<{
       service_type?: string;
       service_title?: string;
@@ -171,9 +198,21 @@ export function replaceBookingPlaceholders(
   let result = html;
 
   // Dane zgłaszającego
+  const effectiveContactFirstName =
+    formData.contact?.first_name ||
+    (formData.company?.has_representative ? formData.company?.representative_first_name : undefined) ||
+    formData.company?.representative_first_name ||
+    undefined;
+
+  const effectiveContactLastName =
+    formData.contact?.last_name ||
+    (formData.company?.has_representative ? formData.company?.representative_last_name : undefined) ||
+    formData.company?.representative_last_name ||
+    undefined;
+
   const contactFullName = [
-    formData.contact?.first_name,
-    formData.contact?.last_name
+    effectiveContactFirstName,
+    effectiveContactLastName,
   ]
     .filter(Boolean)
     .join(" ") || "-";
@@ -182,8 +221,8 @@ export function replaceBookingPlaceholders(
     ? formatPostalAddressLine(formData.contact.address)
     : "-";
 
-  result = result.replace(/\{\{contact_first_name\}\}/g, formData.contact?.first_name || "-");
-  result = result.replace(/\{\{contact_last_name\}\}/g, formData.contact?.last_name || "-");
+  result = result.replace(/\{\{contact_first_name\}\}/g, effectiveContactFirstName || "-");
+  result = result.replace(/\{\{contact_last_name\}\}/g, effectiveContactLastName || "-");
   result = result.replace(/\{\{contact_full_name\}\}/g, contactFullName);
   result = result.replace(/\{\{contact_address\}\}/g, contactAddress);
   result = result.replace(/\{\{contact_street\}\}/g, formData.contact?.address?.street || "-");
@@ -203,11 +242,32 @@ export function replaceBookingPlaceholders(
   result = result.replace(/\{\{company_address\}\}/g, companyAddress);
 
   // Dane uczestników
-  const participantsCount = formData.participants?.length || 0;
-  const participantsList = formData.participants
-    ?.map((p) => `${p.first_name || ""} ${p.last_name || ""}`.trim())
-    .filter(Boolean)
-    .join(", ") || "-";
+  const participantRows = formData.participants ?? [];
+  const realParticipants = participantRows.filter(
+    (p) => !isPlaceholderParticipantRow(p) && hasParticipantNameEntered(p),
+  );
+  const hasRealParticipantList = realParticipants.length > 0;
+
+  let participantsCount: number;
+  let participantsList: string;
+
+  if (hasRealParticipantList) {
+    participantsCount = realParticipants.length;
+    participantsList =
+      realParticipants
+        .map((p) => `${p.first_name || ""} ${p.last_name || ""}`.trim())
+        .filter(Boolean)
+        .join(", ") || "-";
+  } else {
+    const fromFormCount =
+      typeof formData.participants_count === "number" &&
+      Number.isFinite(formData.participants_count) &&
+      formData.participants_count > 0
+        ? Math.floor(formData.participants_count)
+        : 0;
+    participantsCount = fromFormCount;
+    participantsList = "-";
+  }
 
   result = result.replace(/\{\{participants_count\}\}/g, String(participantsCount));
   result = result.replace(/\{\{participants_list\}\}/g, participantsList);

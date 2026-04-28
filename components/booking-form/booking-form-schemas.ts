@@ -96,6 +96,20 @@ export const participantSchema = z.object({
   gender_code: z.enum(["F", "M"]).optional(),
 });
 
+/** Wiersz uczestnika w formularzu — dla rezerwacji firmowej może być pusty; imiona wymagane tylko w superRefine dla osoby fizycznej. */
+export const participantRowSchema = z.object({
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  birth_date: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  document_type: z.enum(["ID", "PASSPORT"]).optional(),
+  document_number: z.string().optional(),
+  document_issue_date: z.string().optional(),
+  document_expiry_date: z.string().optional(),
+  gender_code: z.enum(["F", "M"]).optional(),
+});
+
 export const invoicePersonSchema = z.object({
   first_name: z
     .string()
@@ -215,7 +229,7 @@ export const createBookingFormSchema = (requiredFields?: {
       comment: z.string().max(1000, "Komentarz jest za długi").optional().or(z.literal("").transform(() => undefined)),
     }),
     company: companySchema.optional(),
-    participants: z.array(participantSchema),
+    participants: z.array(participantRowSchema),
     participants_count: z.number().optional(),
     participant_services: z.array(participantServiceSchema).optional(),
     consents: z.object({
@@ -378,21 +392,91 @@ export const createBookingFormSchema = (requiredFields?: {
           path: ["company", "address", "zip"],
         });
       }
+      if (requiredContactFields?.email !== false) {
+        if (!value.contact.email || value.contact.email.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj poprawny e-mail",
+            path: ["contact", "email"],
+          });
+        }
+      }
+      if (requiredContactFields?.phone !== false) {
+        if (!value.contact.phone || value.contact.phone.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj telefon",
+            path: ["contact", "phone"],
+          });
+        } else if (value.contact.phone.length < 7) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon jest zbyt krótki",
+            path: ["contact", "phone"],
+          });
+        }
+      }
     }
 
-    // Walidacja pól uczestników na podstawie konfiguracji (osoba fizyczna)
+    // Walidacja uczestników — tylko osoba fizyczna
     if (value.applicant_type === "individual") {
-      if (requiredFields) {
-        value.participants.forEach((participant, index) => {
-        // Data urodzenia zawsze wymagana
+      value.participants.forEach((participant, index) => {
+        if (!participant.first_name || participant.first_name.trim().length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj imię",
+            path: ["participants", index, "first_name"],
+          });
+        }
+        if (!participant.last_name || participant.last_name.trim().length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj nazwisko",
+            path: ["participants", index, "last_name"],
+          });
+        }
         if (!participant.birth_date || participant.birth_date.trim() === "") {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Data urodzenia jest wymagana",
             path: ["participants", index, "birth_date"],
           });
+        } else if (!/^\d{4}-\d{2}-\d{2}$/.test(participant.birth_date)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj datę urodzenia w formacie RRRR-MM-DD",
+            path: ["participants", index, "birth_date"],
+          });
         }
-        if (requiredFields.document) {
+        if (participant.email && participant.email.trim() !== "") {
+          const ok = z.string().email().safeParse(participant.email).success;
+          if (!ok) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Podaj poprawny e-mail",
+              path: ["participants", index, "email"],
+            });
+          }
+        }
+        if (participant.phone && participant.phone.trim() !== "" && participant.phone.length < 7) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon jest zbyt krótki",
+            path: ["participants", index, "phone"],
+          });
+        }
+        if (
+          participant.document_number &&
+          participant.document_number.trim() !== "" &&
+          participant.document_number.trim().length < 3
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Podaj numer dokumentu",
+            path: ["participants", index, "document_number"],
+          });
+        }
+        if (requiredFields?.document) {
           if (!participant.document_type) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -408,7 +492,7 @@ export const createBookingFormSchema = (requiredFields?: {
             });
           }
         }
-        if (requiredFields.gender) {
+        if (requiredFields?.gender) {
           if (!participant.gender_code) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -417,7 +501,7 @@ export const createBookingFormSchema = (requiredFields?: {
             });
           }
         }
-        if (requiredFields.phone) {
+        if (requiredFields?.phone) {
           if (!participant.phone || participant.phone.trim() === "") {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -433,6 +517,5 @@ export const createBookingFormSchema = (requiredFields?: {
           }
         }
       });
-      }
     }
   });
