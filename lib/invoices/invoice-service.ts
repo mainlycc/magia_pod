@@ -330,9 +330,21 @@ export async function processPaymentInvoice(
         fakturowniaOrderId = parseInt(existingOrderId, 10);
         console.log("[InvoiceService] Using existing order_id:", fakturowniaOrderId);
       } else {
-        // Zamówienie nie zostało zapisane (np. błąd wcześniej) – kontynuuj bez niego
-        console.warn("[InvoiceService] No order_id found for booking, proceeding without it");
+        console.warn("[InvoiceService] No order_id found for booking");
       }
+    }
+
+    // KSeF: faktura zaliczkowa nie może być wystawiona bez powiązania do 1 zamówienia
+    if (!fakturowniaOrderId) {
+      return await saveInvoiceWithoutProvider(
+        supabase,
+        bookingId,
+        paymentHistoryId,
+        amountCents,
+        invoiceType,
+        parentInvoice?.id || null,
+        "Błąd Fakturownia: Zaliczka musi być podpięta do jednego zamówienia (KSeF). Brak order_id dla rezerwacji."
+      );
     }
 
     // ─── 9. Zbuduj dane faktury ───
@@ -354,7 +366,7 @@ export async function processPaymentInvoice(
       buyer_city: buyerAddress.city,
       buyer_post_code: buyerAddress.post_code,
       buyer_email: booking.contact_email || undefined,
-      order_id: fakturowniaOrderId,
+      oid: fakturowniaOrderId,
       from_invoice_id:
         parentInvoice?.fakturownia_invoice_id
           ? parseInt(parentInvoice.fakturownia_invoice_id, 10)

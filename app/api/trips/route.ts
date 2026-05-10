@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const {
       title,
-      slug: providedSlug, // Ignorujemy podany slug, generujemy automatycznie
+      slug: providedSlug,
       description,
       start_date,
       end_date,
@@ -104,8 +104,38 @@ export async function POST(req: Request) {
       }
     }
 
-    // Wygeneruj nowy numeryczny slug (następny numer)
-    const newSlug = String(maxNumericSlug + 1);
+    const usedSlugs = new Set(
+      (existingTrips ?? [])
+        .map((t: any) => (typeof t?.slug === "string" ? t.slug : ""))
+        .filter(Boolean)
+    );
+
+    // Jeśli podano numer wycieczki ręcznie, użyj go (musi być numeryczny i wolny)
+    const providedSlugStr = typeof providedSlug === "string" ? providedSlug.trim() : "";
+    let newSlug = "";
+    if (providedSlugStr) {
+      if (!/^\d+$/.test(providedSlugStr)) {
+        return NextResponse.json(
+          { error: "invalid_slug", details: "slug_must_be_numeric" },
+          { status: 400 }
+        );
+      }
+      if (usedSlugs.has(providedSlugStr)) {
+        return NextResponse.json(
+          { error: "slug_taken", details: "slug_already_exists" },
+          { status: 409 }
+        );
+      }
+      newSlug = providedSlugStr;
+    } else {
+      // Wygeneruj nowy numeryczny slug (następny numer)
+      newSlug = String(maxNumericSlug + 1);
+      // awaryjnie: jeśli ktoś już ma ten numer, zwiększaj aż trafisz wolny
+      while (usedSlugs.has(newSlug)) {
+        const n = parseInt(newSlug, 10);
+        newSlug = String(isNaN(n) ? maxNumericSlug + 1 : n + 1);
+      }
+    }
 
     const tmRaw = typeof transport_mode === "string" ? transport_mode.trim() : "";
     const transportModeResolved =

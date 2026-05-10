@@ -37,6 +37,8 @@ type BookingData = {
       end_date: string | null;
       price_cents: number | null;
       company_participants_info?: string | null;
+      reservation_success_title?: string | null;
+      reservation_success_message?: string | null;
     };
     participants: Array<{
       id: string;
@@ -111,6 +113,10 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
   const paymentStatusFromUrl = (searchParams.get("paymentStatus") || "").trim();
   const resolvedPaymentStatus = (paymentStatusFromUrl || booking.payment_status || "").toUpperCase();
+  const createdFlag = (searchParams.get("created") || "").trim() === "1";
+  const shouldShowSuccessMessage =
+    createdFlag || resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID";
+
   const paymentUi =
     resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID"
       ? { label: "Płatność potwierdzona", variant: "default" as const }
@@ -140,6 +146,24 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
           </CardHeader>
         </div>
       </Card>
+
+      {shouldShowSuccessMessage && (booking.trip.reservation_success_title?.trim() || booking.trip.reservation_success_message?.trim()) && (
+        <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+          <AlertTitle className="text-green-800 dark:text-green-200">
+            {booking.trip.reservation_success_title?.trim()
+              ? booking.trip.reservation_success_title
+              : "Dziękujemy! Rezerwacja przyjęta."}
+          </AlertTitle>
+          <AlertDescription className="text-green-700 dark:text-green-300">
+            {booking.trip.reservation_success_message?.trim() ? (
+              <div
+                dangerouslySetInnerHTML={{ __html: booking.trip.reservation_success_message }}
+                className="space-y-2"
+              />
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Szczegóły rezerwacji */}
       <Card>

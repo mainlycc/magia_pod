@@ -27,10 +27,16 @@ type InvoiceWithBooking = {
     booking_ref: string
     contact_email: string | null
     trip_id: string
+    agreements?: {
+      id: string
+      status: string
+      agreement_seq: number | null
+    }[]
     trips: {
       id: string
       title: string
       price_cents: number | null
+      reservation_number?: string | null
     } | null
   } | null
   participants_count?: number
@@ -60,6 +66,16 @@ const getInvoiceStatusBadgeVariant = (
     opłacona: "default",
   }
   return variants[status] || "outline"
+}
+
+function formatAgreementNumber(opts: {
+  reservationNumber?: string | null
+  agreementSeq?: number | null
+}): string {
+  const reservation = (opts.reservationNumber ?? "").trim().replace(/^#+/, "")
+  const seq = opts.agreementSeq ?? null
+  if (!reservation || !seq || seq <= 0) return "—"
+  return `#${reservation.padStart(6, "0")}/${String(seq).padStart(3, "0")}`
 }
 
 export default function FakturyPage() {
@@ -107,18 +123,35 @@ export default function FakturyPage() {
       {
         id: "booking",
         header: "Rezerwacja",
-        cell: ({ row }) => (
-          <div className="space-y-1">
-            <div className="text-sm">
-              {row.original.bookings?.booking_ref ?? "—"}
-            </div>
-            {row.original.bookings?.contact_email && (
+        cell: ({ row }) => {
+          const booking = row.original.bookings
+          const rawAgreements = booking?.agreements
+          const agreements = Array.isArray(rawAgreements)
+            ? rawAgreements
+            : rawAgreements
+              ? [rawAgreements]
+              : []
+          const agreementSeq =
+            agreements
+              .map((a) => a.agreement_seq ?? 0)
+              .filter((n) => n > 0)
+              .sort((a, b) => b - a)[0] ?? null
+
+          const agreementNumberText = formatAgreementNumber({
+            reservationNumber: booking?.trips?.reservation_number ?? null,
+            agreementSeq,
+          })
+
+          return (
+            <div className="space-y-1">
+              <div className="text-sm font-medium">{agreementNumberText}</div>
               <div className="text-xs text-muted-foreground">
-                {row.original.bookings.contact_email}
+                {booking?.booking_ref ?? "—"}
+                {booking?.contact_email ? ` • ${booking.contact_email}` : ""}
               </div>
-            )}
-          </div>
-        ),
+            </div>
+          )
+        },
       },
       {
         accessorKey: "amount_cents",

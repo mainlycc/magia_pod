@@ -42,7 +42,15 @@ export interface FakturowniaInvoiceData {
   // Procedura marży (m.in. VAT marża / turystyka)
   margin_procedure?: boolean;
   margin_kind?: string;
-  // Powiązanie z zamówieniem (wymagane dla kind: "advance" od KSeF)
+  /**
+   * Powiązanie z zamówieniem (wymagane dla kind: "advance" od KSeF).
+   * W API Fakturowni pole to występuje jako `oid` (order id).
+   */
+  oid?: number;
+  /**
+   * Wsteczna kompatybilność (stare nazewnictwo w kodzie).
+   * Jeśli ustawione, zostanie zmapowane do `oid`.
+   */
   order_id?: number;
   // Powiązanie z poprzednią fakturą zaliczkową (dla advance_to_advance)
   from_invoice_id?: number;
@@ -155,7 +163,12 @@ export async function createOrder(
   try {
     const baseUrl = getBaseUrl(config);
 
-    const orderPayload: Record<string, any> = {
+    /**
+     * Fakturownia nie ma osobnego endpointu /orders.json.
+     * Dokument nieksięgowy „Zamówienie” tworzy się przez /invoices.json z kind="estimate".
+     */
+    const orderAsInvoicePayload: Record<string, any> = {
+      kind: "estimate",
       buyer_name: data.buyer_name,
       currency: data.currency || "PLN",
       lang: data.lang || "pl",
@@ -168,19 +181,19 @@ export async function createOrder(
       })),
     };
 
-    if (data.buyer_tax_no) orderPayload.buyer_tax_no = data.buyer_tax_no;
-    if (data.buyer_street) orderPayload.buyer_street = data.buyer_street;
-    if (data.buyer_city) orderPayload.buyer_city = data.buyer_city;
-    if (data.buyer_post_code) orderPayload.buyer_post_code = data.buyer_post_code;
-    if (data.buyer_email) orderPayload.buyer_email = data.buyer_email;
-    if (data.description) orderPayload.description = data.description;
+    if (data.buyer_tax_no) orderAsInvoicePayload.buyer_tax_no = data.buyer_tax_no;
+    if (data.buyer_street) orderAsInvoicePayload.buyer_street = data.buyer_street;
+    if (data.buyer_city) orderAsInvoicePayload.buyer_city = data.buyer_city;
+    if (data.buyer_post_code) orderAsInvoicePayload.buyer_post_code = data.buyer_post_code;
+    if (data.buyer_email) orderAsInvoicePayload.buyer_email = data.buyer_email;
+    if (data.description) orderAsInvoicePayload.description = data.description;
 
     console.log("[Fakturownia Client] Creating order:", {
       buyerName: data.buyer_name,
       positions: data.positions.length,
     });
 
-    const response = await fetch(`${baseUrl}/orders.json`, {
+    const response = await fetch(`${baseUrl}/invoices.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -188,7 +201,7 @@ export async function createOrder(
       },
       body: JSON.stringify({
         api_token: config.apiToken,
-        order: orderPayload,
+        invoice: orderAsInvoicePayload,
       }),
     });
 
@@ -251,7 +264,9 @@ export async function createInvoice(
 
     if (data.number) invoicePayload.number = data.number;
     if (data.payment_to) invoicePayload.payment_to = data.payment_to;
-    if (data.order_id) invoicePayload.order_id = data.order_id;
+    // KSeF: zaliczka musi być powiązana z JEDNYM zamówieniem → używamy `oid`
+    const oid = data.oid ?? data.order_id;
+    if (oid) invoicePayload.oid = oid;
     if (data.from_invoice_id) invoicePayload.from_invoice_id = data.from_invoice_id;
     if (data.buyer_tax_no) invoicePayload.buyer_tax_no = data.buyer_tax_no;
     if (data.buyer_street) invoicePayload.buyer_street = data.buyer_street;
@@ -266,7 +281,7 @@ export async function createInvoice(
     console.log("[Fakturownia Client] Creating invoice:", {
       kind: data.kind,
       buyerName: data.buyer_name,
-      orderId: data.order_id,
+      oid,
       fromInvoiceId: data.from_invoice_id,
       positions: data.positions.length,
     });

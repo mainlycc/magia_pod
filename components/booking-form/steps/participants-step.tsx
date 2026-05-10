@@ -61,8 +61,8 @@ export function ParticipantsStep({
 
       const participant = {
         ...baseParticipant,
-        ...(tripConfig?.form_required_participant_fields?.phone !== false ? { phone: "" } : {}),
-        ...(tripConfig?.form_required_participant_fields?.document !== false
+        ...(tripConfig?.form_required_participant_fields?.phone === true ? { phone: "" } : {}),
+        ...(tripConfig?.form_required_participant_fields?.document === true
           ? { document_type: "ID" as const, document_number: "" }
           : {}),
       };
@@ -181,31 +181,33 @@ export function ParticipantsStep({
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={control}
-                    name={`participants.${index}.gender_code`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Płeć</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Wybierz płeć" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="F">Kobieta</SelectItem>
-                            <SelectItem value="M">Mężczyzna</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  {tripConfig?.form_required_participant_fields?.phone !== false && (
+                  {tripConfig?.form_required_participant_fields?.gender === true && (
+                    <FormField
+                      control={control}
+                      name={`participants.${index}.gender_code`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Płeć</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Wybierz płeć" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="F">Kobieta</SelectItem>
+                              <SelectItem value="M">Mężczyzna</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  {tripConfig?.form_required_participant_fields?.phone === true && (
                     <FormField
                       control={control}
                       name={`participants.${index}.phone`}
@@ -222,7 +224,7 @@ export function ParticipantsStep({
                   )}
                 </div>
 
-                {tripConfig?.form_required_participant_fields?.document !== false && (
+                {tripConfig?.form_required_participant_fields?.document === true && (
                   <>
                     <div className="grid gap-4 md:grid-cols-[1.5fr,1fr] mt-6">
                       <FormField
@@ -313,8 +315,8 @@ export function ParticipantsStep({
                   last_name: "",
                   birth_date: "",
                   email: "",
-                  ...(tripConfig?.form_required_participant_fields?.phone !== false ? { phone: "" } : {}),
-                  ...(tripConfig?.form_required_participant_fields?.document !== false
+                  ...(tripConfig?.form_required_participant_fields?.phone === true ? { phone: "" } : {}),
+                  ...(tripConfig?.form_required_participant_fields?.document === true
                     ? { document_type: "ID" as const, document_number: "" }
                     : {}),
                 })

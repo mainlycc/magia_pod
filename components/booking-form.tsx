@@ -1110,6 +1110,8 @@ export function BookingForm({ slug }: BookingFormProps) {
                   section_poznaj_title: "",
                   section_poznaj_description: "",
                   reservation_info_text: "",
+                  reservation_success_title: "",
+                  reservation_success_message: "",
                   trip_info_text: "",
                   baggage_text: "",
                   weather_text: "",
@@ -1792,7 +1794,9 @@ export function BookingForm({ slug }: BookingFormProps) {
         // Przekieruj do strony rezerwacji, gdzie można zapłacić później
         if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
           setTimeout(() => {
-            window.location.replace(data.booking_url as string);
+            const base = data.booking_url as string;
+            const separator = base.includes("?") ? "&" : "?";
+            window.location.replace(`${base}${separator}created=1`);
           }, 2000);
         } else {
           setTimeout(() => {
@@ -1845,9 +1849,9 @@ export function BookingForm({ slug }: BookingFormProps) {
     [participantsWatch],
   );
 
-  const showParticipantPhone = tripConfig?.form_required_participant_fields?.phone !== false;
-  const showParticipantDocument = tripConfig?.form_required_participant_fields?.document !== false;
-  const showParticipantGender = tripConfig?.form_required_participant_fields?.gender !== false;
+  const showParticipantPhone = tripConfig?.form_required_participant_fields?.phone === true;
+  const showParticipantDocument = tripConfig?.form_required_participant_fields?.document === true;
+  const showParticipantGender = tripConfig?.form_required_participant_fields?.gender === true;
 
   return (
     <>

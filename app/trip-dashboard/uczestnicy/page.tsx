@@ -47,6 +47,7 @@ type BookingAgreement = {
   pdf_url: string | null
   sent_at: string | null
   signed_at: string | null
+  agreement_seq: number | null
 }
 
 type Participant = {
@@ -69,6 +70,7 @@ type Participant = {
     id: string
     booking_ref: string
     trip_id: string
+    created_at: string | null
     company_name: string | null
     contact_first_name: string | null
     contact_last_name: string | null
@@ -89,6 +91,7 @@ type Participant = {
       payment_split_first_percent: number | null
       payment_split_second_percent: number | null
       start_date: string | null
+      reservation_number?: string | null
     } | null
   } | null
 }
@@ -189,13 +192,29 @@ function getAgreementPresentation(agreements: BookingAgreement[]) {
   }
 }
 
+function formatAgreementNumber(opts: {
+  reservationNumber?: string | null
+  agreementSeq?: number | null
+}): string {
+  const reservation = (opts.reservationNumber ?? "").trim().replace(/^#+/, "")
+  const seq = opts.agreementSeq ?? null
+  if (!reservation || !seq || seq <= 0) return "-"
+  return `#${reservation.padStart(6, "0")}/${String(seq).padStart(3, "0")}`
+}
+
 export default function UczestnicyPage() {
   const router = useRouter()
   const { selectedTrip, tripFullData, isLoadingTripData } = useTrip()
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [expandedAgreementPreviewByBookingId, setExpandedAgreementPreviewByBookingId] = useState<Set<string>>(
+    new Set(),
+  )
   const [updatingPayment, setUpdatingPayment] = useState<string | null>(null)
+  const [generatingAgreementForBookingId, setGeneratingAgreementForBookingId] = useState<
+    string | null
+  >(null)
   // Lokalne wartości inputów kwot wpłat (bookingId -> wartość w zł jako string)
   const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({})
   // Historia wpłat (bookingId -> wpisy)
@@ -250,6 +269,7 @@ export default function UczestnicyPage() {
             id,
             booking_ref,
             trip_id,
+            created_at,
             company_name,
             contact_first_name,
             contact_last_name,
@@ -261,7 +281,7 @@ export default function UczestnicyPage() {
             paid_amount_cents,
             contact_email,
             contact_phone,
-            agreements:agreements(id, status, pdf_url, sent_at, signed_at),
+            agreements:agreements(id, status, pdf_url, sent_at, signed_at, agreement_seq),
             trips:trips(
               id,
               title,
@@ -269,7 +289,8 @@ export default function UczestnicyPage() {
               payment_split_enabled,
               payment_split_first_percent,
               payment_split_second_percent,
-              start_date
+              start_date,
+              reservation_number
             )
           )
         `
@@ -315,6 +336,15 @@ export default function UczestnicyPage() {
         newSet.add(participantId)
       }
       return newSet
+    })
+  }
+
+  const toggleAgreementPreview = (bookingId: string) => {
+    setExpandedAgreementPreviewByBookingId((prev) => {
+      const next = new Set(prev)
+      if (next.has(bookingId)) next.delete(bookingId)
+      else next.add(bookingId)
+      return next
     })
   }
 
@@ -402,6 +432,35 @@ export default function UczestnicyPage() {
     }
   }
 
+  const generateAgreement = async (bookingId: string) => {
+    setGeneratingAgreementForBookingId(bookingId)
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/agreement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json().catch(() => null as any)
+
+      if (!res.ok || !data?.success) {
+        const msg =
+          data?.error ||
+          data?.message ||
+          data?.details ||
+          "Nie udało się wygenerować umowy"
+        toast.error(msg)
+        return
+      }
+
+      toast.success("Umowa została wygenerowana")
+      await loadData()
+    } catch (err) {
+      console.error(err)
+      toast.error("Nie udało się wygenerować umowy")
+    } finally {
+      setGeneratingAgreementForBookingId(null)
+    }
+  }
+
   // Zapisz wpłatę — addedCents to kwota DODAWANA do istniejącej sumy
   const savePayment = async (bookingId: string, addedCents: number, currentPaidCents: number) => {
     setUpdatingPayment(bookingId)
@@ -442,6 +501,117 @@ export default function UczestnicyPage() {
     return paymentInputs[bookingId] ?? ""
   }
 
+  // Ile osób jest podpiętych do danej rezerwacji (booking).
+  // Wpłaty są zapisywane na poziomie booking, ale w tabeli uczestników
+  // pokazujemy je "per osoba" (podział po równo).
+  const participantCountByBookingId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of participants) {
+      // Kluczujemy po `bookings.id` jeśli jest, bo to jest faktyczny identyfikator rezerwacji
+      // używany do historii płatności. Fallback do `participants.booking_id` na wypadek braków.
+      const bookingId = p.bookings?.id ?? p.booking_id
+      if (!bookingId) continue
+      map.set(bookingId, (map.get(bookingId) ?? 0) + 1)
+    }
+    return map
+  }, [participants])
+
+  const getBookingParticipantCount = (p: Participant): number => {
+    const bookingId = p.bookings?.id ?? p.booking_id
+    if (!bookingId) return 1
+    return participantCountByBookingId.get(bookingId) ?? 1
+  }
+
+  // "Pierwszy uczestnik" w danej umowie/rezerwacji (booking).
+  // Tylko na nim można dodawać wpłaty ręcznie, ale kwota i tak jest wspólna dla booking,
+  // więc reszta uczestników dostaje ją automatycznie (w UI dzielimy po równo).
+  const primaryParticipantIdByBookingId = useMemo(() => {
+    const map = new Map<string, string>()
+    const groups = new Map<string, Participant[]>()
+
+    for (const p of participants) {
+      const bookingId = p.bookings?.id ?? p.booking_id
+      if (!bookingId) continue
+      const arr = groups.get(bookingId) ?? []
+      arr.push(p)
+      groups.set(bookingId, arr)
+    }
+
+    for (const [bookingId, group] of groups.entries()) {
+      const sorted = [...group].sort((a: any, b: any) => {
+        const at = a?.created_at ? new Date(a.created_at).getTime() : Number.POSITIVE_INFINITY
+        const bt = b?.created_at ? new Date(b.created_at).getTime() : Number.POSITIVE_INFINITY
+        if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt
+        return String(a.id).localeCompare(String(b.id))
+      })
+      if (sorted[0]?.id) map.set(bookingId, sorted[0].id)
+    }
+
+    return map
+  }, [participants])
+
+  const canManuallyAddPaymentForParticipant = (p: Participant): boolean => {
+    const bookingId = p.bookings?.id ?? p.booking_id
+    if (!bookingId) return true
+    const count = participantCountByBookingId.get(bookingId) ?? 1
+    if (count <= 1) return true
+    const primaryId = primaryParticipantIdByBookingId.get(bookingId)
+    return !primaryId || primaryId === p.id
+  }
+
+  // Suma do zapłaty za całą umowę (booking) — suma ceny + usług dodatkowych wszystkich uczestników w booking.
+  const totalDueCentsByBookingId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of participants) {
+      const bookingId = p.bookings?.id ?? p.booking_id
+      if (!bookingId) continue
+      const base = p.bookings?.trips?.price_cents ?? 0
+      const extras = getSelectedServicesTotalCents(p.selected_services)
+      map.set(bookingId, (map.get(bookingId) ?? 0) + base + extras)
+    }
+    return map
+  }, [participants])
+
+  // Posortowana lista: zachowujemy kolejność umów jak przyszła z backendu,
+  // ale w obrębie każdej umowy pokazujemy "pierwszego uczestnika" zawsze wyżej.
+  const sortedParticipants = useMemo(() => {
+    const bookingOrderIndex = new Map<string, number>()
+    let idx = 0
+    for (const p of participants) {
+      const bookingId = p.bookings?.id ?? p.booking_id
+      if (!bookingId) continue
+      if (!bookingOrderIndex.has(bookingId)) bookingOrderIndex.set(bookingId, idx++)
+    }
+
+    return [...participants].sort((a: any, b: any) => {
+      const aBookingId = a?.bookings?.id ?? a?.booking_id ?? ""
+      const bBookingId = b?.bookings?.id ?? b?.booking_id ?? ""
+
+      const aOrder = bookingOrderIndex.get(aBookingId) ?? Number.POSITIVE_INFINITY
+      const bOrder = bookingOrderIndex.get(bBookingId) ?? Number.POSITIVE_INFINITY
+      if (aOrder !== bOrder) return aOrder - bOrder
+
+      const aPrimaryId = primaryParticipantIdByBookingId.get(aBookingId)
+      const bPrimaryId = primaryParticipantIdByBookingId.get(bBookingId)
+      const aIsPrimary = Boolean(aPrimaryId && aPrimaryId === a.id)
+      const bIsPrimary = Boolean(bPrimaryId && bPrimaryId === b.id)
+      if (aIsPrimary !== bIsPrimary) return aIsPrimary ? -1 : 1
+
+      const at = a?.created_at ? new Date(a.created_at).getTime() : Number.POSITIVE_INFINITY
+      const bt = b?.created_at ? new Date(b.created_at).getTime() : Number.POSITIVE_INFINITY
+      if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt
+
+      return String(a.id).localeCompare(String(b.id))
+    })
+  }, [participants, primaryParticipantIdByBookingId])
+
+  const getPaidPerParticipantCents = (p: Participant): number => {
+    const paid = p.bookings?.paid_amount_cents ?? 0
+    const count = getBookingParticipantCount(p)
+    if (count <= 1) return paid
+    return Math.round(paid / count)
+  }
+
   // Oblicz statystyki
   const stats = useMemo(() => {
     const totalParticipants = participants.length
@@ -449,17 +619,17 @@ export default function UczestnicyPage() {
 
     // Zlicz na podstawie aktualnych wpłat (paid_amount_cents)
     const withAnyPayment = participants.filter(
-      (p) => (p.bookings?.paid_amount_cents ?? 0) > 0
+      (p) => getPaidPerParticipantCents(p) > 0
     ).length
     const fullyPaid = participants.filter((p) => {
-      const paid = p.bookings?.paid_amount_cents ?? 0
+      const paid = getPaidPerParticipantCents(p)
       const total = p.bookings?.trips?.price_cents ?? 0
       return total > 0 && paid >= total
     }).length
 
     // Suma wpłat i suma do zapłaty
     const totalPaidCents = participants.reduce(
-      (sum, p) => sum + (p.bookings?.paid_amount_cents ?? 0),
+      (sum, p) => sum + getPaidPerParticipantCents(p),
       0
     )
     const totalDueCents = participants.reduce(
@@ -478,7 +648,7 @@ export default function UczestnicyPage() {
       totalPaidCents,
       totalDueCents,
     }
-  }, [participants, tripFullData, selectedTrip])
+  }, [participants, tripFullData, selectedTrip, participantCountByBookingId])
 
   // Konfiguracja wymaganych pól z formularza
   const requiredFields = useMemo<RequiredFields>(() => {
@@ -495,9 +665,10 @@ export default function UczestnicyPage() {
     return { pesel: false, document: false, gender: false, phone: false }
   }, [tripFullData])
 
-  // Jak w formularzu rezerwacji: płeć pokazujemy, dopóki pole nie jest wyłączone (gender !== false)
-  const showParticipantGender =
-    (tripFullData?.form_required_participant_fields as { gender?: boolean } | null)?.gender !== false
+  // Jak w formularzu rezerwacji: pokaż tylko pola faktycznie włączone w konfiguracji
+  const showParticipantGender = Boolean(
+    (tripFullData?.form_required_participant_fields as { gender?: boolean } | null)?.gender
+  )
 
   // Oblicz harmonogram płatności na podstawie danych wycieczki
   const paymentSchedule = useMemo(() => {
@@ -567,11 +738,19 @@ export default function UczestnicyPage() {
     return schedule
   }, [tripFullData, selectedTrip])
 
+  const additionalServicesTotalAllParticipantsCents = useMemo(() => {
+    return participants.reduce((sum, p) => sum + getSelectedServicesTotalCents(p.selected_services), 0)
+  }, [participants])
+
+  const averageAdditionalServicesPerPersonCents = useMemo(() => {
+    if (participants.length <= 0) return 0
+    return Math.round(additionalServicesTotalAllParticipantsCents / participants.length)
+  }, [additionalServicesTotalAllParticipantsCents, participants.length])
+
   const totalCostPerPerson = useMemo(() => {
-    return tripFullData?.price_cents
-      ? formatCurrency(tripFullData.price_cents)
-      : "0.00 zł"
-  }, [tripFullData])
+    const base = tripFullData?.price_cents ?? 0
+    return base > 0 ? formatCurrency(base + averageAdditionalServicesPerPersonCents) : "0.00 zł"
+  }, [tripFullData, averageAdditionalServicesPerPersonCents])
 
   if (!selectedTrip) {
     return (
@@ -647,6 +826,12 @@ export default function UczestnicyPage() {
                     {totalCostPerPerson}
                   </span>
                 </div>
+                {averageAdditionalServicesPerPersonCents > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Uwzględniono średnią usług dodatkowych na osobę:{" "}
+                    {formatCurrency(averageAdditionalServicesPerPersonCents)} (usługi są per uczestnik).
+                  </p>
+                )}
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Brak harmonogramu płatności</p>
@@ -672,17 +857,18 @@ export default function UczestnicyPage() {
                   <TableRow>
                     <TableHead className="w-[48px]"></TableHead>
                     <TableHead>Uczestnik</TableHead>
-                    <TableHead>ID zamówienia</TableHead>
+                    <TableHead>Numer umowy</TableHead>
                     <TableHead>Zamawiający</TableHead>
+                    <TableHead>Data zgłoszenia</TableHead>
                     <TableHead>Stan wpłaty</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {participants.map((participant) => {
+                  {sortedParticipants.map((participant) => {
                     const booking = participant.bookings
                     const isExpanded = expandedRows.has(participant.id)
                     const paymentStatus = booking?.payment_status || "unpaid"
-                    const paidAmount = booking?.paid_amount_cents ?? 0
+                    const paidAmount = getPaidPerParticipantCents(participant)
                     const baseAmount = booking?.trips?.price_cents || 0
                     const additionalServicesAmount = getSelectedServicesTotalCents(participant.selected_services)
                     const totalAmount = baseAmount + additionalServicesAmount
@@ -690,6 +876,25 @@ export default function UczestnicyPage() {
                     const agreementList = booking?.agreements ?? []
                     const { previewAgreement, sentAt, statusBadgeSource } =
                       getAgreementPresentation(agreementList)
+                    const previewPdfUrl = previewAgreement?.pdf_url ?? null
+                    const agreementSeq =
+                      statusBadgeSource?.agreement_seq ??
+                      previewAgreement?.agreement_seq ??
+                      agreementList.find((a) => a.agreement_seq && a.agreement_seq > 0)?.agreement_seq ??
+                      null
+                    const agreementNumberText = formatAgreementNumber({
+                      reservationNumber: booking?.trips?.reservation_number ?? null,
+                      agreementSeq,
+                    })
+                    const canManuallyAddPayment = canManuallyAddPaymentForParticipant(participant)
+                    const bookingParticipantCount = getBookingParticipantCount(participant)
+                    const bookingTotalPaidCents = booking?.paid_amount_cents ?? 0
+                    const bookingTotalDueCents =
+                      booking?.id ? (totalDueCentsByBookingId.get(booking.id) ?? 0) : 0
+                    const isPrimaryInBooking =
+                      booking?.id &&
+                      bookingParticipantCount > 1 &&
+                      primaryParticipantIdByBookingId.get(booking.id) === participant.id
 
                     return (
                       <React.Fragment key={participant.id}>
@@ -711,7 +916,7 @@ export default function UczestnicyPage() {
                               <ChevronDown
                                 className={cn(
                                   "h-4 w-4 transition-transform",
-                                  isExpanded && "rotate-180"
+                                  isExpanded && "-rotate-90"
                                 )}
                               />
                             </Button>
@@ -722,13 +927,16 @@ export default function UczestnicyPage() {
                             </span>
                           </TableCell>
                           <TableCell className="truncate">
-                            {booking?.booking_ref || "-"}
+                            {agreementNumberText}
                           </TableCell>
                           <TableCell className="truncate">
                             {booking?.company_name ||
                               ([booking?.contact_first_name, booking?.contact_last_name]
                                 .filter(Boolean)
                                 .join(" ") || "-")}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatDate(booking?.created_at)}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -744,7 +952,7 @@ export default function UczestnicyPage() {
                         </TableRow>
                         {isExpanded && (
                           <TableRow>
-                            <TableCell colSpan={5} className="bg-muted/30 p-0">
+                            <TableCell colSpan={6} className="bg-muted/30 p-0">
                               <div className="p-4 space-y-4">
                                 <div>
                                   <h4 className="font-semibold text-sm mb-2">
@@ -830,9 +1038,29 @@ export default function UczestnicyPage() {
                                   <div>
                                     <h4 className="font-semibold text-sm mb-2">Umowa</h4>
                                     {agreementList.length === 0 ? (
-                                      <p className="text-sm text-muted-foreground">
-                                        Brak wygenerowanej umowy dla tej rezerwacji.
-                                      </p>
+                                      <div className="space-y-2">
+                                        <p className="text-sm text-muted-foreground">
+                                          Brak wygenerowanej umowy dla tej rezerwacji.
+                                        </p>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          className="h-8 text-xs"
+                                          disabled={
+                                            generatingAgreementForBookingId === booking.id
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            generateAgreement(booking.id)
+                                          }}
+                                        >
+                                          {generatingAgreementForBookingId === booking.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            "Wygeneruj umowę"
+                                          )}
+                                        </Button>
+                                      </div>
                                     ) : (
                                       <div className="space-y-3 text-sm">
                                         <div className="flex flex-wrap items-center gap-2">
@@ -851,7 +1079,8 @@ export default function UczestnicyPage() {
                                             </span>
                                           )}
                                         </div>
-                                        {previewAgreement?.pdf_url ? (
+
+                                        {previewPdfUrl ? (
                                           <div className="space-y-2">
                                             <div className="flex flex-wrap items-center gap-2">
                                               <span className="text-xs font-medium uppercase text-muted-foreground">
@@ -864,8 +1093,22 @@ export default function UczestnicyPage() {
                                                 className="h-7 text-xs"
                                                 onClick={(e) => {
                                                   e.stopPropagation()
+                                                  toggleAgreementPreview(booking.id)
+                                                }}
+                                              >
+                                                {expandedAgreementPreviewByBookingId.has(booking.id)
+                                                  ? "Zwiń podgląd"
+                                                  : "Pokaż podgląd"}
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
                                                   window.open(
-                                                    `/api/agreements/${previewAgreement.pdf_url}`,
+                                                    `/api/agreements/${encodeURIComponent(previewPdfUrl)}`,
                                                     "_blank"
                                                   )
                                                 }}
@@ -873,18 +1116,40 @@ export default function UczestnicyPage() {
                                                 Otwórz w nowym oknie
                                               </Button>
                                             </div>
-                                            <div className="w-full overflow-hidden rounded-lg border bg-background">
-                                              <iframe
-                                                src={`/api/agreements/${previewAgreement.pdf_url}`}
-                                                className="h-[400px] w-full border-0"
-                                                title="Podgląd umowy"
-                                              />
-                                            </div>
+                                            {expandedAgreementPreviewByBookingId.has(booking.id) && (
+                                              <div className="w-full overflow-hidden rounded-lg border bg-background">
+                                                <iframe
+                                                  src={`/api/agreements/${encodeURIComponent(previewPdfUrl)}`}
+                                                  className="h-[400px] w-full border-0"
+                                                  title="Podgląd umowy"
+                                                />
+                                              </div>
+                                            )}
                                           </div>
                                         ) : (
-                                          <p className="text-sm text-muted-foreground">
-                                            Brak pliku PDF umowy do podglądu.
-                                          </p>
+                                          <div className="space-y-2">
+                                            <p className="text-sm text-muted-foreground">
+                                              Brak pliku PDF umowy do podglądu.
+                                            </p>
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              className="h-8 text-xs"
+                                              disabled={
+                                                generatingAgreementForBookingId === booking.id
+                                              }
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                generateAgreement(booking.id)
+                                              }}
+                                            >
+                                              {generatingAgreementForBookingId === booking.id ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                              ) : (
+                                                "Wygeneruj umowę"
+                                              )}
+                                            </Button>
+                                          </div>
                                         )}
                                       </div>
                                     )}
@@ -921,6 +1186,18 @@ export default function UczestnicyPage() {
                                           </span>
                                         )}
                                       </div>
+                                      {isPrimaryInBooking && (
+                                        <div className="text-xs text-muted-foreground">
+                                          Za całą umowę:{" "}
+                                          <span className="font-medium text-foreground">
+                                            {formatCurrency(bookingTotalPaidCents)}
+                                          </span>{" "}
+                                          /{" "}
+                                          <span className="font-medium text-foreground">
+                                            {formatCurrency(bookingTotalDueCents)}
+                                          </span>
+                                        </div>
+                                      )}
 
                                       {/* Raty - informacje */}
                                       {(booking.first_payment_amount_cents ?? 0) > 0 && (
@@ -975,6 +1252,7 @@ export default function UczestnicyPage() {
                                               }))
                                             }}
                                             onClick={(e) => e.stopPropagation()}
+                                            disabled={!canManuallyAddPayment}
                                             className="h-8 text-sm pr-8"
                                           />
                                           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
@@ -984,9 +1262,19 @@ export default function UczestnicyPage() {
                                         <Button
                                           size="sm"
                                           className="shrink-0 h-8 text-xs"
-                                          disabled={updatingPayment === booking.id || !paymentInputs[booking.id]}
+                                          disabled={
+                                            !canManuallyAddPayment ||
+                                            updatingPayment === booking.id ||
+                                            !paymentInputs[booking.id]
+                                          }
                                           onClick={(e) => {
                                             e.stopPropagation()
+                                            if (!canManuallyAddPayment) {
+                                              toast.error(
+                                                "Wpłaty ręczne dodawaj tylko na pierwszym uczestniku tej umowy.",
+                                              )
+                                              return
+                                            }
                                             const inputVal = paymentInputs[booking.id] ?? "0"
                                             const addedCents = Math.round(parseFloat(inputVal || "0") * 100)
                                             if (isNaN(addedCents) || addedCents <= 0) {
@@ -1019,9 +1307,10 @@ export default function UczestnicyPage() {
                                               size="sm"
                                               variant="outline"
                                               className="shrink-0 h-8 text-xs"
-                                              disabled={remainingCents <= 0}
+                                              disabled={!canManuallyAddPayment || remainingCents <= 0}
                                               onClick={(e) => {
                                                 e.stopPropagation()
+                                                if (!canManuallyAddPayment) return
                                                 setPaymentInputs((prev) => ({
                                                   ...prev,
                                                   [booking.id]: (remainingCents / 100).toFixed(2),
@@ -1044,6 +1333,13 @@ export default function UczestnicyPage() {
                                           )
                                         })}
                                       </div>
+                                      {!canManuallyAddPayment && bookingParticipantCount > 1 && (
+                                        <p className="text-xs text-muted-foreground">
+                                          Ta umowa ma {bookingParticipantCount} uczestników. Wpłaty ręczne możesz dodawać
+                                          tylko na <span className="font-medium">pierwszym</span> uczestniku — kwota
+                                          rozbije się po równo na pozostałych automatycznie.
+                                        </p>
+                                      )}
 
                                       <div className="space-y-2">
                                         <div className="flex items-center justify-between">
@@ -1076,71 +1372,81 @@ export default function UczestnicyPage() {
                                                   </TableCell>
                                                 </TableRow>
                                               ) : (
-                                                (paymentHistoryByBookingId[booking.id] ?? []).map((p) => (
-                                                  <TableRow key={p.id}>
-                                                    <TableCell className="whitespace-nowrap">
-                                                      {formatDate(p.payment_date)}
-                                                    </TableCell>
-                                                    <TableCell className="whitespace-nowrap">
-                                                      {formatPaymentSource(p.payment_method)}
-                                                    </TableCell>
-                                                    <TableCell className="text-right whitespace-nowrap">
-                                                      {formatCurrency(p.amount_cents)}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                      {p.invoice ? (
+                                                (paymentHistoryByBookingId[booking.id] ?? []).map((pmt) => {
+                                                  const count = getBookingParticipantCount(participant)
+                                                  const perParticipantAmountCents =
+                                                    count > 1
+                                                      ? Math.round(pmt.amount_cents / count)
+                                                      : pmt.amount_cents
+
+                                                  return (
+                                                    <TableRow key={pmt.id}>
+                                                      <TableCell className="whitespace-nowrap">
+                                                        {formatDate(pmt.payment_date)}
+                                                      </TableCell>
+                                                      <TableCell className="whitespace-nowrap">
+                                                        {formatPaymentSource(pmt.payment_method)}
+                                                      </TableCell>
+                                                      <TableCell className="text-right whitespace-nowrap">
+                                                        {formatCurrency(perParticipantAmountCents)}
+                                                      </TableCell>
+                                                      <TableCell>
+                                                        {pmt.invoice ? (
+                                                          <Button
+                                                            variant="link"
+                                                            size="sm"
+                                                            className="h-auto p-0 text-xs font-medium gap-1"
+                                                            onClick={(e) => {
+                                                              e.stopPropagation()
+                                                              router.push(
+                                                                `/trip-dashboard/faktury/${pmt.invoice!.id}`,
+                                                              )
+                                                            }}
+                                                          >
+                                                            <FileText className="h-3 w-3" />
+                                                            {pmt.invoice.invoice_number || "—"}
+                                                          </Button>
+                                                        ) : (
+                                                          <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-7 text-xs"
+                                                            disabled={generatingInvoiceForPaymentId === pmt.id}
+                                                            onClick={(e) => {
+                                                              e.stopPropagation()
+                                                              generateInvoice(booking.id, pmt.id)
+                                                            }}
+                                                          >
+                                                            {generatingInvoiceForPaymentId === pmt.id ? (
+                                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                                            ) : (
+                                                              "Wygeneruj fakturę"
+                                                            )}
+                                                          </Button>
+                                                        )}
+                                                      </TableCell>
+                                                      <TableCell className="text-right">
                                                         <Button
-                                                          variant="link"
+                                                          variant="ghost"
                                                           size="sm"
-                                                          className="h-auto p-0 text-xs font-medium gap-1"
+                                                          className="h-8 w-8 p-0"
+                                                          disabled={deletingPaymentId === pmt.id}
                                                           onClick={(e) => {
                                                             e.stopPropagation()
-                                                            router.push(`/trip-dashboard/faktury/${p.invoice!.id}`)
+                                                            requestDeletePayment(booking.id, pmt.id)
                                                           }}
+                                                          aria-label="Usuń płatność"
                                                         >
-                                                          <FileText className="h-3 w-3" />
-                                                          {p.invoice.invoice_number || "—"}
-                                                        </Button>
-                                                      ) : (
-                                                        <Button
-                                                          variant="outline"
-                                                          size="sm"
-                                                          className="h-7 text-xs"
-                                                          disabled={generatingInvoiceForPaymentId === p.id}
-                                                          onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            generateInvoice(booking.id, p.id)
-                                                          }}
-                                                        >
-                                                          {generatingInvoiceForPaymentId === p.id ? (
-                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                          {deletingPaymentId === pmt.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
                                                           ) : (
-                                                            "Wygeneruj fakturę"
+                                                            <Trash2 className="h-4 w-4 text-destructive" />
                                                           )}
                                                         </Button>
-                                                      )}
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-8 w-8 p-0"
-                                                        disabled={deletingPaymentId === p.id}
-                                                        onClick={(e) => {
-                                                          e.stopPropagation()
-                                                          requestDeletePayment(booking.id, p.id)
-                                                        }}
-                                                        aria-label="Usuń płatność"
-                                                      >
-                                                        {deletingPaymentId === p.id ? (
-                                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                                        ) : (
-                                                          <Trash2 className="h-4 w-4 text-destructive" />
-                                                        )}
-                                                      </Button>
-                                                    </TableCell>
-                                                  </TableRow>
-                                                ))
+                                                      </TableCell>
+                                                    </TableRow>
+                                                  )
+                                                })
                                               )}
                                             </TableBody>
                                           </Table>

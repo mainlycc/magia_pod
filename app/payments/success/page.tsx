@@ -25,6 +25,28 @@ function SuccessContent() {
   useEffect(() => {
     const fetchMessage = async () => {
       try {
+        // 1) Jeśli mamy token/booking_ref - spróbuj pobrać komunikat per wycieczka z rezerwacji
+        const bookingToken = token || bookingRef;
+        if (bookingToken) {
+          const bookingRes = await fetch(`/api/bookings/by-token/${bookingToken}`);
+          if (bookingRes.ok) {
+            const data = await bookingRes.json();
+            const tripTitle = (data?.booking?.trip?.reservation_success_title || "").trim();
+            const tripMessage = (data?.booking?.trip?.reservation_success_message || "").trim();
+
+            if (tripTitle || tripMessage) {
+              setMessage({
+                id: null,
+                title: tripTitle || "Rezerwacja i płatność zakończone pomyślnie!",
+                message: tripMessage,
+                is_active: true,
+              });
+              return;
+            }
+          }
+        }
+
+        // 2) Fallback do globalnego komunikatu (jak dotychczas)
         const response = await fetch("/api/payment-success-message");
         if (response.ok) {
           const data = await response.json();

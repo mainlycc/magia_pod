@@ -36,7 +36,13 @@ export async function GET(request: NextRequest) {
           trips (
             id,
             title,
-            price_cents
+            price_cents,
+            reservation_number
+          ),
+          agreements:agreements (
+            id,
+            status,
+            agreement_seq
           )
         )
       `

@@ -62,6 +62,8 @@ export type TripContentData = {
   section_poznaj_title: string
   section_poznaj_description: string
   reservation_info_text: string
+  reservation_success_title: string
+  reservation_success_message: string
   trip_info_text: string
   baggage_text: string
   weather_text: string
@@ -102,20 +104,9 @@ type TripContextType = {
 const TripContext = React.createContext<TripContextType | undefined>(undefined)
 
 export function TripProvider({ children }: { children: React.ReactNode }) {
-  // Inicjalizuj selectedTrip synchronicznie z localStorage, aby uniknąć migotania
-  const [selectedTrip, setSelectedTripState] = React.useState<Trip | null>(() => {
-    if (typeof window === "undefined") return null
-    const savedTrip = localStorage.getItem("selectedTrip")
-    if (savedTrip) {
-      try {
-        return JSON.parse(savedTrip) as Trip
-      } catch (e) {
-        console.error("Error parsing saved trip:", e)
-        return null
-      }
-    }
-    return null
-  })
+  // Uwaga: nie inicjalizujemy z localStorage w initializerze,
+  // bo to powoduje hydration mismatch (serwer renderuje null, klient renderuje zapisany trip).
+  const [selectedTrip, setSelectedTripState] = React.useState<Trip | null>(null)
   const [trips, setTrips] = React.useState<Trip[]>([])
   const selectedTripRef = React.useRef<Trip | null>(selectedTrip)
   

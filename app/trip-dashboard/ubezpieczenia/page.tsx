@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { useTrip } from "@/contexts/trip-context"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,7 +10,34 @@ import { InsuranceType3 } from "./components/InsuranceType3"
 import { InsuranceSettings } from "./components/InsuranceSettings"
 
 export default function UbezpieczeniaPage() {
-  const { selectedTrip } = useTrip()
+  const { selectedTrip, invalidateTripCache } = useTrip()
+
+  // Backfill: po wejściu na zakładkę synchronizujemy form_extra_insurances
+  // z aktualnym stanem trip_insurance_variants (Typ 2 i 3) — dzięki temu
+  // istniejące wycieczki, w których warianty były dodane przed wprowadzeniem
+  // synchronizacji, pojawią się w publicznym formularzu rezerwacji oraz
+  // w liście wyboru przy uczestnikach.
+  useEffect(() => {
+    const tripId = selectedTrip?.id
+    if (!tripId) return
+    let cancelled = false
+    fetch(`/api/insurance-local/trip-config/${tripId}/sync-form-insurances`, {
+      method: "POST",
+    })
+      .then((res) => {
+        if (!cancelled && res.ok) {
+          // Wymuś przeładowanie cache wycieczki w kontekście,
+          // żeby edytor uczestników natychmiast zobaczył nowe pozycje.
+          invalidateTripCache()
+        }
+      })
+      .catch(() => {
+        // Synchronizacja jest "best effort" — nie blokujemy UI.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTrip?.id, invalidateTripCache])
 
   if (!selectedTrip) {
     return (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { syncFormExtraInsurancesForTrip } from "@/lib/insurance-local/sync-form-extra-insurances"
 
 // GET /api/insurance-local/trip-config/[tripId]
 // Zwraca pełną konfigurację ubezpieczeń dla wycieczki (wszystkie 3 typy)
@@ -82,6 +83,10 @@ export async function POST(
       }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Po dodaniu wariantu Typ 2/3 propaguj go do form_extra_insurances,
+    // żeby pojawił się w publicznym formularzu rezerwacji i u uczestników.
+    await syncFormExtraInsurancesForTrip(tripId)
 
     return NextResponse.json(data, { status: 201 })
   } catch (err) {

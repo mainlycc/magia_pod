@@ -3,17 +3,23 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
 
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
-    const supabase = await createClient();
+    // createClient() trzyma kontekst sesji użytkownika, ale do generowania umowy
+    // potrzebujemy pewnego dostępu do danych rezerwacji niezależnie od RLS.
+    // Autoryzacja dostępu do dashboardu jest realizowana wyżej (middleware/proxy).
+    await createClient();
     const supabaseAdmin = createAdminClient();
 
     // Pobierz pełne dane rezerwacji
-    const { data: booking, error: bookingError } = await supabase
+    const { data: booking, error: bookingError } = await supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -40,7 +46,7 @@ export async function POST(
       ? booking.participants.map((p: any) => ({
           first_name: p.first_name,
           last_name: p.last_name,
-          pesel: p.pesel,
+          pesel: p.pesel ? String(p.pesel) : "",
           email: p.email || undefined,
           phone: p.phone || undefined,
           document_type: p.document_type || undefined,
@@ -121,10 +127,15 @@ export async function POST(
 
     // Wywołaj endpoint PDF - użyj localhost dla środowiska deweloperskiego
     const { origin } = new URL(request.url);
-    const baseUrl = 
-      process.env.NEXT_PUBLIC_BASE_URL ?? 
-      process.env.NEXT_PUBLIC_APP_URL ?? 
-      (origin.includes('localhost') ? 'http://localhost:3000' : origin);
+    const isDev = process.env.NODE_ENV === "development";
+    // W dev NIE używamy `NEXT_PUBLIC_BASE_URL` (często wskazuje na produkcję),
+    // bo wtedy generowanie PDF leci do Vercel i zwraca inne formaty nazw plików.
+    const baseUrl =
+      isDev
+        ? origin
+        : (process.env.NEXT_PUBLIC_BASE_URL ??
+          process.env.NEXT_PUBLIC_APP_URL ??
+          origin);
 
     let pdfRes: Response;
     try {
@@ -167,7 +178,7 @@ export async function POST(
     }
 
     // Parsuj odpowiedź sukcesu
-    let pdfResult: { base64: string; filename: string };
+    let pdfResult: { base64: string; filename: string; warning?: string };
     try {
       if (!pdfResponseText || !pdfResponseText.trim()) {
         throw new Error("Empty response from PDF endpoint");
@@ -187,6 +198,28 @@ export async function POST(
     const { base64, filename } = pdfResult;
 
     const generatedAt = new Date().toISOString();
+
+    // Jeśli /api/pdf nie zapisał do storage (warning), zapisujemy tutaj,
+    // żeby podgląd `/api/agreements/[filename]` działał zawsze.
+    if (pdfResult.warning) {
+      try {
+        const buf = Buffer.from(base64, "base64");
+        const { error: upErr } = await supabaseAdmin.storage
+          .from("agreements")
+          .upload(filename, buf, { contentType: "application/pdf", upsert: true });
+        if (upErr) {
+          return NextResponse.json(
+            { error: "Failed to save agreement PDF", details: upErr.message || String(upErr), filename },
+            { status: 500 }
+          );
+        }
+      } catch (e) {
+        return NextResponse.json(
+          { error: "Failed to save agreement PDF", details: e instanceof Error ? e.message : String(e), filename },
+          { status: 500 }
+        );
+      }
+    }
 
     if (existingAgreement) {
       const patch: Record<string, unknown> = {

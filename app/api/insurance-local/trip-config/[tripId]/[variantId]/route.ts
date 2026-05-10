@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { syncFormExtraInsurancesForTrip } from "@/lib/insurance-local/sync-form-extra-insurances"
 
 export async function PATCH(
   request: NextRequest,
@@ -31,6 +32,10 @@ export async function PATCH(
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Po edycji ceny / włączeniu / wyłączeniu wariantu zaktualizuj
+    // odpowiadającą pozycję w form_extra_insurances.
+    await syncFormExtraInsurancesForTrip(tripId)
 
     return NextResponse.json(data)
   } catch (err) {
@@ -71,6 +76,10 @@ export async function DELETE(
       .eq("trip_id", tripId)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Po usunięciu wariantu z trip_insurance_variants usuń też odpowiadającą
+    // pozycję z form_extra_insurances (manualnych pozycji helper nie tknie).
+    await syncFormExtraInsurancesForTrip(tripId)
 
     return NextResponse.json({ success: true })
   } catch (err) {

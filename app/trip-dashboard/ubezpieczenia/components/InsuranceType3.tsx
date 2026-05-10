@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { toast } from "sonner"
+import { useTrip } from "@/contexts/trip-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -40,6 +41,7 @@ type Props = {
 }
 
 export function InsuranceType3({ tripId }: Props) {
+  const { invalidateTripCache } = useTrip()
   const [allVariants, setAllVariants] = useState<InsuranceVariant[]>([])
   const [tripVariants, setTripVariants] = useState<TripInsuranceVariant[]>([])
   const [participants, setParticipants] = useState<ParticipantInsurance[]>([])
@@ -117,6 +119,7 @@ export function InsuranceType3({ tripId }: Props) {
       setAddVariantId("")
       setAddPrice("")
       await loadTripVariants()
+      invalidateTripCache()
     } catch (err) {
       toast.error("Błąd dodawania: " + String(err))
     } finally {
@@ -147,6 +150,7 @@ export function InsuranceType3({ tripId }: Props) {
       setEditDialogOpen(false)
       setEditingVariant(null)
       await loadTripVariants()
+      invalidateTripCache()
     } catch (err) {
       toast.error("Błąd zapisu: " + String(err))
     } finally {
@@ -171,6 +175,7 @@ export function InsuranceType3({ tripId }: Props) {
       if (!res.ok) throw new Error(data.error)
       toast.success("Wariant usunięty")
       await loadTripVariants()
+      invalidateTripCache()
     } catch (err) {
       toast.error("Błąd usuwania: " + String(err))
     }

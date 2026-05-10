@@ -23,6 +23,7 @@ import { PaymentScheduleItem } from "@/contexts/trip-context"
 import {
   TRIP_CLASS_CATEGORIES,
   TRIP_CATEGORY_NONE,
+  TRIP_CLASS_CATEGORY_OPTIONS,
 } from "@/lib/trip-class-categories"
 import {
   TRIP_TRANSPORT_OPTIONS,
@@ -446,9 +447,9 @@ export default function TripGeneralInfoPage() {
                       <SelectItem value={TRIP_CATEGORY_NONE}>
                         Brak
                       </SelectItem>
-                      {TRIP_CLASS_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
+                      {TRIP_CLASS_CATEGORY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

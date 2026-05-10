@@ -3,6 +3,10 @@ import { jsPDF } from "jspdf";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatPostalAddressLine } from "@/lib/format-postal-address";
 import { registerNotoFonts } from "@/lib/pdf/register-noto-fonts";
+import { generatePdfFromHtml } from "@/lib/pdf-generator";
+import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agreement-placeholder-replacer";
+import type { TripContentData, TripFullData } from "@/contexts/trip-context";
+import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
 
 // Konfiguracja runtime dla Vercel - upewniamy się, że funkcja działa w środowisku serverless
 export const runtime = "nodejs";
@@ -127,12 +131,28 @@ function generateAgreementName(reservationNumber: string | null | undefined, agr
  * @returns Nazwa pliku PDF
  */
 function generateAgreementFilename(reservationNumber: string | null | undefined, agreementNumber: number | null | undefined, bookingRef: string): string {
-  const agreementName = generateAgreementName(reservationNumber, agreementNumber);
-  if (agreementName) {
-    return `${agreementName}.pdf`;
+  // Ważne: nazwa pliku musi być bezpieczna dla URL oraz Next route segmentu:
+  // - nie może zawierać "/" (bo `app/api/agreements/[filename]` nie obsługuje pod-ścieżek)
+  // - nie może zawierać "#" (bo przeglądarka traktuje to jako fragment URL)
+  if (reservationNumber && agreementNumber) {
+    const normalizedReservation = String(reservationNumber).replace(/\D/g, "");
+    if (!normalizedReservation) {
+      // jeśli ktoś zapisał np. "#100126" w bazie, przejdź do fallbacku
+      reservationNumber = null;
+    } else {
+      const paddedReservation = normalizedReservation.padStart(6, "0");
+      const paddedAgreement = String(agreementNumber).padStart(3, "0");
+      return `${paddedReservation}-${paddedAgreement}.pdf`;
+    }
+    const paddedAgreement = String(agreementNumber).padStart(3, "0");
   }
+
   // Fallback do starego formatu jeśli brak reservation_number lub agreement_number
-  return `${bookingRef}.pdf`;
+  const safeBookingRef = String(bookingRef ?? "")
+    .trim()
+    .replaceAll("#", "")
+    .replaceAll("/", "-");
+  return `${safeBookingRef || "umowa"}.pdf`;
 }
 
 /**
@@ -212,6 +232,199 @@ function replacePlaceholders(template: string, data: PdfPayload): string {
   result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, finalPaymentDeadline);
   
   return result;
+}
+
+function buildTripContentDataFromTripRow(tripRow: any, overrides?: { reservation_number?: string | null }): TripContentData {
+  return {
+    program_atrakcje: tripRow?.program_atrakcje || "",
+    dodatkowe_swiadczenia: tripRow?.dodatkowe_swiadczenia || "",
+    gallery_urls: [],
+    intro_text: "",
+    section_poznaj_title: "",
+    section_poznaj_description: "",
+    reservation_info_text: "",
+    reservation_success_title: tripRow?.reservation_success_title || "",
+    reservation_success_message: tripRow?.reservation_success_message || "",
+    trip_info_text: "",
+    baggage_text: tripRow?.baggage_text || "",
+    weather_text: tripRow?.weather_text || "",
+    show_trip_info_card: true,
+    show_baggage_card: true,
+    show_weather_card: false,
+    show_seats_left: false,
+    included_in_price_text: tripRow?.included_in_price_text || "",
+    additional_costs_text: tripRow?.additional_costs_text || "",
+    additional_service_text: tripRow?.additional_service_text || "",
+    reservation_number: (overrides?.reservation_number ?? tripRow?.reservation_number ?? "") || "",
+    duration_text: tripRow?.duration_text || "",
+    additional_fields: Array.isArray(tripRow?.additional_fields) ? tripRow.additional_fields : [],
+    public_middle_sections: tripRow?.public_middle_sections ?? null,
+    public_right_sections: tripRow?.public_right_sections ?? null,
+    public_hidden_middle_sections: tripRow?.public_hidden_middle_sections ?? null,
+    public_hidden_right_sections: tripRow?.public_hidden_right_sections ?? null,
+    public_hidden_additional_sections: tripRow?.public_hidden_additional_sections ?? null,
+  };
+}
+
+function buildTripFullDataFromTripRow(tripRow: any): TripFullData {
+  // Typ `TripFullData` jest frontendowy, ale do podmiany placeholderów wystarczy nam realny zestaw pól z `trips`.
+  // Uzupełniamy brakujące/nieużywane pola rozsądnymi defaultami.
+  return {
+    id: tripRow.id,
+    title: tripRow.title ?? "",
+    slug: tripRow.slug ?? "",
+    description: tripRow.description ?? null,
+    start_date: tripRow.start_date ?? null,
+    end_date: tripRow.end_date ?? null,
+    price_cents: typeof tripRow.price_cents === "number" ? tripRow.price_cents : null,
+    seats_total: typeof tripRow.seats_total === "number" ? tripRow.seats_total : null,
+    seats_reserved: typeof tripRow.seats_reserved === "number" ? tripRow.seats_reserved : null,
+    is_active: typeof tripRow.is_active === "boolean" ? tripRow.is_active : null,
+    category: tripRow.category ?? null,
+    location: tripRow.location ?? null,
+    transport_mode: tripRow.transport_mode ?? null,
+    airport_codes: tripRow.airport_codes ?? null,
+    is_public: typeof tripRow.is_public === "boolean" ? tripRow.is_public : null,
+    public_slug: tripRow.public_slug ?? null,
+    registration_mode: tripRow.registration_mode ?? null,
+    require_pesel: typeof tripRow.require_pesel === "boolean" ? tripRow.require_pesel : null,
+    form_show_additional_services:
+      typeof tripRow.form_show_additional_services === "boolean" ? tripRow.form_show_additional_services : null,
+    company_participants_info: tripRow.company_participants_info ?? null,
+    form_additional_attractions: tripRow.form_additional_attractions ?? null,
+    form_diets: tripRow.form_diets ?? null,
+    form_extra_insurances: tripRow.form_extra_insurances ?? null,
+    form_required_participant_fields: tripRow.form_required_participant_fields ?? null,
+    form_required_contact_fields: tripRow.form_required_contact_fields ?? null,
+    payment_split_enabled: typeof tripRow.payment_split_enabled === "boolean" ? tripRow.payment_split_enabled : null,
+    payment_split_first_percent:
+      typeof tripRow.payment_split_first_percent === "number" ? tripRow.payment_split_first_percent : null,
+    payment_split_second_percent:
+      typeof tripRow.payment_split_second_percent === "number" ? tripRow.payment_split_second_percent : null,
+    payment_reminder_enabled: typeof tripRow.payment_reminder_enabled === "boolean" ? tripRow.payment_reminder_enabled : null,
+    payment_reminder_days_before:
+      typeof tripRow.payment_reminder_days_before === "number" ? tripRow.payment_reminder_days_before : null,
+    payment_schedule: Array.isArray(tripRow.payment_schedule) ? tripRow.payment_schedule : null,
+  };
+}
+
+function buildParticipantServicesFromSelectedServices(participants: PdfPayload["participants"]) {
+  const out: Array<{ service_type?: string; service_title?: string }> = [];
+
+  for (const p of participants) {
+    const s = p.selected_services;
+    if (!s || typeof s !== "object") continue;
+    const o = s as Record<string, unknown>;
+
+    const diets = Array.isArray(o.diets) ? (o.diets as Array<Record<string, unknown>>) : [];
+    const insurances = Array.isArray(o.insurances) ? (o.insurances as Array<Record<string, unknown>>) : [];
+    const attractions = Array.isArray(o.attractions) ? (o.attractions as Array<Record<string, unknown>>) : [];
+
+    for (const d of diets) {
+      const title = typeof d.title === "string" ? d.title : "";
+      if (title) out.push({ service_type: "diet", service_title: title });
+    }
+    for (const ins of insurances) {
+      const title = typeof ins.title === "string" ? ins.title : "";
+      if (title) out.push({ service_type: "insurance", service_title: title });
+    }
+    for (const a of attractions) {
+      if (a.include_in_contract === false) continue;
+      const title = typeof a.title === "string" ? a.title : "";
+      if (title) out.push({ service_type: "attraction", service_title: title });
+    }
+  }
+
+  // Dedup (ten sam tytuł może pojawić się u wielu uczestników)
+  const seen = new Set<string>();
+  return out.filter((s) => {
+    const key = `${s.service_type ?? ""}:${s.service_title ?? ""}`.trim();
+    if (!key) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function wrapAgreementHtmlForPdf(innerHtml: string): string {
+  // CSS identyczny jak w `components/agreement-preview.tsx` (przy Generuj PDF),
+  // żeby PDF z /api/pdf miał to samo formatowanie co podgląd/generowanie w UI.
+  return `<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <style>
+    @page {
+      size: A4;
+      margin: 20mm;
+    }
+    * {
+      font-family: Arial, "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
+    }
+    body {
+      font-family: Arial, "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    h1 {
+      font-size: 1.875rem;
+      font-weight: bold;
+      margin-bottom: 1.5rem;
+      text-align: center;
+      color: #111827;
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      color: #1f2937;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+    }
+    td {
+      padding: 0.75rem;
+      border: 1px solid #e5e7eb;
+      vertical-align: top;
+    }
+    td:first-child {
+      font-weight: 500;
+      width: 40%;
+      background-color: #f9fafb;
+    }
+    td:last-child {
+      width: 60%;
+    }
+    p {
+      margin: 1rem 0;
+      line-height: 1.6;
+    }
+    ul {
+      margin: 1rem 0;
+      padding-left: 1.5rem;
+    }
+    li {
+      margin: 0.5rem 0;
+      line-height: 1.6;
+    }
+    div[style*="page-break"] {
+      page-break-before: always;
+      break-before: page;
+    }
+  </style>
+</head>
+<body>
+${innerHtml}
+</body>
+</html>`;
 }
 
 export function generatePdf(data: PdfPayload, customTemplate?: string | null): Buffer {
@@ -596,7 +809,9 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
     const nameWidth = 70;
     const nameLines = doc.splitTextToSize(`${participant.first_name} ${participant.last_name}`, nameWidth);
     doc.text(nameLines, 50, y);
-    doc.text(participant.pesel, 120, y);
+    // jsPDF.text wymaga string/array; w danych mogą zdarzyć się null/undefined
+    const safePesel = participant.pesel ? String(participant.pesel) : "-";
+    doc.text(safePesel, 120, y);
     const docText = participant.document_type && participant.document_number
       ? `${participant.document_type}: ${participant.document_number}`
       : "-";
@@ -642,8 +857,76 @@ export async function POST(req: Request) {
       }
     }
 
-    // Generowanie PDF (na razie używamy obecnej implementacji, szablon będzie używany w przyszłości)
-    const buf = generatePdf(body, customTemplate);
+    // Generowanie PDF:
+    // - jeśli mamy szablon HTML, generuj przez HTML->PDF (utrzymuje formatowanie jak w UI / "Generuj PDF")
+    // - fallback: stary generator jsPDF (dla przypadków bez template_html)
+    let buf: Buffer;
+    if (!customTemplate) {
+      // Dokładnie jak w formularzu rezerwacji: gdy nie ma szablonu w bazie,
+      // użyj domyślnego HTML template zamiast jsPDF.
+      customTemplate = DEFAULT_AGREEMENT_TEMPLATE_HTML;
+    }
+
+    if (customTemplate) {
+      // Ujednolicenie z formularzem: użyj dokładnie tych samych funkcji podmiany placeholderów
+      // co `components/agreement-preview.tsx` (replaceTripPlaceholders + replaceBookingPlaceholders).
+      const supabaseAdmin = createAdminClient();
+      const { data: tripRow, error: tripErr } = await supabaseAdmin
+        .from("trips")
+        .select("*")
+        .eq("id", body.trip_id as string)
+        .maybeSingle();
+
+      if (tripErr || !tripRow) {
+        throw new Error("Nie udało się pobrać danych wycieczki do generowania umowy");
+      }
+
+      const tripFullData = buildTripFullDataFromTripRow(tripRow);
+      const tripContentData = buildTripContentDataFromTripRow(tripRow, {
+        reservation_number: body.reservation_number ?? null,
+      });
+
+      const participant_services = buildParticipantServicesFromSelectedServices(body.participants);
+      const formData = {
+        contact: {
+          first_name: body.contact_first_name ?? undefined,
+          last_name: body.contact_last_name ?? undefined,
+          email: body.contact_email ?? undefined,
+          phone: body.contact_phone ?? undefined,
+          pesel: body.participants?.[0]?.pesel ?? undefined,
+          address: body.address ?? undefined,
+        },
+        company: body.company_name
+          ? {
+              name: body.company_name ?? undefined,
+              nip: body.company_nip ?? undefined,
+              address: body.company_address ?? undefined,
+            }
+          : undefined,
+        participants: body.participants.map((p) => ({
+          first_name: p.first_name,
+          last_name: p.last_name,
+        })),
+        participants_count: body.participants.length,
+        participant_services,
+      } as const;
+
+      let filledInnerHtml = replaceTripPlaceholders(customTemplate, tripFullData, tripContentData);
+      filledInnerHtml = replaceBookingPlaceholders(
+        filledInnerHtml,
+        formData,
+        tripFullData.price_cents ?? null,
+        tripFullData.start_date ?? null,
+      );
+      const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);
+      const pdfResult = await generatePdfFromHtml(
+        fullHtml,
+        generateAgreementFilename(body.reservation_number, body.agreement_number, body.booking_ref),
+      );
+      buf = Buffer.from(pdfResult.base64, "base64");
+    } else {
+      throw new Error("Brak szablonu umowy do wygenerowania PDF");
+    }
 
     // Walidacja, że Buffer został poprawnie utworzony
     if (!Buffer.isBuffer(buf)) {
@@ -653,7 +936,11 @@ export async function POST(req: Request) {
     const supabaseAdmin = createAdminClient();
     
     // Generuj nazwę pliku umowy w formacie #AAAAAA/BBB.pdf
-    const filename = generateAgreementFilename(body.reservation_number, body.agreement_number, body.booking_ref);
+    const filename = generateAgreementFilename(
+      body.reservation_number,
+      body.agreement_number,
+      body.booking_ref,
+    );
     
     // Próba zapisania PDF do Supabase Storage
     const { error: upErr } = await supabaseAdmin.storage

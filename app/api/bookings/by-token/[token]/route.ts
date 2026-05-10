@@ -48,7 +48,7 @@ export async function GET(
           agreement_pdf_url,
           created_at,
           trip_id,
-          trips:trips(id, title, start_date, end_date, price_cents, company_participants_info)
+          trips:trips(id, title, start_date, end_date, price_cents, company_participants_info, reservation_success_title, reservation_success_message)
         `)
         .eq("booking_ref", token)
         .single();
@@ -76,6 +76,8 @@ export async function GET(
           trip_end_date: trip?.end_date || null,
           trip_price_cents: trip?.price_cents || null,
           trip_company_participants_info: trip?.company_participants_info ?? null,
+          trip_reservation_success_title: trip?.reservation_success_title ?? null,
+          trip_reservation_success_message: trip?.reservation_success_message ?? null,
         }];
       }
     }
@@ -102,10 +104,30 @@ export async function GET(
     if (booking.trip_company_participants_info === undefined && booking.trip_id) {
       const { data: tripRow } = await adminSupabase
         .from("trips")
-        .select("company_participants_info")
+        .select("company_participants_info, reservation_success_title, reservation_success_message")
         .eq("id", booking.trip_id)
         .single();
       tripCompanyParticipantsInfo = tripRow?.company_participants_info ?? null;
+    }
+
+    let tripReservationSuccessTitle: string | null =
+      typeof booking.trip_reservation_success_title === "string"
+        ? booking.trip_reservation_success_title
+        : null;
+    let tripReservationSuccessMessage: string | null =
+      typeof booking.trip_reservation_success_message === "string"
+        ? booking.trip_reservation_success_message
+        : null;
+
+    if ((booking.trip_reservation_success_title === undefined || booking.trip_reservation_success_message === undefined) && booking.trip_id) {
+      const { data: tripRow } = await adminSupabase
+        .from("trips")
+        .select("reservation_success_title, reservation_success_message")
+        .eq("id", booking.trip_id)
+        .single();
+
+      tripReservationSuccessTitle = tripRow?.reservation_success_title ?? tripReservationSuccessTitle;
+      tripReservationSuccessMessage = tripRow?.reservation_success_message ?? tripReservationSuccessMessage;
     }
     
     const { data: participants, error: participantsError } = await adminSupabase
@@ -136,6 +158,8 @@ export async function GET(
           end_date: booking.trip_end_date,
           price_cents: booking.trip_price_cents,
           company_participants_info: tripCompanyParticipantsInfo,
+          reservation_success_title: tripReservationSuccessTitle,
+          reservation_success_message: tripReservationSuccessMessage,
         },
         participants: participants || [],
       },

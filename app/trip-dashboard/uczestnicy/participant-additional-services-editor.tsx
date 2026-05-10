@@ -25,7 +25,11 @@ type DietCatalog = {
 type InsuranceCatalog = {
   id: string
   title: string
+  // Pozycja może mieć cenę na poziomie pozycji (gdy nie ma wariantów —
+  // np. zsynchronizowana z zakładki "Ubezpieczenia") albo listę wariantów.
+  price_cents?: number | null
   variants?: { id: string; title: string; price_cents: number | null }[]
+  enabled?: boolean
 }
 
 type AttractionCatalog = {
@@ -109,6 +113,8 @@ export function ParticipantAdditionalServicesEditor({
   }, [initialSelectedServices])
 
   const diets = parseCatalogArray<DietCatalog>(tripFullData?.form_diets)
+  // form_extra_insurances zawiera zarówno pozycje dodane ręcznie w formularzu,
+  // jak i te zsynchronizowane z zakładki "Ubezpieczenia" (Typ 2 i 3).
   const insurances = parseCatalogArray<InsuranceCatalog>(tripFullData?.form_extra_insurances)
   const attractions = parseCatalogArray<AttractionCatalog>(tripFullData?.form_additional_attractions).filter(
     (a) => a.enabled !== false,
@@ -190,7 +196,7 @@ export function ParticipantAdditionalServicesEditor({
       next.insurances.push({
         service_id: catalog.id,
         variant_id: v0?.id,
-        price_cents: v0?.price_cents ?? null,
+        price_cents: v0?.price_cents ?? catalog.price_cents ?? null,
       })
       return next
     })
@@ -202,7 +208,11 @@ export function ParticipantAdditionalServicesEditor({
       ...prev,
       insurances: prev.insurances.map((d) =>
         d.service_id === catalog.id
-          ? { ...d, variant_id: variantId, price_cents: variant?.price_cents ?? d.price_cents ?? null }
+          ? {
+              ...d,
+              variant_id: variantId,
+              price_cents: variant?.price_cents ?? d.price_cents ?? catalog.price_cents ?? null,
+            }
           : d,
       ),
     }))
@@ -334,6 +344,7 @@ export function ParticipantAdditionalServicesEditor({
               const row = draft.insurances.find((x) => x.service_id === ins.id)
               const selected = !!row
               const variants = ins.variants?.length ? ins.variants : null
+              const fallbackPriceCents = ins.price_cents ?? null
               return (
                 <tr key={`ins-${ins.id}`} className="border-b last:border-0">
                   <td className="p-2 text-muted-foreground">Ubezpieczenie</td>
@@ -375,7 +386,7 @@ export function ParticipantAdditionalServicesEditor({
                     )}
                   </td>
                   <td className="p-2 text-right whitespace-nowrap">
-                    {selected ? formatPrice(row?.price_cents) : "—"}
+                    {selected ? formatPrice(row?.price_cents ?? fallbackPriceCents) : formatPrice(fallbackPriceCents)}
                   </td>
                 </tr>
               )

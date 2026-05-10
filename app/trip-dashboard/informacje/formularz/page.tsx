@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { TripCreationProgress } from "@/components/trip-creation-progress"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
+import { TripContentEditor } from "@/components/trip-content-editor"
 import { BasicSettingsSection } from "@/components/trip-form/sections/basic-settings-section"
 import { CompanyParticipantsSection } from "@/components/trip-form/sections/company-participants-section"
 import { AttractionsSection } from "@/components/trip-form/sections/attractions-section"
@@ -57,6 +58,8 @@ function TripFormContent() {
   const [extraInsurances, setExtraInsurances] = useState<ExtraInsurance[]>([])
   const [expandedInsurances, setExpandedInsurances] = useState<Set<string>>(new Set())
   const [reservationInfoText, setReservationInfoText] = useState<string>("")
+  const [reservationSuccessTitle, setReservationSuccessTitle] = useState<string>("")
+  const [reservationSuccessMessage, setReservationSuccessMessage] = useState<string>("")
 
   // W trybie tworzenia sprawdź czy są dane z kroku 1 i 2
   useEffect(() => {
@@ -186,8 +189,12 @@ function TripFormContent() {
       // Wczytaj tekst informacyjny o rezerwacji z treści wycieczki (content)
       if (tripContentData) {
         setReservationInfoText(tripContentData.reservation_info_text || "")
+        setReservationSuccessTitle(tripContentData.reservation_success_title || "")
+        setReservationSuccessMessage(tripContentData.reservation_success_message || "")
       } else {
         setReservationInfoText("")
+        setReservationSuccessTitle("")
+        setReservationSuccessMessage("")
       }
 
       setLoading(false)
@@ -225,6 +232,10 @@ function TripFormContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: step1Data.tripTitle,
+            slug:
+              typeof step1Data.tripNumber === "string" && step1Data.tripNumber.trim()
+                ? step1Data.tripNumber.trim()
+                : undefined,
             description: step1Data.description || null,
             start_date: step1Data.startDate || null,
             end_date: step1Data.endDate || null,
@@ -304,6 +315,8 @@ function TripFormContent() {
             duration_text: step2Data.durationText || "",
             additional_fields: step2Data.additionalFieldSections || [],
             reservation_info_text: reservationInfoText || "",
+            reservation_success_title: reservationSuccessTitle || "",
+            reservation_success_message: reservationSuccessMessage || "",
           }),
         })
 
@@ -411,6 +424,8 @@ function TripFormContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             reservation_info_text: reservationInfoText || "",
+            reservation_success_title: reservationSuccessTitle || "",
+            reservation_success_message: reservationSuccessMessage || "",
           }),
         })
 
@@ -490,6 +505,38 @@ function TripFormContent() {
         </div>
       </Card>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Komunikat po rezerwacji / płatności</CardTitle>
+        </CardHeader>
+        <div className="px-4 pb-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="reservation-success-title" className="text-xs font-semibold">
+              Tytuł (opcjonalnie)
+            </Label>
+            <Textarea
+              id="reservation-success-title"
+              value={reservationSuccessTitle}
+              onChange={(e) => setReservationSuccessTitle(e.target.value)}
+              placeholder='Np. "Dziękujemy! Rezerwacja przyjęta"'
+              className="min-h-[40px] text-xs"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold">Treść komunikatu</Label>
+            <TripContentEditor
+              content={reservationSuccessMessage}
+              onChange={setReservationSuccessMessage}
+              label="Treść komunikatu po rezerwacji/płatności"
+            />
+            <p className="text-xs text-muted-foreground">
+              Ten komunikat będzie wyświetlany na końcu: po utworzeniu rezerwacji (na stronie rezerwacji) oraz po udanej płatności (na stronie sukcesu).
+            </p>
+          </div>
+        </div>
+      </Card>
+
       {showAdditionalServices && (
         <>
           <AttractionsSection
@@ -511,6 +558,7 @@ function TripFormContent() {
             setInsurances={setExtraInsurances}
             expandedIds={expandedInsurances}
             setExpandedIds={setExpandedInsurances}
+            tripId={isCreateMode ? null : selectedTrip?.id ?? null}
           />
         </>
       )}

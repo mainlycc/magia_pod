@@ -53,4 +53,9 @@ export interface ExtraInsurance {
   price_cents: number | null
   variants?: InsuranceVariant[]
   enabled?: boolean
+  /** `trip_insurance_variant` — pozycja powiązana z modułem Ubezpieczenia (Typ 2/3). */
+  source?: string
+  /** UUID wiersza `trip_insurance_variants`. */
+  source_id?: string
+  insurance_type?: number | null
 }

@@ -91,7 +91,8 @@ export function formatAgreementNumber(
   seq: number | null | undefined,
 ): string {
   if (seq != null && seq > 0) {
-    const res = reservationNumber ? String(reservationNumber).padStart(6, "0") : "—";
+    const resRaw = reservationNumber ? String(reservationNumber).trim().replace(/^#+/, "") : "";
+    const res = resRaw ? resRaw.padStart(6, "0") : "—";
     return `#${res}/${String(seq).padStart(3, "0")}`;
   }
   return "";

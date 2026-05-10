@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { GripVertical, Plus, Trash2, Save } from "lucide-react";
+import { GripVertical, Plus, Trash2, Save, Loader2 } from "lucide-react";
 import { TripContentEditor } from "@/components/trip-content-editor";
 import {
   DndContext,
@@ -488,7 +488,7 @@ export function AgreementEditor({
         <Button onClick={onSave} disabled={saving}>
           {saving ? (
             <>
-              <Save className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Zapisywanie...
             </>
           ) : (

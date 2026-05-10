@@ -120,11 +120,13 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
             order: sections.length,
           };
         } else {
-          // Zwykły DIV - parsuj jako paragraf
-          const text = element.textContent || '';
+          // Zwykły DIV - zachowaj HTML jeśli jest (np. style/formatowanie z edytora)
+          const hasNestedElements = element.querySelector('*') !== null;
+          const hasStyle = !!element.getAttribute('style');
+          const content = (hasNestedElements || hasStyle) ? outerHTML : (element.textContent || '');
           if (currentSection && currentSection.type === 'title') {
             currentSection.type = 'paragraph';
-            currentSection.content = text;
+            currentSection.content = content;
           } else {
             if (currentSection && currentSection.type !== 'title') {
               sections.push(currentSection);
@@ -133,7 +135,7 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
               id: `section-${order++}`,
               title: '',
               type: 'paragraph',
-              content: text,
+              content,
               order: sections.length,
             };
           }
@@ -141,12 +143,13 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
       }
       // Paragraf
       else if (element.tagName === 'P') {
-        const text = element.textContent || '';
+        // Zachowaj pełny HTML paragrafu (np. text-align z Tiptap)
+        const content = element.outerHTML;
         
         // Jeśli mamy sekcję z tytułem bez typu, zamień na paragraf
         if (currentSection && currentSection.type === 'title') {
           currentSection.type = 'paragraph';
-          currentSection.content = text;
+          currentSection.content = content;
         } else {
           // Zapisz poprzednią sekcję jeśli istnieje
           if (currentSection && currentSection.type !== 'title') {
@@ -156,22 +159,20 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
             id: `section-${order++}`,
             title: '',
             type: 'paragraph',
-            content: text,
+            content,
             order: sections.length,
           };
         }
       }
       // Lista
       else if (element.tagName === 'UL' || element.tagName === 'OL') {
-        const items: string[] = [];
-        element.querySelectorAll('li').forEach((li) => {
-          items.push(li.textContent || '');
-        });
+        // Zachowaj pełny HTML listy (np. formatowanie / wyrównanie z Tiptap w <p> wewnątrz <li>)
+        const content = element.outerHTML;
         
         // Jeśli mamy sekcję z tytułem bez typu, zamień na listę
         if (currentSection && currentSection.type === 'title') {
           currentSection.type = 'list';
-          currentSection.content = items.join('\n');
+          currentSection.content = content;
         } else {
           // Zapisz poprzednią sekcję jeśli istnieje
           if (currentSection && currentSection.type !== 'title') {
@@ -181,7 +182,7 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
             id: `section-${order++}`,
             title: '',
             type: 'list',
-            content: items.join('\n'),
+            content,
             order: sections.length,
           };
         }

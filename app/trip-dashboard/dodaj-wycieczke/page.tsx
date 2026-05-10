@@ -28,6 +28,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import {
   TRIP_CLASS_CATEGORIES,
   TRIP_CATEGORY_NONE,
+  TRIP_CLASS_CATEGORY_OPTIONS,
 } from "@/lib/trip-class-categories"
 import {
   TRIP_TRANSPORT_OPTIONS,
@@ -45,6 +46,7 @@ export default function DodajWycieczkePage() {
   const [saving, setSaving] = useState(false)
 
   const [tripTitle, setTripTitle] = useState("")
+  const [tripNumber, setTripNumber] = useState("")
   const [description, setDescription] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
@@ -76,6 +78,13 @@ export default function DodajWycieczkePage() {
         try {
           const data = JSON.parse(savedData)
           setTripTitle(data.tripTitle || "")
+          setTripNumber(
+            typeof data.tripNumber === "string"
+              ? data.tripNumber
+              : typeof data.slug === "string"
+                ? data.slug
+                : ""
+          )
           setDescription(data.description || "")
           setStartDate(data.startDate || "")
           setEndDate(data.endDate || "")
@@ -195,6 +204,13 @@ export default function DodajWycieczkePage() {
     void loadNextTripNumber()
   }, [])
 
+  // Ustaw domyślny numer wycieczki (jeśli użytkownik jeszcze nie wpisał)
+  useEffect(() => {
+    if (!tripNumber.trim() && nextTripNumber) {
+      setTripNumber(nextTripNumber)
+    }
+  }, [nextTripNumber, tripNumber])
+
   // Wczytaj koordynatorów
   useEffect(() => {
     const loadCoordinators = async () => {
@@ -239,6 +255,14 @@ export default function DodajWycieczkePage() {
       toast.error("Tytuł jest wymagany")
       return
     }
+    if (!tripNumber.trim()) {
+      toast.error("Numer wycieczki jest wymagany")
+      return
+    }
+    if (!/^\d+$/.test(tripNumber.trim())) {
+      toast.error("Numer wycieczki musi składać się wyłącznie z cyfr")
+      return
+    }
 
     // Walidacja harmonogramu płatności
     const totalPercent = paymentSchedule.reduce(
@@ -260,6 +284,7 @@ export default function DodajWycieczkePage() {
       // Zapisz tylko podstawowe informacje do localStorage
       const step1Data = {
         tripTitle,
+        tripNumber: tripNumber.trim(),
         description,
         startDate,
         endDate,
@@ -298,14 +323,28 @@ export default function DodajWycieczkePage() {
       <Card className="p-4">
         <CardContent className="px-0 pb-0 space-y-4">
           {/* Numer wycieczki */}
-          {nextTripNumber && (
-            <div className="flex items-center gap-2 mb-1">
-              <Label className="text-xs text-muted-foreground">Numer wycieczki:</Label>
-              <Badge variant="outline" className="text-sm font-bold px-3 py-0.5">
-                {nextTripNumber}
-              </Badge>
-            </div>
-          )}
+          <div className="grid gap-1">
+            <Label className="text-xs">
+              Numer wycieczki *{" "}
+              {nextTripNumber ? (
+                <span className="text-[10px] text-muted-foreground">
+                  (podpowiedź: {nextTripNumber})
+                </span>
+              ) : null}
+            </Label>
+            <Input
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={tripNumber}
+              onChange={(e) => {
+                // Pozwól wpisać tylko cyfry (i pusty string podczas kasowania)
+                const v = e.target.value
+                if (v === "" || /^\d+$/.test(v)) setTripNumber(v)
+              }}
+              placeholder={nextTripNumber || "np. 123"}
+              className="h-8 text-xs"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
             {/* Nazwa */}
@@ -397,9 +436,9 @@ export default function DodajWycieczkePage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={TRIP_CATEGORY_NONE}>Brak</SelectItem>
-                  {TRIP_CLASS_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
+                  {TRIP_CLASS_CATEGORY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
