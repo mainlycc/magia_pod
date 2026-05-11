@@ -25,9 +25,12 @@ export async function GET(request: NextRequest) {
         bookings (
           id,
           booking_ref,
+          trip_id,
           contact_email,
           contact_first_name,
-          contact_last_name
+          contact_last_name,
+          agreements:agreements(agreement_seq, updated_at, generated_at),
+          trips:trips(reservation_number)
         ),
         participants (
           id,

@@ -24,6 +24,7 @@ import {
 import { calculatePaymentBalance } from "@/lib/utils/payment-calculator";
 import { formatPostalAddressLine } from "@/lib/format-postal-address";
 import { toast } from "sonner";
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number";
 
 type Booking = {
   id: string;
@@ -378,12 +379,24 @@ export default function BookingDetailsPage() {
     (agreement) => agreement.status === "signed"
   );
 
+  const latestAgreementSeq =
+    Array.isArray(booking.agreements)
+      ? booking.agreements
+          .map((a: any) => a?.agreement_seq ?? 0)
+          .filter((n: number) => n > 0)
+          .sort((a: number, b: number) => b - a)[0] ?? null
+      : null;
+  const publicAgreementNumber = formatPublicAgreementNumber({
+    reservationNumber: (booking as any)?.trips?.reservation_number ?? null,
+    agreementSeq: typeof latestAgreementSeq === "number" ? latestAgreementSeq : null,
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">
-            Rezerwacja: {booking.booking_ref}
+            Umowa: {publicAgreementNumber === "-" ? "—" : publicAgreementNumber}
           </h1>
           <p className="text-sm text-muted-foreground">
             Utworzona: {new Date(booking.created_at).toLocaleDateString("pl-PL")}

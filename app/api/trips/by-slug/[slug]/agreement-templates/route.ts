@@ -1,6 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+const COMPANY_SECTION_HTML = `
+<h2>Dane firmy</h2>
+<table>
+  <tr>
+    <td>Nazwa firmy:</td>
+    <td>{{company_name}}</td>
+  </tr>
+  <tr>
+    <td>NIP/KRS:</td>
+    <td>{{company_nip}}</td>
+  </tr>
+  <tr>
+    <td>Adres firmy:</td>
+    <td>{{company_address}}</td>
+  </tr>
+</table>
+`.trim();
+
+function hasCompanyPlaceholders(html: string): boolean {
+  return (
+    html.includes("{{company_name}}") &&
+    html.includes("{{company_nip}}") &&
+    html.includes("{{company_address}}")
+  );
+}
+
+function injectCompanySection(html: string): string {
+  if (hasCompanyPlaceholders(html)) return html;
+
+  // Best-effort: wstaw przed sekcją „Dane uczestników”, jeśli istnieje w HTML
+  const anchors = [
+    "<h2>Dane uczestników</h2>",
+    "<h2>Dane uczestnik\u00F3w</h2>",
+    "<h2>Dane Uczestników</h2>",
+    "<h2>Dane Uczestnik\u00F3w</h2>",
+  ];
+
+  for (const a of anchors) {
+    const idx = html.indexOf(a);
+    if (idx !== -1) {
+      const before = html.slice(0, idx).trimEnd();
+      const after = html.slice(idx);
+      return `${before}\n\n${COMPANY_SECTION_HTML}\n\n${after}`;
+    }
+  }
+
+  // Fallback: dopnij na końcu
+  return `${html.trimEnd()}\n\n${COMPANY_SECTION_HTML}\n`;
+}
+
 export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
@@ -62,6 +112,13 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ sl
           result.company = template.template_html || null;
         }
       });
+    }
+
+    // Auto-uzupełnienie dla starszych szablonów firmowych bez sekcji firmy.
+    // Dzięki temu podgląd umowy (reserve) i PDF dla firm pokażą dane firmy nawet,
+    // jeśli w DB zapisano template bez placeholderów.
+    if (typeof result.company === "string" && result.company.trim() !== "") {
+      result.company = injectCompanySection(result.company);
     }
 
     return NextResponse.json(result);

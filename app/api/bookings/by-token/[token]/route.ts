@@ -48,7 +48,7 @@ export async function GET(
           agreement_pdf_url,
           created_at,
           trip_id,
-          trips:trips(id, title, start_date, end_date, price_cents, company_participants_info, reservation_success_title, reservation_success_message)
+          trips:trips(id, title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_title, reservation_success_message)
         `)
         .eq("booking_ref", token)
         .single();
@@ -75,6 +75,7 @@ export async function GET(
           trip_start_date: trip?.start_date || null,
           trip_end_date: trip?.end_date || null,
           trip_price_cents: trip?.price_cents || null,
+          trip_reservation_number: trip?.reservation_number ?? null,
           trip_company_participants_info: trip?.company_participants_info ?? null,
           trip_reservation_success_title: trip?.reservation_success_title ?? null,
           trip_reservation_success_message: trip?.reservation_success_message ?? null,
@@ -96,6 +97,47 @@ export async function GET(
     // Pobierz uczestników - używamy admin clienta aby ominąć RLS dla publicznego dostępu
     const { createAdminClient } = await import("@/lib/supabase/admin");
     const adminSupabase = createAdminClient();
+
+    // Dociągnij brakujące pola wycieczki (RPC może ich nie zwracać w części środowisk)
+    if (booking.trip_id && (!booking.trip_title || !booking.trip_start_date || booking.trip_price_cents == null)) {
+      const { data: tripRow, error: tripErr } = await adminSupabase
+        .from("trips")
+        .select(
+          "title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_title, reservation_success_message",
+        )
+        .eq("id", booking.trip_id)
+        .single();
+
+      if (tripErr) {
+        console.error("Error fetching trip fallback for booking token:", tripErr);
+      } else if (tripRow) {
+        booking.trip_title = booking.trip_title ?? tripRow.title ?? null;
+        booking.trip_start_date = booking.trip_start_date ?? tripRow.start_date ?? null;
+        booking.trip_end_date = booking.trip_end_date ?? tripRow.end_date ?? null;
+        booking.trip_price_cents = booking.trip_price_cents ?? tripRow.price_cents ?? null;
+        booking.trip_reservation_number = booking.trip_reservation_number ?? tripRow.reservation_number ?? null;
+        booking.trip_company_participants_info =
+          booking.trip_company_participants_info ?? tripRow.company_participants_info ?? null;
+        booking.trip_reservation_success_title =
+          booking.trip_reservation_success_title ?? tripRow.reservation_success_title ?? null;
+        booking.trip_reservation_success_message =
+          booking.trip_reservation_success_message ?? tripRow.reservation_success_message ?? null;
+      }
+    }
+
+    // Uzupełnij reservation_number jeśli RPC/format go nie zwrócił
+    let tripReservationNumber: string | null =
+      typeof booking.trip_reservation_number === "string"
+        ? booking.trip_reservation_number
+        : null;
+    if (booking.trip_reservation_number === undefined && booking.trip_id) {
+      const { data: tripRow } = await adminSupabase
+        .from("trips")
+        .select("reservation_number")
+        .eq("id", booking.trip_id)
+        .single();
+      tripReservationNumber = tripRow?.reservation_number ?? null;
+    }
 
     let tripCompanyParticipantsInfo: string | null =
       typeof booking.trip_company_participants_info === "string"
@@ -129,6 +171,26 @@ export async function GET(
       tripReservationSuccessTitle = tripRow?.reservation_success_title ?? tripReservationSuccessTitle;
       tripReservationSuccessMessage = tripRow?.reservation_success_message ?? tripReservationSuccessMessage;
     }
+
+    // Pobierz numer kolejny umowy (agreement_seq) dla tej rezerwacji
+    let agreementSeq: number | null = null;
+    try {
+      const { data: agreementRow, error: agreementError } = await adminSupabase
+        .from("agreements")
+        .select("agreement_seq, status, updated_at, generated_at")
+        .eq("booking_id", booking.id)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("generated_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (agreementError && agreementError.code !== "PGRST116") {
+        console.error("Error fetching agreement for booking:", agreementError);
+      }
+      const seq = agreementRow?.agreement_seq;
+      agreementSeq = typeof seq === "number" && seq > 0 ? seq : null;
+    } catch (e) {
+      console.error("Agreement lookup failed:", e);
+    }
     
     const { data: participants, error: participantsError } = await adminSupabase
       .from("participants")
@@ -150,6 +212,7 @@ export async function GET(
         status: booking.status,
         payment_status: booking.payment_status,
         agreement_pdf_url: booking.agreement_pdf_url,
+        agreement_seq: agreementSeq,
         created_at: booking.created_at,
         trip: {
           id: booking.trip_id,
@@ -157,6 +220,7 @@ export async function GET(
           start_date: booking.trip_start_date,
           end_date: booking.trip_end_date,
           price_cents: booking.trip_price_cents,
+          reservation_number: tripReservationNumber,
           company_participants_info: tripCompanyParticipantsInfo,
           reservation_success_title: tripReservationSuccessTitle,
           reservation_success_message: tripReservationSuccessMessage,

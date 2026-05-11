@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { Loader2, Save } from "lucide-react"
 import { toast } from "sonner"
+import { Checkbox } from "@/components/ui/checkbox"
 
 type DietCatalog = {
   id: string
@@ -93,6 +94,8 @@ function stablePayloadJson(d: DraftState): string {
 
 type Props = {
   participantId: string
+  /** Rezerwacja — potrzebna do ponownej umowy i e-maila po zapisie usług */
+  bookingId?: string | null
   tripFullData: TripFullData | null
   initialSelectedServices: unknown
   onSaved: () => void
@@ -100,6 +103,7 @@ type Props = {
 
 export function ParticipantAdditionalServicesEditor({
   participantId,
+  bookingId,
   tripFullData,
   initialSelectedServices,
   onSaved,
@@ -107,6 +111,7 @@ export function ParticipantAdditionalServicesEditor({
   const initialDraft = useMemo(() => normalizeDraft(initialSelectedServices), [initialSelectedServices])
   const [draft, setDraft] = useState<DraftState>(initialDraft)
   const [saving, setSaving] = useState(false)
+  const [sendAgreementToClient, setSendAgreementToClient] = useState(true)
 
   useEffect(() => {
     setDraft(normalizeDraft(initialSelectedServices))
@@ -139,6 +144,43 @@ export function ParticipantAdditionalServicesEditor({
         throw new Error((err as { error?: string }).error || "save_failed")
       }
       toast.success("Zapisano usługi dodatkowe")
+
+      if (bookingId && sendAgreementToClient) {
+        const genRes = await fetch(`/api/bookings/${bookingId}/agreement`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+        const genData = (await genRes.json().catch(() => null)) as {
+          success?: boolean
+          error?: string
+          details?: string
+          message?: string
+        } | null
+
+        if (!genRes.ok || !genData?.success) {
+          const msg =
+            genData?.error ||
+            genData?.details ||
+            genData?.message ||
+            "Nie udało się wygenerować umowy"
+          toast.error(msg)
+          onSaved()
+          return
+        }
+
+        const mailRes = await fetch(`/api/bookings/${bookingId}/send-agreement-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+        const mailData = (await mailRes.json().catch(() => null)) as { error?: string } | null
+
+        if (!mailRes.ok) {
+          toast.error(mailData?.error || "Nie udało się wysłać e-maila z umową")
+        } else {
+          toast.success("Wysłano zaktualizowaną umowę na adres klienta")
+        }
+      }
+
       onSaved()
     } catch (e) {
       console.error(e)
@@ -258,19 +300,31 @@ export function ParticipantAdditionalServicesEditor({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-semibold text-sm">Usługi dodatkowe</h4>
-        <Button
-          type="button"
-          size="sm"
-          className="h-8"
-          disabled={!isDirty || saving}
-          onClick={(e) => {
-            e.stopPropagation()
-            void persist()
-          }}
-        >
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}
-          Zapisz zmiany
-        </Button>
+        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+          {bookingId ? (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer max-w-[260px] sm:max-w-none">
+              <Checkbox
+                checked={sendAgreementToClient}
+                onCheckedChange={(v) => setSendAgreementToClient(v === true)}
+                disabled={saving}
+              />
+              <span>Wyślij zaktualizowaną umowę na e-mail klienta po zapisie</span>
+            </label>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className="h-8"
+            disabled={!isDirty || saving}
+            onClick={(e) => {
+              e.stopPropagation()
+              void persist()
+            }}
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}
+            Zapisz zmiany
+          </Button>
+        </div>
       </div>
       {showStepOffNote && (
         <p className="text-xs text-muted-foreground">

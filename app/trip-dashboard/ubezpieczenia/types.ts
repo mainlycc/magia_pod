@@ -28,6 +28,8 @@ export type ParticipantInsurance = {
   bookings: {
     id: string
     booking_ref: string
+    agreement_seq?: number | null
+    trip_reservation_number?: string | null
     contact_email: string | null
     contact_first_name: string | null
     contact_last_name: string | null

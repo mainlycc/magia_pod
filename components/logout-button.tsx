@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { clearTripsListCache } from "@/lib/trips-list-cache";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 
@@ -9,6 +10,7 @@ export function LogoutButton() {
 
   const logout = async () => {
     try {
+      clearTripsListCache();
       const supabase = createClient();
       await supabase.auth.signOut();
       router.push("/auth/login");

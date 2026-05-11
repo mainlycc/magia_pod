@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { fetchClients, type FakturowniaConfig } from "@/lib/fakturownia/client";
+import { buildFakturowniaConfigFromEnv, fetchClients } from "@/lib/fakturownia/client";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const {
@@ -24,10 +24,7 @@ export async function GET() {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    const config: FakturowniaConfig = {
-      apiToken: process.env.FAKTUROWNIA_API_TOKEN || "",
-      subdomain: process.env.FAKTUROWNIA_SUBDOMAIN || "",
-    };
+    const config = buildFakturowniaConfigFromEnv();
 
     const missingConfig: string[] = [];
     if (!config.apiToken) missingConfig.push("FAKTUROWNIA_API_TOKEN");
@@ -80,6 +77,7 @@ export async function GET() {
         apiUrl: baseUrl,
         apiTokenLength: config.apiToken.length,
         apiTokenFirst4: config.apiToken.substring(0, 4) + "...",
+        sellerNameConfigured: Boolean(config.sellerName?.trim()),
       },
       tests: {
         network: networkTest,
@@ -92,6 +90,9 @@ export async function GET() {
         !apiTest.success
           ? "Błąd autoryzacji. Sprawdź FAKTUROWNIA_API_TOKEN i FAKTUROWNIA_SUBDOMAIN."
           : `Autoryzacja działa. Znaleziono ${apiTest.clientsCount} klientów.`,
+        !config.sellerName?.trim()
+          ? "Dla wystawiania dokumentów ustaw FAKTUROWNIA_SELLER_NAME (pełna nazwa sprzedawcy jak w Fakturowni), inaczej API może zwrócić błąd seller_name."
+          : "FAKTUROWNIA_SELLER_NAME jest ustawione.",
       ],
     });
   } catch (error) {

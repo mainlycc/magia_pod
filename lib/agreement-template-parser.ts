@@ -85,8 +85,8 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
           rows.forEach((row) => {
             const cells = row.querySelectorAll('td');
             if (cells.length >= 2) {
-              const label = cells[0].textContent || '';
-              const value = cells[1].textContent || '';
+              const label = cells[0].innerHTML || '';
+              const value = cells[1].innerHTML || '';
               
               // Sprawdź czy wartość zawiera placeholder
               const hasPlaceholder = /{{[^}]+}}/.test(value);
@@ -240,14 +240,19 @@ export function templateToHtml(template: AgreementTemplate): string {
     if (section.type === 'table' && section.fields) {
       html += '<table>\n';
       section.fields.forEach((field) => {
-        html += `  <tr>\n    <td>${escapeHtml(field.label)}</td>\n    <td>${escapeHtml(field.value)}</td>\n  </tr>\n`;
+        const labelHtml = contentLooksLikeHtml(field.label)
+          ? field.label
+          : escapeHtml(field.label);
+        const valueHtml = contentLooksLikeHtml(field.value)
+          ? field.value
+          : escapeHtml(field.value);
+        html += `  <tr>\n    <td>${labelHtml}</td>\n    <td>${valueHtml}</td>\n  </tr>\n`;
       });
       html += '</table>\n\n';
     } else if (section.type === 'paragraph' && section.content) {
       // Jeśli zawartość to HTML (zawiera tagi HTML), użyj bezpośrednio
       // Sprawdź czy zawiera jakiekolwiek tagi HTML (np. z edytora Tiptap)
-      const hasHtmlTags = /<[a-z][\s\S]*>/i.test(section.content);
-      if (hasHtmlTags) {
+      if (contentLooksLikeHtml(section.content)) {
         // To jest HTML - użyj bezpośrednio (np. DIV z page-break, HTML z Tiptap)
         html += section.content + '\n\n';
       } else {
@@ -256,8 +261,7 @@ export function templateToHtml(template: AgreementTemplate): string {
       }
     } else if (section.type === 'list' && section.content) {
       // Sprawdź czy zawartość to HTML (np. z edytora Tiptap)
-      const hasHtmlTags = /<[a-z][\s\S]*>/i.test(section.content);
-      if (hasHtmlTags) {
+      if (contentLooksLikeHtml(section.content)) {
         // To jest HTML - użyj bezpośrednio (np. HTML z Tiptap)
         html += section.content + '\n\n';
       } else {
@@ -273,6 +277,11 @@ export function templateToHtml(template: AgreementTemplate): string {
   });
   
   return html;
+}
+
+/** Ta sama heurystyka co dla paragrafów/list — fragment wygląda na HTML z edytora (np. Tiptap). */
+function contentLooksLikeHtml(text: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(text);
 }
 
 function escapeHtml(text: string): string {

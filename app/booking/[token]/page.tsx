@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
+import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 
 /** Placeholdery tworzone przy zgłoszeniu firmy bez listy imion (booking-form). */
 function isPlaceholderCompanyParticipants(
@@ -29,6 +30,7 @@ type BookingData = {
     address: any;
     status: string;
     payment_status: string;
+    agreement_seq: number | null;
     created_at: string;
     trip: {
       id: string;
@@ -36,6 +38,7 @@ type BookingData = {
       start_date: string | null;
       end_date: string | null;
       price_cents: number | null;
+      reservation_number: string | null;
       company_participants_info?: string | null;
       reservation_success_title?: string | null;
       reservation_success_message?: string | null;
@@ -57,11 +60,15 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEnsuringAgreement, setIsEnsuringAgreement] = useState(false);
 
   useEffect(() => {
     const fetchBooking = async () => {
       try {
-        const response = await fetch(`/api/bookings/by-token/${token}`);
+        const response = await fetch(`/api/bookings/by-token/${token}`, {
+          cache: "no-store",
+          headers: { "cache-control": "no-cache" },
+        });
         if (!response.ok) {
           const data = await response.json().catch(() => null);
           throw new Error(data?.error || "Nie udało się pobrać danych rezerwacji");
@@ -77,6 +84,48 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
     fetchBooking();
   }, [token]);
+
+  useEffect(() => {
+    const maybeEnsureAgreement = async () => {
+      if (!bookingData?.booking) return;
+      if (isEnsuringAgreement) return;
+
+      const paymentStatusFromUrl = (searchParams.get("paymentStatus") || "").trim();
+      const resolvedPaymentStatus = (paymentStatusFromUrl || bookingData.booking.payment_status || "").toUpperCase();
+      const createdFlag = (searchParams.get("created") || "").trim() === "1";
+      const shouldEnsure =
+        createdFlag || resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID";
+
+      // Jeśli umowa już ma numer, nic nie robimy
+      if (!shouldEnsure) return;
+      if (typeof bookingData.booking.agreement_seq === "number" && bookingData.booking.agreement_seq > 0) return;
+
+      setIsEnsuringAgreement(true);
+      try {
+        const res = await fetch(`/api/bookings/by-token/${token}/ensure-agreement`, { method: "POST" });
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          console.warn("ensure-agreement failed:", t || res.statusText);
+          return;
+        }
+        // Po wygenerowaniu odśwież dane rezerwacji, żeby pobrać agreement_seq
+        const refreshed = await fetch(`/api/bookings/by-token/${token}`, {
+          cache: "no-store",
+          headers: { "cache-control": "no-cache" },
+        });
+        if (refreshed.ok) {
+          const data = await refreshed.json();
+          setBookingData(data);
+        }
+      } catch (e) {
+        console.warn("ensure-agreement error:", e);
+      } finally {
+        setIsEnsuringAgreement(false);
+      }
+    };
+
+    void maybeEnsureAgreement();
+  }, [bookingData, isEnsuringAgreement, searchParams, token]);
 
   if (loading) {
     return (
@@ -117,6 +166,13 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   const shouldShowSuccessMessage =
     createdFlag || resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID";
 
+  const agreementNumberText = formatAgreementNumber({
+    reservationNumber: booking.trip.reservation_number,
+    agreementSeq: booking.agreement_seq,
+  });
+  const agreementHeaderText = agreementNumberText === "-" ? "—" : agreementNumberText.replace(/^#/, "");
+  const agreementHeaderLabel = "Numer umowy";
+
   const paymentUi =
     resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID"
       ? { label: "Płatność potwierdzona", variant: "default" as const }
@@ -133,8 +189,10 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
           <CardHeader className="gap-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Rezerwacja</p>
-                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{booking.booking_ref}</h1>
+                <p className="text-sm text-muted-foreground">{agreementHeaderLabel}</p>
+                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {agreementHeaderText}
+                </h1>
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant={paymentUi.variant}>{paymentUi.label}</Badge>

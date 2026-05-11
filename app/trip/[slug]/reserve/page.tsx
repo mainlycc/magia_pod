@@ -109,7 +109,19 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
       )}
 
       {!loading && !error && trip && !hasNoSeats && (
-        <BookingForm slug={slug} />
+        <>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <span className="font-medium">Wolne miejsca:</span>{" "}
+            <span>
+              {seatsLeft} z {trip.seats_total ?? "—"}
+            </span>
+            <span className="ml-1 text-blue-700">
+              – możesz zarezerwować maksymalnie {seatsLeft}{" "}
+              {seatsLeft === 1 ? "miejsce" : "miejsc"}.
+            </span>
+          </div>
+          <BookingForm slug={slug} />
+        </>
       )}
     </div>
   );

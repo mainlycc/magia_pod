@@ -39,6 +39,7 @@ export function useTripPublicAppearance() {
   const [additionalServiceText, setAdditionalServiceText] = useState("")
   const [reservationNumber, setReservationNumber] = useState("")
   const [durationText, setDurationText] = useState("")
+  const [tripNumber, setTripNumber] = useState("")
   const [additionalFieldSections, setAdditionalFieldSections] = useState<AdditionalFieldSection[]>([])
   const [hiddenAdditionalSections, setHiddenAdditionalSections] = useState<string[]>([])
   const [whatToBring, setWhatToBring] = useState<string[]>([])
@@ -74,6 +75,16 @@ export function useTripPublicAppearance() {
         try {
           const data = JSON.parse(step1Data)
           setTripTitle(data.tripTitle || "")
+          const tn =
+            typeof data.tripNumber === "string"
+              ? data.tripNumber.trim()
+              : typeof data.slug === "string"
+                ? data.slug.trim()
+                : ""
+          setTripNumber(tn)
+          // Zachowujemy też `reservationNumber` w treści, bo API/DB używa pola `reservation_number`
+          // (w edytorze nie pokazujemy już inputa).
+          setReservationNumber(tn)
           setTripData({
             start_date: data.startDate || null,
             end_date: data.endDate || null,
@@ -105,6 +116,7 @@ export function useTripPublicAppearance() {
       setLoading(false)
       return
     }
+    setTripNumber(typeof selectedTrip.slug === "string" ? selectedTrip.slug : "")
 
     if (tripFullData && tripContentData && tripFullData.id === selectedTrip.id) {
       const content = tripContentData as typeof tripContentData & {
@@ -427,6 +439,7 @@ export function useTripPublicAppearance() {
     setReservationNumber,
     durationText,
     setDurationText,
+    tripNumber,
     
     // Treści tekstowe
     programAtrakcje,

@@ -14,6 +14,7 @@ import {
   type PaymentStatusValue,
 } from "../trips/[id]/bookings/payment-status";
 import { toast } from "sonner";
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number";
 
 type BookingWithTrip = {
   id: string;
@@ -88,8 +89,8 @@ export default function AdminBookingsPage() {
           source,
           created_at,
           trip_id,
-          trips:trips!inner(id, title, slug, start_date, end_date),
-          agreements:agreements(id, status)
+          trips:trips!inner(id, title, slug, start_date, end_date, reservation_number),
+          agreements:agreements(id, status, agreement_seq)
         `
         )
         .order("created_at", { ascending: false });
@@ -149,9 +150,21 @@ export default function AdminBookingsPage() {
     () => [
       {
         accessorKey: "booking_ref",
-        header: "Nr rezerwacji",
+        header: "Numer umowy",
         cell: ({ row }) => (
-          <div className="font-medium">{row.original.booking_ref}</div>
+          <div className="font-medium">
+            {(() => {
+              const agreements = (row.original.agreements || []) as any[];
+              const seq =
+                agreements.find((a) => typeof a?.agreement_seq === "number" && a.agreement_seq > 0)?.agreement_seq ??
+                null;
+              const formatted = formatPublicAgreementNumber({
+                reservationNumber: (row.original.trips as any)?.reservation_number ?? null,
+                agreementSeq: seq,
+              });
+              return formatted === "-" ? "—" : formatted;
+            })()}
+          </div>
         ),
       },
       {
@@ -272,7 +285,7 @@ export default function AdminBookingsPage() {
         columns={columns}
         data={bookings}
         searchable={true}
-        searchPlaceholder="Szukaj po numerze rezerwacji, emailu..."
+        searchPlaceholder="Szukaj po numerze umowy, emailu..."
         searchColumn="booking_ref"
         onAdd={() => router.push("/admin/bookings/new")}
         addButtonLabel="Dodaj rezerwację"

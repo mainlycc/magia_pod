@@ -1,9 +1,11 @@
 import crypto from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
+import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -267,6 +269,8 @@ export async function POST(request: NextRequest) {
   // Sprawdź czy wpis już istnieje, aby uniknąć duplikatów
   // Używamy admin clienta, aby ominąć RLS i mieć pewność, że operacja się powiedzie
   let paymentHistoryInserted = false;
+  /** Konkretny wiersz payment_history dla tej notyfikacji Paynow (faktura + waitUntil). */
+  let paymentHistoryRowIdForInvoice: string | null = null;
   if (shouldUpdatePaymentHistory && amountCents > 0) {
     console.log(`[Paynow Webhook] Checking for existing payment history entry for payment ${payload.paymentId}...`);
     
@@ -331,6 +335,7 @@ export async function POST(request: NextRequest) {
         } else {
           insertSuccess = true;
           paymentHistoryInserted = true;
+          paymentHistoryRowIdForInvoice = insertedHistory?.[0]?.id ?? null;
           console.log(`[Paynow Webhook] ✓ Successfully inserted payment history entry for payment ${payload.paymentId}:`, insertedHistory);
         }
       }
@@ -340,6 +345,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       paymentHistoryInserted = true; // Wpis już istnieje
+      paymentHistoryRowIdForInvoice = existingHistory[0].id;
       console.log(`[Paynow Webhook] Payment history entry already exists for payment ${payload.paymentId} (id: ${existingHistory[0].id}, amount: ${existingHistory[0].amount_cents}), skipping insert`);
     }
   } else {
@@ -527,42 +533,33 @@ export async function POST(request: NextRequest) {
 
   // Wystaw fakturę zaliczkową automatycznie dla każdej potwierdzonej płatności
   // Każda wpłata = osobna faktura zaliczkowa (advance lub advance_to_advance)
-  if ((newPaymentStatus === "paid" || newPaymentStatus === "partial") && paymentHistoryInserted) {
+  if (
+    (newPaymentStatus === "paid" || newPaymentStatus === "partial") &&
+    paymentHistoryInserted &&
+    paymentHistoryRowIdForInvoice
+  ) {
     try {
-      // Pobierz ID ostatniej płatności z payment_history (tej, którą właśnie dodaliśmy)
-      const { data: lastPayment } = await supabase
-        .from("payment_history")
-        .select("id, amount_cents")
-        .eq("booking_id", booking.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+      console.log(
+        `[Paynow Webhook] Creating advance invoice for booking ${booking.id}, payment_history ${paymentHistoryRowIdForInvoice}`
+      );
 
-      if (lastPayment) {
-        console.log(`[Paynow Webhook] Creating advance invoice for booking ${booking.id}, payment ${lastPayment.id}`);
+      const invoiceResult = await processPaymentInvoice({
+        bookingId: booking.id,
+        paymentHistoryId: paymentHistoryRowIdForInvoice,
+        amountCents,
+        scheduleAfterResponse: (task) => waitUntil(task),
+      });
 
-        // Wywołaj serwis faktur bezpośrednio (nie przez HTTP fetch)
-        // processPaymentInvoice obsługuje PDF i email asynchronicznie, więc nie blokuje
-        const invoiceResult = await processPaymentInvoice({
-          bookingId: booking.id,
-          paymentHistoryId: lastPayment.id,
-          amountCents: lastPayment.amount_cents,
+      if (invoiceResult.success) {
+        console.log(`[Paynow Webhook] ✓ Invoice created:`, {
+          invoiceId: invoiceResult.invoiceId,
+          invoiceNumber: invoiceResult.invoiceNumber,
+          providerInvoiceId: invoiceResult.providerInvoiceId,
         });
-
-        if (invoiceResult.success) {
-          console.log(`[Paynow Webhook] ✓ Invoice created:`, {
-            invoiceId: invoiceResult.invoiceId,
-            invoiceNumber: invoiceResult.invoiceNumber,
-            providerInvoiceId: invoiceResult.providerInvoiceId,
-          });
-        } else {
-          console.error(`[Paynow Webhook] Failed to create invoice:`, invoiceResult.error);
-        }
       } else {
-        console.warn(`[Paynow Webhook] No payment_history found for booking ${booking.id}`);
+        console.error(`[Paynow Webhook] Failed to create invoice:`, invoiceResult.error);
       }
     } catch (err) {
-      // Błąd wystawiania faktury nie powinien blokować obsługi webhooka
       console.error("[Paynow Webhook] Error creating invoice:", err);
     }
   }
@@ -644,12 +641,42 @@ export async function POST(request: NextRequest) {
         ? `${baseUrl}/payments/success?token=${booking.access_token}&booking_ref=${payload.externalId}`
         : `${baseUrl}/payments/success?booking_ref=${payload.externalId}`;
 
+      // Publiczny numer umowy (dla klienta) — ukrywamy booking_ref (externalId Paynow)
+      let publicAgreementNumber: string | null = null;
+      try {
+        const { data: tripRow } = await supabase
+          .from("trips")
+          .select("reservation_number")
+          .eq("id", booking.trip_id)
+          .single();
+        const reservationNumber = tripRow?.reservation_number ?? null;
+
+        const { data: agreementRow } = await supabase
+          .from("agreements")
+          .select("agreement_seq")
+          .eq("booking_id", booking.id)
+          .order("updated_at", { ascending: false, nullsFirst: false })
+          .order("generated_at", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+        const seq = agreementRow?.agreement_seq;
+
+        const formatted = formatAgreementNumber({
+          reservationNumber,
+          agreementSeq: typeof seq === "number" ? seq : null,
+        }).replace(/^#/, "");
+        publicAgreementNumber = formatted === "-" ? null : formatted;
+      } catch (e) {
+        console.warn("[Paynow Webhook] Failed to compute public agreement number:", e);
+        publicAgreementNumber = null;
+      }
+
       await fetch(`${baseUrl}/api/email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: booking.contact_email,
-          subject: `Płatność potwierdzona dla rezerwacji ${payload.externalId}`,
+          subject: `Płatność potwierdzona dla umowy ${publicAgreementNumber || "—"}`,
           html: `
             <!DOCTYPE html>
             <html lang="pl">
@@ -676,7 +703,7 @@ export async function POST(request: NextRequest) {
                             Płatność potwierdzona
                           </h2>
                           <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-                            Dziękujemy! Płatność za rezerwację <strong>${payload.externalId}</strong> została zaksięgowana.
+                            Dziękujemy! Płatność za umowę <strong>${publicAgreementNumber || "—"}</strong> została zaksięgowana.
                           </p>
                           ${attachment ? `
                           <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 16px; border-radius: 6px; margin: 20px 0;">
@@ -702,7 +729,7 @@ export async function POST(request: NextRequest) {
             </body>
             </html>
           `,
-          text: `Dziękujemy! Płatność za rezerwację ${payload.externalId} została zaksięgowana.${attachment ? '\n\nW załączniku do tego maila znajdziesz umowę w formacie PDF.' : ''}\n\nZobacz szczegóły rezerwacji: ${successUrl}`,
+          text: `Dziękujemy! Płatność za umowę ${publicAgreementNumber || "—"} została zaksięgowana.${attachment ? '\n\nW załączniku do tego maila znajdziesz umowę w formacie PDF.' : ''}\n\nZobacz szczegóły rezerwacji: ${successUrl}`,
           attachment,
         }),
       });

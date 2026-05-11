@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { Loader2Icon, RefreshCwIcon, CheckCircle2Icon } from "lucide-react";
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number";
 
 type BookingWithTrip = {
   id: string;
@@ -37,7 +38,9 @@ type BookingWithTrip = {
     id: string;
     title: string;
     slug: string;
+    reservation_number?: string | null;
   } | null;
+  agreements?: { agreement_seq?: number | null }[] | null;
 };
 
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
@@ -338,9 +341,22 @@ export default function AdminPaymentsPage() {
     () => [
       {
         accessorKey: "booking_ref",
-        header: "Numer rezerwacji",
+        header: "Numer umowy",
         cell: ({ row }) => (
-          <span className="font-medium">{row.original.booking_ref}</span>
+          <span className="font-medium">
+            {(() => {
+              const seq =
+                (row.original.agreements as any[] | null | undefined)
+                  ?.map((a) => a?.agreement_seq ?? 0)
+                  .filter((n) => n > 0)
+                  .sort((a, b) => b - a)[0] ?? null;
+              const formatted = formatPublicAgreementNumber({
+                reservationNumber: (row.original.trips as any)?.reservation_number ?? null,
+                agreementSeq: seq,
+              });
+              return formatted === "-" ? "—" : formatted;
+            })()}
+          </span>
         ),
       },
       {

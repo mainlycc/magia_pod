@@ -57,7 +57,7 @@ export function generateBookingConfirmationEmail(
               <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
                 <div style="margin-bottom: 16px;">
                   <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Kod rezerwacji
+                    Numer umowy
                   </p>
                   <p style="margin: 0; font-size: 24px; color: #16a34a; font-weight: 700; font-family: monospace; letter-spacing: 1px;">
                     ${bookingRef}
@@ -126,8 +126,8 @@ export function generateBookingConfirmationEmail(
                 </p>
                 <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; color: #92400e; line-height: 1.8;">
                   <li><strong>Dokonaj płatności</strong> (jeśli jeszcze nie została opłacona) — płatność jest potwierdzeniem zawarcia umowy</li>
-                  <li><strong>Zachowaj kod rezerwacji</strong> i ten e-mail na przyszłość</li>
-                  <li><strong>W razie pytań</strong> skontaktuj się z nami, podając kod rezerwacji</li>
+                  <li><strong>Zachowaj numer umowy</strong> i ten e-mail na przyszłość</li>
+                  <li><strong>W razie pytań</strong> skontaktuj się z nami, podając numer umowy</li>
                 </ol>
               </div>
               
@@ -150,7 +150,7 @@ export function generateBookingConfirmationEmail(
                 Magia Podróżowania
               </p>
               <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">
-                W razie pytań prosimy o kontakt. Twój kod rezerwacji: <strong>${bookingRef}</strong>
+                W razie pytań prosimy o kontakt. Twój numer umowy: <strong>${bookingRef}</strong>
               </p>
             </td>
           </tr>

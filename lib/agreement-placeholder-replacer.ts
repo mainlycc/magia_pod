@@ -61,6 +61,20 @@ export function replaceTripPlaceholders(
   result = result.replace(/\{\{trip_start_date\}\}/g, formatDate(tripFullData.start_date));
   result = result.replace(/\{\{trip_end_date\}\}/g, formatDate(tripFullData.end_date));
   result = result.replace(/\{\{trip_duration\}\}/g, calculateDuration(tripFullData.start_date, tripFullData.end_date));
+
+  // Transport / loty (wprowadzane w "Dodaj wycieczkę")
+  result = result.replace(
+    /\{\{transport_type\}\}/g,
+    (tripFullData.transport_mode ?? "").trim() || "-"
+  );
+  result = result.replace(
+    /\{\{flight_info\}\}/g,
+    (tripFullData.airport_codes ?? "").trim() || "-"
+  );
+
+  // Backfill dla szablonów, które traktują te pola jako "ręczne"
+  // (w praktyce chcemy je wypełniać automatycznie, jeśli mamy dane).
+  result = result.replace(/\{\{accommodation_location\}\}/g, tripFullData.location || "-");
   
   // Cena
   const price = tripFullData.price_cents ? (tripFullData.price_cents / 100).toFixed(2) : "-";
@@ -191,7 +205,9 @@ export function replaceBookingPlaceholders(
     }>;
   } | null,
   tripPrice?: number | null,
-  tripStartDate?: string | null
+  tripStartDate?: string | null,
+  /** Suma dopłat za usługi dodatkowe (diety, ubezp., atrakcje) w groszach — jak w PDF */
+  addonTotalCents?: number | null
 ): string {
   if (!formData) return html;
 
@@ -280,10 +296,17 @@ export function replaceBookingPlaceholders(
 
   result = result.replace(/\{\{selected_services\}\}/g, selectedServices || "-");
 
-  // Cena całkowita i zaliczka
+  // Cena całkowita i zaliczka (baza × liczba osób + dopłaty za usługi dodatkowe)
   if (tripPrice && participantsCount > 0) {
-    const totalPrice = ((tripPrice * participantsCount) / 100).toFixed(2);
-    const depositAmount = ((tripPrice * participantsCount * 0.3) / 100).toFixed(2);
+    const addon =
+      typeof addonTotalCents === "number" &&
+      Number.isFinite(addonTotalCents) &&
+      addonTotalCents > 0
+        ? Math.round(addonTotalCents)
+        : 0;
+    const totalCents = tripPrice * participantsCount + addon;
+    const totalPrice = (totalCents / 100).toFixed(2);
+    const depositAmount = ((totalCents * 0.3) / 100).toFixed(2);
     result = result.replace(/\{\{trip_total_price\}\}/g, totalPrice);
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
   }

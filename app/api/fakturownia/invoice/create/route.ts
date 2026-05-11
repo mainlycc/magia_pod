@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
       bookingId: booking_id,
       paymentHistoryId: paymentHistoryId!,
       amountCents: amountCents,
+      scheduleAfterResponse: (task) => waitUntil(task),
     });
 
     if (result.success) {

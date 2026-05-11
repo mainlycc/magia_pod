@@ -7,6 +7,7 @@ import { generatePdfFromHtml } from "@/lib/pdf-generator";
 import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agreement-placeholder-replacer";
 import type { TripContentData, TripFullData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
+import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 
 // Konfiguracja runtime dla Vercel - upewniamy się, że funkcja działa w środowisku serverless
 export const runtime = "nodejs";
@@ -76,36 +77,6 @@ function formatDate(dateString: string | null | undefined): string {
   } catch {
     return dateString;
   }
-}
-
-function sumAdditionalServicesCents(participants: PdfPayload["participants"]): number {
-  let sum = 0;
-
-  for (const p of participants) {
-    const s = p.selected_services;
-    if (!s || typeof s !== "object") continue;
-    const o = s as Record<string, unknown>;
-
-    const diets = Array.isArray(o.diets) ? (o.diets as Array<Record<string, unknown>>) : [];
-    const insurances = Array.isArray(o.insurances) ? (o.insurances as Array<Record<string, unknown>>) : [];
-    const attractions = Array.isArray(o.attractions) ? (o.attractions as Array<Record<string, unknown>>) : [];
-
-    for (const d of diets) {
-      const cents = d.price_cents;
-      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
-    }
-    for (const ins of insurances) {
-      const cents = ins.price_cents;
-      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
-    }
-    for (const a of attractions) {
-      if (a.include_in_contract === false) continue;
-      const cents = a.price_cents;
-      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
-    }
-  }
-
-  return sum;
 }
 
 /**
@@ -911,12 +882,15 @@ export async function POST(req: Request) {
         participant_services,
       } as const;
 
+      const addonTotalCents = sumAdditionalServicesCents(body.participants);
+
       let filledInnerHtml = replaceTripPlaceholders(customTemplate, tripFullData, tripContentData);
       filledInnerHtml = replaceBookingPlaceholders(
         filledInnerHtml,
         formData,
         tripFullData.price_cents ?? null,
         tripFullData.start_date ?? null,
+        addonTotalCents,
       );
       const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);
       const pdfResult = await generatePdfFromHtml(

@@ -14,19 +14,23 @@
  *   3. Wystaw fakturę zaliczkową do zaliczkowej (kind: "advance", from_invoice_id)
  *
  * Po wystawieniu faktury (obie ścieżki):
- *   - Pobierz PDF z Fakturownia (10s delay)
+ *   - Pobierz PDF z Fakturownia (krótki delay + ponawianie / odświeżanie pdf_url)
  *   - Zapisz PDF w Supabase Storage
- *   - Wyślij PDF emailem do klienta
+ *   - Wyślij PDF emailem do klienta (Resend bez wewnętrznego HTTP)
  */
 
 import {
+  buildFakturowniaConfigFromEnv,
   createOrder,
   createInvoice,
   buildInvoicePdfUrl,
   downloadPdf,
+  extractOrderIdFromInvoiceJson,
+  getInvoice,
   type FakturowniaConfig,
   type FakturowniaInvoiceData,
 } from "@/lib/fakturownia/client";
+import { sendTransactionalEmail } from "@/lib/email/send-transactional";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // ===================== TYPES =====================
@@ -35,6 +39,10 @@ export interface ProcessPaymentInvoiceParams {
   bookingId: string;
   paymentHistoryId: string;
   amountCents: number;
+  /**
+   * Na Vercel: przekaż `(p) => waitUntil(p)` z `@vercel/functions`, żeby dokończyć pobranie PDF i e-mail po zwrocie odpowiedzi.
+   */
+  scheduleAfterResponse?: (task: Promise<void>) => void;
 }
 
 export interface InvoiceResult {
@@ -81,10 +89,7 @@ interface ParentInvoice {
 // ===================== CONFIG =====================
 
 function getFakturowniaConfig(): FakturowniaConfig {
-  return {
-    apiToken: process.env.FAKTUROWNIA_API_TOKEN || "",
-    subdomain: process.env.FAKTUROWNIA_SUBDOMAIN || "",
-  };
+  return buildFakturowniaConfigFromEnv();
 }
 
 function validateFakturowniaConfig(config: FakturowniaConfig): boolean {
@@ -150,12 +155,97 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+interface InvoiceRowLite {
+  id: string;
+  invoice_number: string;
+  fakturownia_invoice_id: string | null;
+  invoice_type: string;
+}
+
+/**
+ * Gdy w bazie jest już faktura, ale bookings.fakturownia_order_id jest puste:
+ * 1) Odczytaj oid z istniejącej faktury w Fakturowni (GET).
+ * 2) Jeśli się nie da — utwórz zamówienie (estimate) jak przy pierwszej wpłacie i zapisz w booking.
+ */
+async function recoverMissingFakturowniaOrderId(
+  supabase: ReturnType<typeof createAdminClient>,
+  config: FakturowniaConfig,
+  bookingId: string,
+  booking: BookingData,
+  trip: TripData,
+  participantsCount: number,
+  existingInvoices: InvoiceRowLite[]
+): Promise<{ orderId: number } | { error: string }> {
+  for (let i = existingInvoices.length - 1; i >= 0; i--) {
+    const row = existingInvoices[i];
+    if (!row.fakturownia_invoice_id) continue;
+
+    const details = await getInvoice(config, row.fakturownia_invoice_id);
+    if (!details.success || !details.rawResponse) continue;
+
+    const oid = extractOrderIdFromInvoiceJson(details.rawResponse as Record<string, unknown>);
+    if (oid) {
+      await supabase
+        .from("bookings")
+        .update({ fakturownia_order_id: String(oid) })
+        .eq("id", bookingId);
+      console.log("[InvoiceService] Recovered fakturownia_order_id from invoice API:", oid);
+      return { orderId: oid };
+    }
+  }
+
+  console.log(
+    "[InvoiceService] Could not read oid from existing Fakturownia invoices; creating order (recovery)"
+  );
+
+  const buyerName = prepareBuyerName(booking);
+  const buyerNip = prepareBuyerNip(booking);
+  const buyerAddress = prepareBuyerAddress(booking);
+  const totalPriceCents = (trip.price_cents || 0) * participantsCount;
+  const totalPriceZloty = totalPriceCents / 100;
+
+  const orderResponse = await createOrder(config, {
+    buyer_name: buyerName,
+    buyer_tax_no: buyerNip,
+    buyer_street: buyerAddress.street,
+    buyer_city: buyerAddress.city,
+    buyer_post_code: buyerAddress.post_code,
+    buyer_email: booking.contact_email || undefined,
+    currency: "PLN",
+    lang: "pl",
+    description: `Zamówienie – ${trip.title} (${booking.booking_ref})`,
+    positions: [
+      {
+        name: trip.title,
+        quantity: participantsCount,
+        price_net: totalPriceZloty / participantsCount,
+        total_price_gross: totalPriceZloty,
+        tax: "np",
+      },
+    ],
+  });
+
+  if (!orderResponse.success || !orderResponse.orderId) {
+    return {
+      error: `Odzysk zamówienia KSeF nie powiódł się (tworzenie zamówienia): ${orderResponse.error || "unknown"}`,
+    };
+  }
+
+  await supabase
+    .from("bookings")
+    .update({ fakturownia_order_id: String(orderResponse.orderId) })
+    .eq("id", bookingId);
+
+  console.log("[InvoiceService] Recovery: created Fakturownia order:", orderResponse.orderId);
+  return { orderId: orderResponse.orderId };
+}
+
 // ===================== MAIN FLOW =====================
 
 export async function processPaymentInvoice(
   params: ProcessPaymentInvoiceParams
 ): Promise<InvoiceResult> {
-  const { bookingId, paymentHistoryId, amountCents } = params;
+  const { bookingId, paymentHistoryId, amountCents, scheduleAfterResponse } = params;
   const supabase = createAdminClient();
 
   console.log("[InvoiceService] Starting invoice process:", {
@@ -269,7 +359,6 @@ export async function processPaymentInvoice(
     const today = new Date().toISOString().split("T")[0];
 
     const paymentAmountZloty = amountCents / 100;
-    const priceNetPerPerson = paymentAmountZloty / participantsCount;
     const totalPriceCents = (trip.price_cents || 0) * participantsCount;
     const totalPriceZloty = totalPriceCents / 100;
 
@@ -324,13 +413,36 @@ export async function processPaymentInvoice(
 
       console.log("[InvoiceService] Order created and saved:", fakturowniaOrderId);
     } else {
-      // Kolejna faktura – użyj istniejącego zamówienia
+      // Kolejna faktura – użyj istniejącego zamówienia lub odzyskaj oid (lokalny rekord bez order_id)
       const existingOrderId = (booking as BookingData).fakturownia_order_id;
       if (existingOrderId) {
         fakturowniaOrderId = parseInt(existingOrderId, 10);
         console.log("[InvoiceService] Using existing order_id:", fakturowniaOrderId);
       } else {
-        console.warn("[InvoiceService] No order_id found for booking");
+        console.warn(
+          "[InvoiceService] No order_id on booking — attempting recovery from Fakturownia / new order"
+        );
+        const recovered = await recoverMissingFakturowniaOrderId(
+          supabase,
+          fakturowniaConfig,
+          bookingId,
+          booking as BookingData,
+          trip,
+          participantsCount,
+          (existingInvoices || []) as InvoiceRowLite[]
+        );
+        if ("error" in recovered) {
+          return await saveInvoiceWithoutProvider(
+            supabase,
+            bookingId,
+            paymentHistoryId,
+            amountCents,
+            invoiceType,
+            parentInvoice?.id || null,
+            recovered.error
+          );
+        }
+        fakturowniaOrderId = recovered.orderId;
       }
     }
 
@@ -367,19 +479,14 @@ export async function processPaymentInvoice(
       buyer_post_code: buyerAddress.post_code,
       buyer_email: booking.contact_email || undefined,
       oid: fakturowniaOrderId,
+      external_order_ref: booking.booking_ref || undefined,
+      advance_creation_mode: "amount",
+      advance_value: paymentAmountZloty,
+      position_name: invoiceDescription,
       from_invoice_id:
         parentInvoice?.fakturownia_invoice_id
           ? parseInt(parentInvoice.fakturownia_invoice_id, 10)
           : undefined,
-      positions: [
-        {
-          name: invoiceDescription,
-          quantity: participantsCount,
-          price_net: priceNetPerPerson,
-          total_price_gross: paymentAmountZloty,
-          tax: "np",
-        },
-      ],
       internal_note:
         invoiceType === "advance_to_advance" && parentInvoice
           ? `Faktura zaliczkowa do faktury ${parentInvoice.invoice_number}`
@@ -440,9 +547,9 @@ export async function processPaymentInvoice(
       fakturowniaInvoiceId: fakturowniaResponse.invoiceId,
     });
 
-    // ─── 12. Pobierz PDF i wyślij email (asynchronicznie) ───
+    // ─── 12. Pobierz PDF i wyślij email (asynchronicznie; na Vercel użyj scheduleAfterResponse + waitUntil) ───
     if (fakturowniaResponse.success && fakturowniaResponse.invoiceId) {
-      fetchPdfAndSendEmail(
+      const bgTask = fetchPdfAndSendEmail(
         fakturowniaConfig,
         supabase,
         invoice.id,
@@ -450,9 +557,14 @@ export async function processPaymentInvoice(
         fakturowniaResponse.pdfUrl,
         booking as BookingData,
         invoice.invoice_number
-      ).catch((err) => {
-        console.error("[InvoiceService] Background PDF/email task failed:", err);
-      });
+      );
+      if (scheduleAfterResponse) {
+        scheduleAfterResponse(bgTask);
+      } else {
+        bgTask.catch((err) => {
+          console.error("[InvoiceService] Background PDF/email task failed:", err);
+        });
+      }
     }
 
     return {
@@ -472,6 +584,10 @@ export async function processPaymentInvoice(
 
 // ===================== BACKGROUND TASKS =====================
 
+const PDF_INITIAL_DELAY_MS = 3000;
+const PDF_RETRY_DELAY_MS = 4000;
+const PDF_MAX_ATTEMPTS = 6;
+
 async function fetchPdfAndSendEmail(
   config: FakturowniaConfig,
   supabase: ReturnType<typeof createAdminClient>,
@@ -481,37 +597,58 @@ async function fetchPdfAndSendEmail(
   booking: BookingData,
   invoiceNumber: string
 ): Promise<void> {
-  console.log("[InvoiceService] Waiting 10s for Fakturownia PDF generation...");
-  await delay(10_000);
+  console.log(
+    `[InvoiceService] Waiting ${PDF_INITIAL_DELAY_MS}ms before PDF fetch (Fakturownia generation)...`
+  );
+  await delay(PDF_INITIAL_DELAY_MS);
 
-  const pdfUrl = pdfUrlFromResponse || buildInvoicePdfUrl(config, fakturowniaInvoiceId);
-  await processPdfAndEmail(supabase, invoiceId, pdfUrl, booking, invoiceNumber);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < PDF_MAX_ATTEMPTS; attempt++) {
+    let pdfUrl = pdfUrlFromResponse;
+    if (attempt > 0 || !pdfUrl) {
+      const refreshed = await getInvoice(config, fakturowniaInvoiceId);
+      if (refreshed.success && refreshed.pdfUrl) {
+        pdfUrl = refreshed.pdfUrl;
+      }
+    }
+    if (!pdfUrl) {
+      pdfUrl = buildInvoicePdfUrl(config, fakturowniaInvoiceId);
+    }
+
+    try {
+      console.log(`[InvoiceService] PDF download attempt ${attempt + 1}/${PDF_MAX_ATTEMPTS}:`, pdfUrl);
+      const pdfBuffer = await downloadPdf(pdfUrl);
+      console.log("[InvoiceService] PDF downloaded, size:", pdfBuffer.length, "bytes");
+      await persistPdfAndSendEmail(supabase, invoiceId, pdfUrl, pdfBuffer, booking, invoiceNumber);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[InvoiceService] PDF attempt ${attempt + 1} failed:`, err);
+      if (attempt < PDF_MAX_ATTEMPTS - 1) {
+        await delay(PDF_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  console.error("[InvoiceService] PDF download exhausted retries:", lastErr);
+  await supabase
+    .from("invoices")
+    .update({
+      invoice_provider_error:
+        "PDF download failed after retries: " +
+        (lastErr instanceof Error ? lastErr.message : String(lastErr)),
+    })
+    .eq("id", invoiceId);
 }
 
-async function processPdfAndEmail(
+async function persistPdfAndSendEmail(
   supabase: ReturnType<typeof createAdminClient>,
   invoiceId: string,
   pdfUrl: string,
+  pdfBuffer: Buffer,
   booking: BookingData,
   invoiceNumber: string
 ): Promise<void> {
-  console.log("[InvoiceService] Downloading PDF from Fakturownia:", pdfUrl);
-  let pdfBuffer: Buffer;
-  try {
-    pdfBuffer = await downloadPdf(pdfUrl);
-    console.log("[InvoiceService] PDF downloaded, size:", pdfBuffer.length, "bytes");
-  } catch (err) {
-    console.error("[InvoiceService] Failed to download PDF:", err);
-    await supabase
-      .from("invoices")
-      .update({
-        invoice_provider_error:
-          "PDF download failed: " + (err instanceof Error ? err.message : String(err)),
-      })
-      .eq("id", invoiceId);
-    return;
-  }
-
   const safeInvoiceNumber = invoiceNumber.replace(/\//g, "-");
   const storagePath = `${booking.booking_ref}/${safeInvoiceNumber}.pdf`;
 
@@ -535,41 +672,105 @@ async function processPdfAndEmail(
   }
 
   if (booking.contact_email) {
-    console.log("[InvoiceService] Sending invoice email to:", booking.contact_email);
+    // Publiczny numer (dla klienta) — nie pokazujemy booking_ref (to jest externalId Paynow)
+    let publicAgreementNumber: string | null = null;
+    try {
+      const { formatAgreementNumber } = await import("@/lib/agreements/format-agreement-number");
+      const { data: agreementRow } = await supabase
+        .from("agreements")
+        .select("agreement_seq")
+        .eq("booking_id", booking.id)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("generated_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      const seq = agreementRow?.agreement_seq;
+
+      const { data: bookingRow } = await supabase
+        .from("bookings")
+        .select("trip_id, trips:trips(reservation_number)")
+        .eq("id", booking.id)
+        .single();
+
+      const trip = Array.isArray((bookingRow as any)?.trips) ? (bookingRow as any).trips[0] : (bookingRow as any)?.trips;
+      const reservationNumber = trip?.reservation_number ?? null;
+
+      publicAgreementNumber = formatAgreementNumber({
+        reservationNumber,
+        agreementSeq: typeof seq === "number" ? seq : null,
+      }).replace(/^#/, "");
+      if (publicAgreementNumber === "-") publicAgreementNumber = null;
+    } catch (e) {
+      console.warn("[InvoiceService] Failed to compute public agreement number:", e);
+      publicAgreementNumber = null;
+    }
+
+    console.log("[InvoiceService] Sending invoice email:", {
+      invoiceId,
+      booking_ref: booking.booking_ref,
+      invoiceNumber,
+      to: booking.contact_email,
+      storagePath,
+    });
     try {
       const pdfBase64 = pdfBuffer.toString("base64");
-      const baseUrl =
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-      const emailResponse = await fetch(`${baseUrl}/api/email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: booking.contact_email,
-          subject: `Faktura zaliczkowa ${invoiceNumber} – Magia Podróżowania`,
-          html: buildInvoiceEmailHtml(invoiceNumber, booking.booking_ref),
-          text: `W załączniku przesyłamy fakturę zaliczkową ${invoiceNumber} dla rezerwacji ${booking.booking_ref}.\n\nDziękujemy za wpłatę!\n\nMagia Podróżowania`,
-          attachment: {
-            filename: `${safeInvoiceNumber}.pdf`,
-            base64: pdfBase64,
-          },
-        }),
+      const sendResult = await sendTransactionalEmail({
+        to: booking.contact_email,
+        subject: `Faktura zaliczkowa ${invoiceNumber} – Magia Podróżowania`,
+        html: buildInvoiceEmailHtml(invoiceNumber, publicAgreementNumber || "—"),
+        text: `W załączniku przesyłamy fakturę zaliczkową ${invoiceNumber} dla umowy ${publicAgreementNumber || "—"}.\n\nDziękujemy za wpłatę!\n\nMagia Podróżowania`,
+        attachment: {
+          filename: `${safeInvoiceNumber}.pdf`,
+          base64: pdfBase64,
+        },
       });
 
-      if (emailResponse.ok) {
-        console.log("[InvoiceService] Invoice email sent to:", booking.contact_email);
+      if (sendResult.ok) {
+        console.log("[InvoiceService] Invoice email sent:", {
+          invoiceId,
+          booking_ref: booking.booking_ref,
+          invoiceNumber,
+          to: booking.contact_email,
+        });
+        await supabase.from("invoices").update({ status: "wysłana" }).eq("id", invoiceId);
+      } else {
+        console.error("[InvoiceService] Failed to send invoice email:", {
+          invoiceId,
+          booking_ref: booking.booking_ref,
+          invoiceNumber,
+          to: booking.contact_email,
+          error: sendResult.error,
+        });
         await supabase
           .from("invoices")
-          .update({ status: "wysłana" })
+          .update({
+            invoice_provider_error: `Email send failed: ${sendResult.error}`,
+          })
           .eq("id", invoiceId);
-      } else {
-        const errorData = await emailResponse.json().catch(() => ({ error: "Unknown" }));
-        console.error("[InvoiceService] Failed to send invoice email:", errorData);
       }
     } catch (emailErr) {
-      console.error("[InvoiceService] Error sending invoice email:", emailErr);
+      console.error("[InvoiceService] Error sending invoice email:", {
+        invoiceId,
+        booking_ref: booking.booking_ref,
+        invoiceNumber,
+        to: booking.contact_email,
+        err: emailErr,
+      });
+      await supabase
+        .from("invoices")
+        .update({
+          invoice_provider_error:
+            "Email send threw exception: " +
+            (emailErr instanceof Error ? emailErr.message : String(emailErr)),
+        })
+        .eq("id", invoiceId);
     }
+  } else {
+    console.warn("[InvoiceService] Missing booking.contact_email; skipping invoice email:", {
+      invoiceId,
+      booking_ref: booking.booking_ref,
+      invoiceNumber,
+    });
   }
 }
 
@@ -612,7 +813,7 @@ async function saveInvoiceWithoutProvider(
 
 // ===================== EMAIL TEMPLATE =====================
 
-function buildInvoiceEmailHtml(invoiceNumber: string, bookingRef: string): string {
+function buildInvoiceEmailHtml(invoiceNumber: string, publicAgreementNumber: string): string {
   return `
     <!DOCTYPE html>
     <html lang="pl">
@@ -635,7 +836,7 @@ function buildInvoiceEmailHtml(invoiceNumber: string, bookingRef: string): strin
                   <h2 style="margin:0 0 20px 0;color:#1d4ed8;font-size:24px;">Faktura zaliczkowa</h2>
                   <p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">
                     W załączniku przesyłamy fakturę zaliczkową <strong>${invoiceNumber}</strong>
-                    dla rezerwacji <strong>${bookingRef}</strong>.
+                    dla umowy <strong>${publicAgreementNumber}</strong>.
                   </p>
                   <div style="background-color:#eff6ff;border-left:4px solid #3b82f6;padding:16px;border-radius:6px;margin:20px 0;">
                     <p style="margin:0 0 8px 0;font-size:14px;color:#1e40af;font-weight:600;">Faktura w załączniku</p>

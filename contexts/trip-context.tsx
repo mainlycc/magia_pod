@@ -2,6 +2,11 @@
 
 import * as React from "react"
 import { createClient } from "@/lib/supabase/client"
+import {
+  readTripsListCache,
+  writeTripsListCache,
+  type TripsListCacheTrip,
+} from "@/lib/trips-list-cache"
 
 type Trip = {
   id: string
@@ -102,6 +107,36 @@ type TripContextType = {
 }
 
 const TripContext = React.createContext<TripContextType | undefined>(undefined)
+
+/** Wybór aktywnej wycieczki z listy (localStorage / pierwsza / zgodność z poprzednim ref). */
+function pickTripFromList(list: Trip[], currentSelectedTrip: Trip | null): Trip | null {
+  let tripToSelect: Trip | null = null
+
+  if (currentSelectedTrip) {
+    const updatedTrip = list.find((t) => t.id === currentSelectedTrip.id)
+    if (updatedTrip) {
+      tripToSelect = updatedTrip
+    } else if (list.length > 0) {
+      tripToSelect = list[0]
+    }
+  } else {
+    if (typeof window !== "undefined") {
+      const savedId = localStorage.getItem("selectedTripId")
+      const fromSaved =
+        savedId != null ? list.find((t) => t.id === savedId) : null
+
+      if (fromSaved) {
+        tripToSelect = fromSaved
+      }
+    }
+
+    if (!tripToSelect && list.length > 0) {
+      tripToSelect = list[0]
+    }
+  }
+
+  return tripToSelect
+}
 
 export function TripProvider({ children }: { children: React.ReactNode }) {
   // Uwaga: nie inicjalizujemy z localStorage w initializerze,
@@ -205,52 +240,60 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
   // Wczytaj listę wycieczek (raz, współdzielone między podstronami)
   React.useEffect(() => {
+    let cancelled = false
+
     const loadTrips = async () => {
       const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      const userId = session?.user?.id ?? null
+
+      if (!cancelled && userId) {
+        const cached = readTripsListCache(userId)
+        if (cached && cached.length > 0) {
+          const list = cached as Trip[]
+          setTrips(list)
+          const tripToSelect = pickTripFromList(list, selectedTripRef.current)
+          if (tripToSelect) {
+            setSelectedTripState(tripToSelect)
+            selectedTripRef.current = tripToSelect
+          } else {
+            setSelectedTripState(null)
+            selectedTripRef.current = null
+          }
+        }
+      }
+
       const { data, error } = await supabase
         .from("trips")
         .select("id, title, slug, start_date, end_date")
         .eq("is_active", true)
         .order("created_at", { ascending: false })
 
+      if (cancelled) return
+
       if (!error && data) {
-        setTrips(data as Trip[])
-
-        // Użyj ref, aby uzyskać aktualną wartość selectedTrip
-        const currentSelectedTrip = selectedTripRef.current
-        let tripToSelect: Trip | null = null
-
-        // Jeśli mamy wybraną wycieczkę, sprawdź czy nadal istnieje w bazie i zaktualizuj ją
-        if (currentSelectedTrip) {
-          const updatedTrip = (data as Trip[]).find((t) => t.id === currentSelectedTrip.id)
-          if (updatedTrip) {
-            tripToSelect = updatedTrip
-          } else {
-            // Wybrana wycieczka już nie istnieje, wybierz pierwszą dostępną
-            if (data.length > 0) {
-              tripToSelect = data[0] as Trip
-            }
-          }
-        } else {
-          // Jeśli nie ma wybranej wycieczki, spróbuj przywrócić z localStorage lub wybierz pierwszą
-          if (typeof window !== "undefined") {
-            const savedId = localStorage.getItem("selectedTripId")
-            const fromSaved =
-              savedId != null ? (data as Trip[]).find((t) => t.id === savedId) : null
-
-            if (fromSaved) {
-              tripToSelect = fromSaved
-            }
-          }
-
-          if (!tripToSelect && data.length > 0) {
-            tripToSelect = data[0] as Trip
-          }
+        if (userId) {
+          writeTripsListCache(userId, data as TripsListCacheTrip[])
         }
 
-        // Użyj setSelectedTrip, aby zaktualizować zarówno stan jak i localStorage
+        setTrips(data as Trip[])
+
+        const tripToSelect = pickTripFromList(data as Trip[], selectedTripRef.current)
+
         if (tripToSelect) {
-          setSelectedTrip(tripToSelect)
+          const sameAsCurrent = selectedTripRef.current?.id === tripToSelect.id
+          if (sameAsCurrent) {
+            setSelectedTripState(tripToSelect)
+            selectedTripRef.current = tripToSelect
+            if (typeof window !== "undefined") {
+              localStorage.setItem("selectedTripId", tripToSelect.id)
+              localStorage.setItem("selectedTrip", JSON.stringify(tripToSelect))
+            }
+          } else {
+            setSelectedTrip(tripToSelect)
+          }
         } else {
           setSelectedTrip(null)
         }
@@ -258,6 +301,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
 
     void loadTrips()
+    return () => {
+      cancelled = true
+    }
   }, [setSelectedTrip])
 
   // Załaduj dane wycieczki jeśli selectedTrip istnieje, ale cache nie jest jeszcze załadowany

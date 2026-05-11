@@ -35,6 +35,7 @@ import {
   formatPrice,
   formatDateTime,
 } from "../types"
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
 
 type Props = {
   tripId: string
@@ -243,12 +244,26 @@ export function InsuranceType3({ tripId }: Props) {
       },
       {
         id: "booking",
-        header: "Nr umowy",
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
-            #{row.original.bookings?.booking_ref || "—"}
-          </span>
-        ),
+        header: "Numer umowy",
+        cell: ({ row }) => {
+          const b: any = row.original.bookings
+          const trip = Array.isArray(b?.trips) ? b.trips[0] : b?.trips
+          const agreements = Array.isArray(b?.agreements) ? b.agreements : b?.agreements ? [b.agreements] : []
+          const seq =
+            agreements
+              .map((a: any) => a?.agreement_seq ?? 0)
+              .filter((n: number) => n > 0)
+              .sort((a: number, c: number) => c - a)[0] ?? null
+          const formatted = formatPublicAgreementNumber({
+            reservationNumber: trip?.reservation_number ?? null,
+            agreementSeq: seq,
+          })
+          return (
+            <span className="text-sm text-muted-foreground">
+              {formatted === "-" ? "—" : formatted}
+            </span>
+          )
+        },
       },
       {
         id: "purchased_at",

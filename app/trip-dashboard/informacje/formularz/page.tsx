@@ -61,6 +61,28 @@ function TripFormContent() {
   const [reservationSuccessTitle, setReservationSuccessTitle] = useState<string>("")
   const [reservationSuccessMessage, setReservationSuccessMessage] = useState<string>("")
 
+  // Best-effort backfill: zsynchronizuj Typ 2/3 z modułu Ubezpieczenia do
+  // `form_extra_insurances`, żeby pojawiły się w formularzu i edytorze
+  // nawet dla starszych wycieczek.
+  useEffect(() => {
+    if (isCreateMode) return
+    const tripId = selectedTrip?.id
+    if (!tripId) return
+    let cancelled = false
+    fetch(`/api/insurance-local/trip-config/${tripId}/sync-form-insurances`, { method: "POST" })
+      .then((res) => {
+        if (!cancelled && res.ok) {
+          invalidateTripCache()
+        }
+      })
+      .catch(() => {
+        // best effort — nie blokujemy UI
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isCreateMode, selectedTrip?.id, invalidateTripCache])
+
   // W trybie tworzenia sprawdź czy są dane z kroku 1 i 2
   useEffect(() => {
     if (isCreateMode) {

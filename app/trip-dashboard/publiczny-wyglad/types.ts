@@ -63,8 +63,7 @@ export interface AdditionalFieldsSectionProps {
 
 export interface TripTitleSectionProps {
   tripTitle: string
-  reservationNumber: string
-  onReservationNumberChange: (value: string) => void
+  tripNumber: string
   durationText: string
   onDurationTextChange: (value: string) => void
   tripData: TripData | null

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
@@ -122,6 +123,7 @@ export async function POST(
       bookingId: id,
       paymentHistoryId: payment.id,
       amountCents: payload.amount_cents,
+      scheduleAfterResponse: (task) => waitUntil(task),
     }).catch((err) => {
       console.error("[Payments API] Error creating invoice:", err);
     });

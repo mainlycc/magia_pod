@@ -30,6 +30,22 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
 </table>
 
+<h2>Dane firmy</h2>
+<table>
+  <tr>
+    <td>Nazwa firmy:</td>
+    <td>{{company_name}}</td>
+  </tr>
+  <tr>
+    <td>NIP/KRS:</td>
+    <td>{{company_nip}}</td>
+  </tr>
+  <tr>
+    <td>Adres firmy:</td>
+    <td>{{company_address}}</td>
+  </tr>
+</table>
+
 <h2>Dane uczestników</h2>
 <table>
   <tr>
@@ -54,11 +70,11 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Trasa/miejsce pobytu:</td>
-    <td>Wg programu stanowiącego załącznik nr 1 do umowy</td>
+    <td>{{trip_location}}</td>
   </tr>
   <tr>
     <td>Data:</td>
-    <td>{{trip_start_date}}</td>
+    <td>{{trip_start_date}} - {{trip_end_date}}</td>
   </tr>
   <tr>
     <td>Czas trwania imprezy turystycznej:</td>
@@ -66,42 +82,42 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Liczba noclegów:</td>
-    <td></td>
+    <td>{{nights_count}}</td>
   </tr>
   <tr>
     <td>Lokalizacja, rodzaj, kategoria obiektu zakwaterowania:</td>
-    <td></td>
+    <td>{{accommodation_location}}</td>
   </tr>
   <tr>
     <td>Rodzaj, typ pokoju:</td>
-    <td></td>
+    <td>{{room_type}}</td>
   </tr>
   <tr>
     <td>Ilość, rodzaj posiłków:</td>
-    <td></td>
+    <td>{{meals_info}}</td>
   </tr>
   <tr>
     <td>Rodzaj kategoria środka transportu:</td>
-    <td></td>
+    <td>{{transport_type}}</td>
   </tr>
   <tr>
     <td>Przelot liniami na trasie:</td>
-    <td></td>
+    <td>{{flight_info}}</td>
   </tr>
   <tr>
     <td>Bagaż:</td>
-    <td>Bagaż podręczny (wymiary) oraz bagaż rejestrowany (wymiary) o wadze do kg.</td>
+    <td>{{baggage_info}}</td>
   </tr>
   <tr>
     <td>Transfery:</td>
-    <td></td>
+    <td>{{transfer_info}}</td>
   </tr>
 </table>
 
 <table>
   <tr>
     <td>Dodatkowe świadczenia:</td>
-    <td></td>
+    <td>{{additional_services}}</td>
   </tr>
   <tr>
     <td>Usługi dodatkowe:</td>
@@ -109,7 +125,7 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Zakres ubezpieczenia:</td>
-    <td></td>
+    <td>{{insurance_scope}}</td>
   </tr>
   <tr>
     <td>Cena imprezy turystycznej:</td>
@@ -117,7 +133,7 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Dodatkowe koszty:</td>
-    <td></td>
+    <td>{{additional_costs}}</td>
   </tr>
   <tr>
     <td>Zwyczajowe napiwki, wydatki własne i inne koszty nieobjęte programem</td>
@@ -125,7 +141,7 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Przedpłata:</td>
-    <td>{{trip_deposit_amount}} zł/os. płatne do {{trip_deposit_deadline}}</td>
+    <td>{{trip_deposit_amount}} zł brutto łącznie płatne do {{trip_deposit_deadline}}</td>
   </tr>
   <tr>
     <td>Turystyczny Fundusz Gwarancyjny:</td>

@@ -36,8 +36,7 @@ function PublicznyWygladContent() {
     handleAddImageFromUrl,
     tripTitle,
     tripData,
-    reservationNumber,
-    setReservationNumber,
+    tripNumber,
     durationText,
     setDurationText,
     programAtrakcje,
@@ -178,8 +177,7 @@ function PublicznyWygladContent() {
         <div className="xl:col-span-5 flex flex-col gap-4">
           <TripTitleSection
             tripTitle={tripTitle}
-            reservationNumber={reservationNumber}
-            onReservationNumberChange={setReservationNumber}
+            tripNumber={tripNumber}
             durationText={durationText}
             onDurationTextChange={setDurationText}
             tripData={tripData}

@@ -61,7 +61,8 @@ export async function GET(request: NextRequest) {
         payment_status,
         created_at,
         trip_id,
-        trips:trips(id, title, slug)
+        trips:trips(id, title, slug, reservation_number),
+        agreements:agreements(agreement_seq, updated_at, generated_at)
       `,
       )
       .order("created_at", { ascending: false });

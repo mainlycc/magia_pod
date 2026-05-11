@@ -17,6 +17,7 @@ import {
   formatDate,
   formatDateTime,
 } from "../types"
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
 
 type Props = {
   tripId: string
@@ -80,13 +81,27 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
           .filter((pi: { participants: unknown }) => pi.participants)
           .map((pi: {
             participants: { id: string; first_name: string; last_name: string; date_of_birth: string | null }
-            bookings: { booking_ref: string } | null
+            bookings: { booking_ref: string; agreements?: any; trips?: any } | null
           }) => ({
             id: pi.participants.id,
             first_name: pi.participants.first_name,
             last_name: pi.participants.last_name,
             date_of_birth: pi.participants.date_of_birth,
-            booking_ref: pi.bookings?.booking_ref || "—",
+            booking_ref: (() => {
+              const b: any = pi.bookings
+              const trip = Array.isArray(b?.trips) ? b.trips[0] : b?.trips
+              const agreements = Array.isArray(b?.agreements) ? b.agreements : b?.agreements ? [b.agreements] : []
+              const seq =
+                agreements
+                  .map((a: any) => a?.agreement_seq ?? 0)
+                  .filter((n: number) => n > 0)
+                  .sort((a: number, c: number) => c - a)[0] ?? null
+              const formatted = formatPublicAgreementNumber({
+                reservationNumber: trip?.reservation_number ?? null,
+                agreementSeq: seq,
+              })
+              return formatted === "-" ? "—" : formatted
+            })(),
           }))
       )
     }

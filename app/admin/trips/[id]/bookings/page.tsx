@@ -19,6 +19,7 @@ import {
   type PaymentStatusValue,
 } from "./payment-status";
 import { PaymentStatusSelect } from "./payment-status-select";
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number";
 
 type BookingRow = {
   id: string;
@@ -27,6 +28,8 @@ type BookingRow = {
   contact_phone: string | null;
   payment_status: PaymentStatusValue;
   created_at: string | null;
+  trip_reservation_number?: string | null;
+  agreement_seq?: number | null;
 };
 
 type ParticipantRow = {
@@ -64,19 +67,40 @@ export default async function AdminTripBookingsPage({
   const { data: bookingsData } = await supabase
     .from("bookings")
     .select(
-      "id, booking_ref, contact_email, contact_phone, payment_status, created_at",
+      `
+      id,
+      booking_ref,
+      contact_email,
+      contact_phone,
+      payment_status,
+      created_at,
+      trips:trips(reservation_number),
+      agreements:agreements(agreement_seq, updated_at, generated_at)
+      `,
     )
     .eq("trip_id", id)
     .order("created_at", { ascending: false });
 
-  const bookings: BookingRow[] = (bookingsData ?? []).map((booking) => ({
-    id: booking.id as string,
-    booking_ref: booking.booking_ref as string,
-    contact_email: booking.contact_email ?? null,
-    contact_phone: booking.contact_phone ?? null,
-    payment_status: (booking.payment_status ?? "unpaid") as PaymentStatusValue,
-    created_at: booking.created_at ?? null,
-  }));
+  const bookings: BookingRow[] = (bookingsData ?? []).map((booking: any) => {
+    const trip = Array.isArray(booking.trips) ? booking.trips[0] : booking.trips;
+    const agreements = Array.isArray(booking.agreements) ? booking.agreements : booking.agreements ? [booking.agreements] : [];
+    const seq =
+      agreements
+        .map((a: any) => a?.agreement_seq ?? 0)
+        .filter((n: number) => n > 0)
+        .sort((a: number, b: number) => b - a)[0] ?? null;
+
+    return {
+      id: booking.id as string,
+      booking_ref: booking.booking_ref as string,
+      contact_email: booking.contact_email ?? null,
+      contact_phone: booking.contact_phone ?? null,
+      payment_status: (booking.payment_status ?? "unpaid") as PaymentStatusValue,
+      created_at: booking.created_at ?? null,
+      trip_reservation_number: trip?.reservation_number ?? null,
+      agreement_seq: seq,
+    };
+  });
 
   const bookingIds = bookings.map((booking) => booking.id);
 
@@ -151,7 +175,13 @@ export default async function AdminTripBookingsPage({
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="text-lg font-semibold tracking-tight">
-                        {booking.booking_ref}
+                        {(() => {
+                          const formatted = formatPublicAgreementNumber({
+                            reservationNumber: booking.trip_reservation_number ?? null,
+                            agreementSeq: booking.agreement_seq ?? null,
+                          });
+                          return formatted === "-" ? "—" : formatted;
+                        })()}
                       </span>
                       <Badge
                         variant="outline"

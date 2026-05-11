@@ -46,8 +46,11 @@ import { ExternalLink, X } from "lucide-react";
 import { AgreementPreview } from "@/components/agreement-preview";
 import { parseHtmlToTemplate, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
+import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
 
-const DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">
+const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
+
+const _LEGACY_DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">
 <p style="margin: 0;">ORGANIZATOR IMPREZY TURYSTYCZNEJ:</p>
 <p style="margin: 0; font-weight: bold;">"GRUPA DE-PL" Szymon Kurkiewicz</p>
 <p style="margin: 0;">ul. Szczepankowo 37, 61-311 Poznań, tel: 530 76 77 76, NIP: 6981710393, wpis do Rejestru Organizatorów Turystyki i Pośredników Turystyki Marszałka Województwa Wielkopolskiego, numer 605, Numer konta w Santander Bank: 36 1090 1274 0000 0001 3192 8094</p>
@@ -76,6 +79,22 @@ const DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; l
   <tr>
     <td>E-mail:</td>
     <td>{{contact_email}}</td>
+  </tr>
+</table>
+
+<h2>Dane firmy</h2>
+<table>
+  <tr>
+    <td>Nazwa firmy:</td>
+    <td>{{company_name}}</td>
+  </tr>
+  <tr>
+    <td>NIP/KRS:</td>
+    <td>{{company_nip}}</td>
+  </tr>
+  <tr>
+    <td>Adres firmy:</td>
+    <td>{{company_address}}</td>
   </tr>
 </table>
 
@@ -174,7 +193,7 @@ const DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; l
   </tr>
   <tr>
     <td>Przedpłata:</td>
-    <td>{{trip_deposit_amount}} zł/os. płatne do {{trip_deposit_deadline}}</td>
+    <td>{{trip_deposit_amount}} zł brutto łącznie płatne do {{trip_deposit_deadline}}</td>
   </tr>
   <tr>
     <td>Turystyczny Fundusz Gwarancyjny:</td>
@@ -754,6 +773,7 @@ type TripConfig = {
   form_show_additional_services: boolean | null;
   company_participants_info: string | null;
   seats_total: number | null;
+  seats_reserved: number | null;
   additional_attractions?: { 
     id: string; 
     title: string; 
@@ -961,7 +981,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,reservation_info_text")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
           .maybeSingle<any>();
 
@@ -978,6 +998,7 @@ export function BookingForm({ slug }: BookingFormProps) {
             form_show_additional_services: typeof trip.form_show_additional_services === "boolean" ? trip.form_show_additional_services : false,
             company_participants_info: trip.company_participants_info,
             seats_total: typeof trip.seats_total === "number" ? trip.seats_total : null,
+            seats_reserved: typeof trip.seats_reserved === "number" ? trip.seats_reserved : null,
             additional_attractions: Array.isArray(trip.form_additional_attractions) 
               ? trip.form_additional_attractions as TripConfig["additional_attractions"]
               : [],
@@ -1721,8 +1742,25 @@ export function BookingForm({ slug }: BookingFormProps) {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        let message = data?.error ?? "Nie udało się utworzyć rezerwacji";
-        
+        const rawError = data?.error ?? "Nie udało się utworzyć rezerwacji";
+
+        // Tłumaczenie typowych komunikatów z backendu na czytelne polskie wiadomości
+        const errorMap: Record<string, string> = {
+          "Not enough seats":
+            "Niestety nie ma już wystarczającej liczby wolnych miejsc na tej wycieczce. Zmniejsz liczbę uczestników i spróbuj ponownie.",
+          "Trip not found or inactive":
+            "Wycieczka nie jest już dostępna do rezerwacji.",
+          "Failed to create booking":
+            "Nie udało się zapisać rezerwacji. Spróbuj ponownie za chwilę.",
+          "Failed to add participants":
+            "Nie udało się zapisać uczestników. Sprawdź wprowadzone dane i spróbuj ponownie.",
+          "Invalid payload":
+            "Formularz zawiera błędy. Sprawdź wprowadzone dane.",
+          "Unexpected error":
+            "Wystąpił nieoczekiwany błąd. Spróbuj ponownie za chwilę.",
+        };
+        let message = errorMap[rawError as string] ?? rawError;
+
         // Jeśli są szczegóły błędu walidacji, dodaj je do komunikatu
         if (data?.details) {
           const fieldErrors: string[] = [];
@@ -2496,6 +2534,32 @@ export function BookingForm({ slug }: BookingFormProps) {
                     </div>
                   ) : (
                     <>
+                      {(() => {
+                        const seatsTotal = tripConfig?.seats_total ?? null;
+                        const seatsReserved = tripConfig?.seats_reserved ?? 0;
+                        const seatsAvailable = seatsTotal !== null
+                          ? Math.max(0, seatsTotal - seatsReserved)
+                          : null;
+                        if (seatsAvailable === null) return null;
+                        return (
+                          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                            <span className="font-medium">Wolne miejsca:</span>{" "}
+                            <span>
+                              {seatsAvailable} z {seatsTotal}
+                            </span>
+                            {seatsAvailable > 0 ? (
+                              <span className="ml-1 text-blue-700">
+                                – możesz dodać maksymalnie {seatsAvailable}{" "}
+                                {seatsAvailable === 1 ? "uczestnika" : "uczestników"}.
+                              </span>
+                            ) : (
+                              <span className="ml-1 text-red-700 font-medium">
+                                – brak wolnych miejsc na tej wycieczce.
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {fields.length === 0 && (
                         <p className="text-sm text-muted-foreground">
                           Brak uczestników. Dodaj co najmniej jednego uczestnika, aby wysłać rezerwację.
@@ -2707,30 +2771,46 @@ export function BookingForm({ slug }: BookingFormProps) {
                           )}
                         </div>
                       ))}
-                      <Button
-                        type="button"
-                        variant="default"
-                        onClick={() => {
-                          const currentCount = fields.length;
-                          const maxSeats = tripConfig?.seats_total ?? null;
-                          if (maxSeats && currentCount >= maxSeats) {
-                            // Blokada dodania większej liczby uczestników niż liczba miejsc w ofercie
-                            return;
-                          }
-                          append({
-                            first_name: "",
-                            last_name: "",
-                            // birth_date jest wymagane w schemacie, ale inicjalnie puste – użytkownik musi je uzupełnić
-                            birth_date: "" as any,
-                            email: "",
-                            phone: "",
-                            document_type: "ID",
-                            document_number: "",
-                          } as any);
-                        }}
-                      >
-                        Dodaj kolejnego uczestnika
-                      </Button>
+                      {(() => {
+                        const seatsTotal = tripConfig?.seats_total ?? null;
+                        const seatsReserved = tripConfig?.seats_reserved ?? 0;
+                        const seatsAvailable = seatsTotal !== null
+                          ? Math.max(0, seatsTotal - seatsReserved)
+                          : null;
+                        const currentCount = fields.length;
+                        const reachedLimit =
+                          seatsAvailable !== null && currentCount >= seatsAvailable;
+                        return (
+                          <div className="space-y-2">
+                            <Button
+                              type="button"
+                              variant="default"
+                              disabled={reachedLimit}
+                              onClick={() => {
+                                if (reachedLimit) return;
+                                append({
+                                  first_name: "",
+                                  last_name: "",
+                                  // birth_date jest wymagane w schemacie, ale inicjalnie puste – użytkownik musi je uzupełnić
+                                  birth_date: "" as any,
+                                  email: "",
+                                  phone: "",
+                                  document_type: "ID",
+                                  document_number: "",
+                                } as any);
+                              }}
+                            >
+                              Dodaj kolejnego uczestnika
+                            </Button>
+                            {reachedLimit && seatsAvailable !== null && (
+                              <p className="text-sm text-red-700">
+                                Osiągnięto limit wolnych miejsc na tej wycieczce
+                                ({seatsAvailable}). Nie można dodać kolejnych uczestników.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </CardContent>

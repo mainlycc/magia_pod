@@ -7,8 +7,7 @@ import type { TripTitleSectionProps } from "../types"
 
 export function TripTitleSection({
   tripTitle,
-  reservationNumber,
-  onReservationNumberChange,
+  tripNumber,
   durationText,
   onDurationTextChange,
   tripData,
@@ -27,15 +26,12 @@ export function TripTitleSection({
         {/* Tytuł wyjazdu - duży nagłówek */}
         <h1 className="text-2xl font-bold text-foreground">{tripTitle}</h1>
         
-        {/* Numer rezerwacji */}
+        {/* Numer wycieczki (z kroku 1 / slug) */}
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">Numer rezerwacji:</Label>
-          <Input
-            value={reservationNumber}
-            onChange={(e) => onReservationNumberChange(e.target.value)}
-            placeholder="Wpisz numer rezerwacji..."
-            className="text-sm"
-          />
+          <Label className="text-sm font-semibold">Numer wycieczki:</Label>
+          <div className="text-sm font-mono text-foreground px-3 py-2 rounded-md border bg-background">
+            {tripNumber || "—"}
+          </div>
         </div>
 
         {/* Data wyjazdu, czas trwania, kraj - większy rozmiar czcionki */}

@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 
 type SuccessMessage = {
   id: string | null;
@@ -21,6 +22,7 @@ function SuccessContent() {
   const token = searchParams.get("token");
   const [message, setMessage] = useState<SuccessMessage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [agreementNumberText, setAgreementNumberText] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMessage = async () => {
@@ -33,6 +35,11 @@ function SuccessContent() {
             const data = await bookingRes.json();
             const tripTitle = (data?.booking?.trip?.reservation_success_title || "").trim();
             const tripMessage = (data?.booking?.trip?.reservation_success_message || "").trim();
+            const agreementText = formatAgreementNumber({
+              reservationNumber: data?.booking?.trip?.reservation_number ?? null,
+              agreementSeq: data?.booking?.agreement_seq ?? null,
+            });
+            setAgreementNumberText(agreementText !== "-" ? agreementText : null);
 
             if (tripTitle || tripMessage) {
               setMessage({
@@ -89,7 +96,9 @@ function SuccessContent() {
         <CardHeader>
           <CardTitle className="text-2xl">{displayTitle}</CardTitle>
           <CardDescription>
-            {bookingRef ? `Rezerwacja: ${bookingRef}` : "Potwierdzenie rezerwacji"}
+            {agreementNumberText
+              ? `Numer umowy: ${agreementNumberText.replace(/^#/, "")}`
+              : "Potwierdzenie rezerwacji"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -97,11 +106,11 @@ function SuccessContent() {
             <CheckCircle2 className="h-4 w-4 text-green-600" />
             <AlertTitle className="text-green-800 dark:text-green-200">Sukces!</AlertTitle>
             <AlertDescription className="text-green-700 dark:text-green-300">
-              {bookingRef && (
+              {agreementNumberText ? (
                 <p className="mb-2 text-sm">
-                  Numer rezerwacji: <strong>{bookingRef}</strong>
+                  Numer umowy: <strong>{agreementNumberText.replace(/^#/, "")}</strong>
                 </p>
-              )}
+              ) : null}
               <div 
                 dangerouslySetInnerHTML={{ __html: displayMessage }}
                 className="space-y-2"

@@ -6,6 +6,7 @@ import {
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { clearTripsListCache } from "@/lib/trips-list-cache"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { Laptop, Moon, Sun } from "lucide-react"
@@ -70,6 +71,7 @@ export function NavUser({
 
   const handleLogout = async () => {
     try {
+      clearTripsListCache()
       const supabase = createClient()
       await supabase.auth.signOut()
       router.push("/auth/login")

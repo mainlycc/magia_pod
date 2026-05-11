@@ -141,12 +141,13 @@ export default function FakturyPage() {
             reservationNumber: booking?.trips?.reservation_number ?? null,
             agreementSeq,
           })
+          const agreementNumberUi =
+            agreementNumberText === "—" ? "—" : agreementNumberText.replace(/^#/, "")
 
           return (
             <div className="space-y-1">
-              <div className="text-sm font-medium">{agreementNumberText}</div>
+              <div className="text-sm font-medium">{agreementNumberUi}</div>
               <div className="text-xs text-muted-foreground">
-                {booking?.booking_ref ?? "—"}
                 {booking?.contact_email ? ` • ${booking.contact_email}` : ""}
               </div>
             </div>

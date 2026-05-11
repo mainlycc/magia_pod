@@ -16,6 +16,7 @@ import {
 } from "@/app/admin/trips/[id]/bookings/payment-status"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
 
 type BookingWithTrip = {
   id: string
@@ -33,11 +34,15 @@ type BookingWithTrip = {
     slug: string
     start_date: string | null
     end_date: string | null
+    reservation_number: string | null
   } | null
   agreements?: {
     id: string
     status: "generated" | "sent" | "signed"
+    agreement_seq?: number | null
   }[]
+  agreement_seq?: number | null
+  trip_reservation_number?: string | null
 }
 
 const getBookingStatusLabel = (status: string) => {
@@ -92,8 +97,8 @@ export default function RezerwacjePage() {
           source,
           created_at,
           trip_id,
-          trips:trips!inner(id, title, slug, start_date, end_date),
-          agreements:agreements(id, status)
+          trips:trips!inner(id, title, slug, start_date, end_date, reservation_number),
+          agreements:agreements(id, status, agreement_seq)
         `
         )
         .eq("trip_id", selectedTrip.id)
@@ -122,9 +127,23 @@ export default function RezerwacjePage() {
     () => [
       {
         accessorKey: "booking_ref",
-        header: "Numer rezerwacji",
+        header: "Numer umowy",
         cell: ({ row }) => (
-          <span className="font-medium">{row.original.booking_ref}</span>
+          <span className="font-medium">
+            {formatPublicAgreementNumber({
+              reservationNumber: row.original.trips?.reservation_number ?? null,
+              agreementSeq:
+                row.original.agreements?.find((a: any) => typeof a.agreement_seq === "number" && a.agreement_seq > 0)
+                  ?.agreement_seq ?? null,
+            }) === "-"
+              ? "—"
+              : formatPublicAgreementNumber({
+                  reservationNumber: row.original.trips?.reservation_number ?? null,
+                  agreementSeq:
+                    row.original.agreements?.find((a: any) => typeof a.agreement_seq === "number" && a.agreement_seq > 0)
+                      ?.agreement_seq ?? null,
+                })}
+          </span>
         ),
       },
       {
@@ -218,7 +237,7 @@ export default function RezerwacjePage() {
         columns={columns}
         data={bookings}
         searchable={true}
-        searchPlaceholder="Szukaj po numerze rezerwacji lub emailu..."
+        searchPlaceholder="Szukaj po numerze umowy lub emailu..."
         searchColumn="booking_ref"
         enablePagination={true}
         pageSize={20}

@@ -24,6 +24,7 @@ import {
 } from "@/app/admin/trips/[id]/bookings/payment-status"
 import type { PaymentStatusValue } from "@/app/admin/trips/[id]/bookings/payment-status"
 import { cn } from "@/lib/utils"
+import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,8 @@ type BookingAgreement = {
   sent_at: string | null
   signed_at: string | null
   agreement_seq: number | null
+  updated_at?: string | null
+  generated_at?: string | null
 }
 
 type Participant = {
@@ -167,7 +170,15 @@ function normalizeBookingAgreements(
   raw: BookingAgreement[] | BookingAgreement | null | undefined
 ): BookingAgreement[] {
   if (!raw) return []
-  return Array.isArray(raw) ? raw : [raw]
+  const arr = Array.isArray(raw) ? raw : [raw]
+  // Supabase join nie gwarantuje kolejności; sortujemy malejąco po updated_at / generated_at
+  return arr.sort((a, b) => {
+    const aKey = a.updated_at ?? a.generated_at ?? a.sent_at ?? a.signed_at ?? null
+    const bKey = b.updated_at ?? b.generated_at ?? b.sent_at ?? b.signed_at ?? null
+    const aTs = aKey ? Date.parse(aKey) : 0
+    const bTs = bKey ? Date.parse(bKey) : 0
+    return bTs - aTs
+  })
 }
 
 function getAgreementPresentation(agreements: BookingAgreement[]) {
@@ -190,16 +201,6 @@ function getAgreementPresentation(agreements: BookingAgreement[]) {
     sentAt,
     statusBadgeSource,
   }
-}
-
-function formatAgreementNumber(opts: {
-  reservationNumber?: string | null
-  agreementSeq?: number | null
-}): string {
-  const reservation = (opts.reservationNumber ?? "").trim().replace(/^#+/, "")
-  const seq = opts.agreementSeq ?? null
-  if (!reservation || !seq || seq <= 0) return "-"
-  return `#${reservation.padStart(6, "0")}/${String(seq).padStart(3, "0")}`
 }
 
 export default function UczestnicyPage() {
@@ -281,7 +282,7 @@ export default function UczestnicyPage() {
             paid_amount_cents,
             contact_email,
             contact_phone,
-            agreements:agreements(id, status, pdf_url, sent_at, signed_at, agreement_seq),
+            agreements:agreements(id, status, pdf_url, sent_at, signed_at, agreement_seq, updated_at, generated_at),
             trips:trips(
               id,
               title,
@@ -878,14 +879,13 @@ export default function UczestnicyPage() {
                       getAgreementPresentation(agreementList)
                     const previewPdfUrl = previewAgreement?.pdf_url ?? null
                     const agreementSeq =
-                      statusBadgeSource?.agreement_seq ??
-                      previewAgreement?.agreement_seq ??
                       agreementList.find((a) => a.agreement_seq && a.agreement_seq > 0)?.agreement_seq ??
                       null
                     const agreementNumberText = formatAgreementNumber({
                       reservationNumber: booking?.trips?.reservation_number ?? null,
                       agreementSeq,
                     })
+                    const agreementNumberUi = agreementNumberText === "-" ? "-" : agreementNumberText.replace(/^#/, "")
                     const canManuallyAddPayment = canManuallyAddPaymentForParticipant(participant)
                     const bookingParticipantCount = getBookingParticipantCount(participant)
                     const bookingTotalPaidCents = booking?.paid_amount_cents ?? 0
@@ -927,7 +927,7 @@ export default function UczestnicyPage() {
                             </span>
                           </TableCell>
                           <TableCell className="truncate">
-                            {agreementNumberText}
+                            {agreementNumberUi}
                           </TableCell>
                           <TableCell className="truncate">
                             {booking?.company_name ||
@@ -1045,7 +1045,7 @@ export default function UczestnicyPage() {
                                         <Button
                                           type="button"
                                           size="sm"
-                                          className="h-8 text-xs"
+                                          className="h-8 text-xs relative w-[140px]"
                                           disabled={
                                             generatingAgreementForBookingId === booking.id
                                           }
@@ -1054,11 +1054,18 @@ export default function UczestnicyPage() {
                                             generateAgreement(booking.id)
                                           }}
                                         >
+                                          <span
+                                            className={
+                                              generatingAgreementForBookingId === booking.id
+                                                ? "opacity-0"
+                                                : "opacity-100"
+                                            }
+                                          >
+                                            Wygeneruj umowę
+                                          </span>
                                           {generatingAgreementForBookingId === booking.id ? (
-                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                          ) : (
-                                            "Wygeneruj umowę"
-                                          )}
+                                            <Loader2 className="h-3 w-3 animate-spin absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+                                          ) : null}
                                         </Button>
                                       </div>
                                     ) : (
@@ -1134,7 +1141,7 @@ export default function UczestnicyPage() {
                                             <Button
                                               type="button"
                                               size="sm"
-                                              className="h-8 text-xs"
+                                              className="h-8 text-xs relative w-[140px]"
                                               disabled={
                                                 generatingAgreementForBookingId === booking.id
                                               }
@@ -1143,11 +1150,18 @@ export default function UczestnicyPage() {
                                                 generateAgreement(booking.id)
                                               }}
                                             >
+                                              <span
+                                                className={
+                                                  generatingAgreementForBookingId === booking.id
+                                                    ? "opacity-0"
+                                                    : "opacity-100"
+                                                }
+                                              >
+                                                Wygeneruj umowę
+                                              </span>
                                               {generatingAgreementForBookingId === booking.id ? (
-                                                <Loader2 className="h-3 w-3 animate-spin" />
-                                              ) : (
-                                                "Wygeneruj umowę"
-                                              )}
+                                                <Loader2 className="h-3 w-3 animate-spin absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+                                              ) : null}
                                             </Button>
                                           </div>
                                         )}
@@ -1464,6 +1478,7 @@ export default function UczestnicyPage() {
                                   ) : (
                                     <ParticipantAdditionalServicesEditor
                                       participantId={participant.id}
+                                      bookingId={booking?.id}
                                       tripFullData={tripFullData}
                                       initialSelectedServices={participant.selected_services}
                                       onSaved={loadData}

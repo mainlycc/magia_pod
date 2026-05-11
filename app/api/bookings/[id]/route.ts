@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-status";
@@ -241,6 +242,7 @@ export async function PATCH(
           bookingId: id,
           paymentHistoryId: paymentHistory.id,
           amountCents: addedCents,
+          scheduleAfterResponse: (task) => waitUntil(task),
         })
           .then((result) => {
             if (result.success) {

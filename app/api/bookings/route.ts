@@ -5,8 +5,10 @@ import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
+import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 import { createPaynowPayment } from "@/lib/paynow";
 import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
+import { getTripDocumentationEmailAttachments } from "@/lib/documents/email-attachments";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -531,6 +533,10 @@ export async function POST(req: Request) {
 
     const reservationNumber = trip.reservation_number || null;
     const agreementNumber = await getNextAgreementSeq(adminSupabase, trip.id);
+    const publicAgreementNumber = formatAgreementNumber({
+      reservationNumber,
+      agreementSeq: agreementNumber,
+    }).replace(/^#/, "");
 
     try {
       // W development zawsze używaj origin (localhost), w produkcji baseUrl
@@ -542,6 +548,8 @@ export async function POST(req: Request) {
           booking_ref: booking.booking_ref,
           reservation_number: reservationNumber,
           agreement_number: agreementNumber,
+          trip_id: trip.id,
+          applicant_type: payload.applicant_type,
           trip: tripInfo,
           contact_email: payload.contact_email,
           contact_first_name: payload.contact_first_name || null,
@@ -594,7 +602,7 @@ export async function POST(req: Request) {
     }
 
     // Fallback: jeśli nie udało się wygenerować PDF, dołącz przykładową umowę z /public
-    if (!attachment) {
+    if (!attachment && process.env.NODE_ENV === "development") {
       try {
         const fallbackPath = `${process.cwd()}/public/example-agreement.pdf`;
         const buf = await readFile(fallbackPath);
@@ -610,6 +618,7 @@ export async function POST(req: Request) {
       try {
         let emailHtml: string;
         let textContent: string;
+        let docsAttachmentCount = 0;
         
         // Tworzymy link do strony rezerwacji z access_token
         let bookingLink: string;
@@ -637,7 +646,7 @@ export async function POST(req: Request) {
         }
 
         emailHtml = generateBookingConfirmationEmail(
-          booking.booking_ref,
+          publicAgreementNumber,
           bookingLink,
           trip.title as string,
           trip.start_date,
@@ -646,7 +655,7 @@ export async function POST(req: Request) {
           paymentLink,
         );
         
-        let textContentBase = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nKod rezerwacji: ${booking.booking_ref}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n\nLink do przesłania podpisanej umowy:\n${bookingLink}`;
+        let textContentBase = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nNumer umowy: ${publicAgreementNumber}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n\nLink do przesłania podpisanej umowy:\n${bookingLink}`;
         
         if (paymentLink) {
           textContentBase += `\n\nMożesz również dokonać płatności za rezerwację klikając w poniższy link:\n${paymentLink}`;
@@ -668,14 +677,45 @@ export async function POST(req: Request) {
           }
         }
 
-        const attachments = attachment
-          ? [{ filename: attachment.filename, content: attachment.base64, encoding: "base64" as const }]
-          : undefined;
+        let docs: { filename: string; base64: string }[] = [];
+        try {
+          docs = await getTripDocumentationEmailAttachments({
+            tripId: trip.id,
+            adminClient: adminSupabase,
+          });
+          docsAttachmentCount = docs.length;
+        } catch (docsErr) {
+          console.error("[Bookings POST] Failed to attach trip documentation PDFs:", docsErr);
+          docs = [];
+          docsAttachmentCount = 0;
+        }
+
+        const agreementFilenameForEmail = attachment ? `umowa-${booking.booking_ref}.pdf` : null;
+
+        const attachments =
+          attachment || docs.length > 0
+            ? [
+                ...(attachment
+                  ? [
+                      {
+                        filename: agreementFilenameForEmail || attachment.filename,
+                        content: attachment.base64,
+                        encoding: "base64" as const,
+                      },
+                    ]
+                  : []),
+                ...docs.map((d) => ({
+                  filename: d.filename,
+                  content: d.base64,
+                  encoding: "base64" as const,
+                })),
+              ]
+            : undefined;
 
         const { error: emailError } = await resend.emails.send({
           from: `${senderName} <${emailAddress}>`,
           to: payload.contact_email,
-          subject: `Potwierdzenie rezerwacji ${booking.booking_ref}`,
+          subject: `Potwierdzenie rezerwacji / umowa ${publicAgreementNumber}`,
           html: emailHtml,
           text: textContent,
           attachments,
@@ -684,7 +724,12 @@ export async function POST(req: Request) {
         if (emailError) {
           console.error("Resend error sending booking confirmation:", emailError);
         } else {
-          console.log("✅ Booking confirmation email sent to:", payload.contact_email);
+          console.log("✅ Booking confirmation email sent to:", {
+            to: payload.contact_email,
+            booking_ref: booking.booking_ref,
+            agreementAttached: !!attachment,
+            docsAttached: docsAttachmentCount,
+          });
         }
       } catch (err) {
         console.error("Error sending email:", err);
