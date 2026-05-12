@@ -6,6 +6,7 @@
     "start": "next start",
     "lint": "eslint .",
     "download-fonts": "node scripts/download-fonts.js",
+    "postinstall": "pnpm run download-fonts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

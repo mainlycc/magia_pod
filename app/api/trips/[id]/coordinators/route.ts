@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canManageTrip } from "@/lib/trips/can-manage-trip";
 
-// Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
   const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
@@ -21,8 +21,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   try {
     const { id: tripId } = await context.params;
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
-    if (!isAdmin) {
+    const allowed = await canManageTrip(supabase, tripId);
+    if (!allowed) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 

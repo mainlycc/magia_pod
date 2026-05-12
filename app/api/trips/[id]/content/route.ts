@@ -1,68 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-// Helper do sprawdzenia czy użytkownik to admin
-async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
-  const { data: claims } = await supabase.auth.getClaims();
-  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
-  if (!userId) return false;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  return profile?.role === "admin";
-}
+import { createAdminClient } from "@/lib/supabase/admin";
+import { canManageTrip } from "@/lib/trips/can-manage-trip";
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
-    if (!isAdmin) {
+    const allowed = await canManageTrip(supabase, id);
+    if (!allowed) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    const { data: trip, error } = await supabase
-      .from("trips")
-      .select("program_atrakcje, dodatkowe_swiadczenia, gallery_urls, intro_text, section_poznaj_title, section_poznaj_description, reservation_info_text, reservation_success_title, reservation_success_message, trip_info_text, baggage_text, weather_text, show_trip_info_card, show_baggage_card, show_weather_card, show_seats_left, included_in_price_text, additional_costs_text, additional_service_text, reservation_number, duration_text, additional_fields, public_middle_sections, public_right_sections, public_hidden_middle_sections, public_hidden_right_sections, public_hidden_additional_sections")
-      .eq("id", id)
-      .single();
+    // Po autoryzacji: odczyt przez service role — RLS dla zwykłego usera pozwala tylko na
+    // publiczne+aktywne wycieczki; koordynator musi widzieć także szkice / niepubliczne.
+    const admin = createAdminClient();
+    // `*` — działa nawet gdy część kolumn (np. reservation_success_*) nie została jeszcze dodana migracją 052;
+    // jawna lista kolumn powodowała PGRST204 przy braku którejkolwiek w schemacie.
+    const { data: trip, error } = await admin.from("trips").select("*").eq("id", id).single();
 
     if (error || !trip) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
+    const row = trip as Record<string, unknown>;
+
     return NextResponse.json({
-      program_atrakcje: trip.program_atrakcje || "",
-      dodatkowe_swiadczenia: trip.dodatkowe_swiadczenia || "",
-      gallery_urls: trip.gallery_urls || [],
-      intro_text: trip.intro_text || "",
-      section_poznaj_title: trip.section_poznaj_title || "",
-      section_poznaj_description: trip.section_poznaj_description || "",
-      reservation_info_text: trip.reservation_info_text || "",
-      reservation_success_title: trip.reservation_success_title || "",
-      reservation_success_message: trip.reservation_success_message || "",
-      trip_info_text: trip.trip_info_text || "",
-      baggage_text: trip.baggage_text || "",
-      weather_text: trip.weather_text || "",
-      show_trip_info_card: trip.show_trip_info_card ?? true,
-      show_baggage_card: trip.show_baggage_card ?? true,
-      show_weather_card: trip.show_weather_card ?? true,
-      show_seats_left: trip.show_seats_left ?? false,
-      included_in_price_text: trip.included_in_price_text || "",
-      additional_costs_text: trip.additional_costs_text || "",
-      additional_service_text: trip.additional_service_text || "",
-      reservation_number: trip.reservation_number || "",
-      duration_text: trip.duration_text || "",
-      additional_fields: trip.additional_fields || [],
-      public_middle_sections: trip.public_middle_sections || null,
-      public_right_sections: trip.public_right_sections || null,
-      public_hidden_middle_sections: trip.public_hidden_middle_sections || null,
-      public_hidden_right_sections: trip.public_hidden_right_sections || null,
-      public_hidden_additional_sections: trip.public_hidden_additional_sections || null,
+      program_atrakcje: row.program_atrakcje || "",
+      dodatkowe_swiadczenia: row.dodatkowe_swiadczenia || "",
+      gallery_urls: row.gallery_urls || [],
+      intro_text: row.intro_text || "",
+      section_poznaj_title: row.section_poznaj_title || "",
+      section_poznaj_description: row.section_poznaj_description || "",
+      reservation_info_text: row.reservation_info_text || "",
+      reservation_success_message: row.reservation_success_message || "",
+      trip_info_text: row.trip_info_text || "",
+      baggage_text: row.baggage_text || "",
+      weather_text: row.weather_text || "",
+      show_trip_info_card: row.show_trip_info_card ?? true,
+      show_baggage_card: row.show_baggage_card ?? true,
+      show_weather_card: row.show_weather_card ?? true,
+      show_seats_left: row.show_seats_left ?? false,
+      included_in_price_text: row.included_in_price_text || "",
+      additional_costs_text: row.additional_costs_text || "",
+      additional_service_text: row.additional_service_text || "",
+      reservation_number: row.reservation_number || "",
+      duration_text: row.duration_text || "",
+      additional_fields: row.additional_fields || [],
+      public_middle_sections: row.public_middle_sections || null,
+      public_right_sections: row.public_right_sections || null,
+      public_hidden_middle_sections: row.public_hidden_middle_sections || null,
+      public_hidden_right_sections: row.public_hidden_right_sections || null,
+      public_hidden_additional_sections: row.public_hidden_additional_sections || null,
     });
   } catch {
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
@@ -73,10 +62,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   try {
     const { id } = await context.params;
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
-    if (!isAdmin) {
+    const allowed = await canManageTrip(supabase, id);
+    if (!allowed) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
+
+    const admin = createAdminClient();
 
     const body = await request.json();
     const { 
@@ -87,7 +78,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       section_poznaj_title,
       section_poznaj_description,
       reservation_info_text,
-      reservation_success_title,
       reservation_success_message,
       trip_info_text,
       baggage_text,
@@ -115,7 +105,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       section_poznaj_title?: string;
       section_poznaj_description?: string;
       reservation_info_text?: string;
-      reservation_success_title?: string;
       reservation_success_message?: string;
       trip_info_text?: string;
       baggage_text?: string;
@@ -149,7 +138,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       section_poznaj_title?: string | null;
       section_poznaj_description?: string | null;
       reservation_info_text?: string | null;
-      reservation_success_title?: string | null;
       reservation_success_message?: string | null;
       trip_info_text?: string | null;
       baggage_text?: string | null;
@@ -199,9 +187,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
     if ("reservation_info_text" in body) {
       updateData.reservation_info_text = reservation_info_text ?? null;
-    }
-    if ("reservation_success_title" in body) {
-      updateData.reservation_success_title = reservation_success_title ?? null;
     }
     if ("reservation_success_message" in body) {
       updateData.reservation_success_message = reservation_success_message ?? null;
@@ -270,51 +255,59 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ success: true });
     }
 
-    const { error } = await supabase.from("trips").update(updateData).eq("id", id);
+    // Pętla: przy braku kolumn w DB PostgREST zwraca PGRST204 dla każdej z osobna —
+    // jeden retry nie wystarcza (np. brak reservation_success_message).
+    let payload: Record<string, unknown> = { ...updateData };
+    const skippedColumns: string[] = [];
+    let attempts = 0;
+    const maxSchemaRetries = 48;
 
-    if (error) {
-      console.error("Error updating trip content:", error);
-      
-      // Jeśli błąd dotyczy nieistniejącej kolumny (PGRST204), spróbuj zaktualizować bez niej
-      if (error.code === 'PGRST204' && error.message.includes('column')) {
+    for (;;) {
+      if (++attempts > maxSchemaRetries) {
+        return NextResponse.json(
+          { error: "update_failed", details: "Zbyt wiele brakujących kolumn w schemacie — sprawdź migracje SQL." },
+          { status: 500 },
+        );
+      }
+      if (Object.keys(payload).length === 0) {
+        return NextResponse.json({
+          success: true,
+          warning:
+            skippedColumns.length > 0
+              ? `W bazie brakuje kolumn: ${skippedColumns.join(", ")}. Wykonaj migrację SQL: supabase/052_trips_reservation_success_message.sql (Supabase → SQL Editor). Pozostałe pola zapisano.`
+              : undefined,
+          skipped_columns: skippedColumns.length > 0 ? skippedColumns : undefined,
+        });
+      }
+
+      const { error } = await admin.from("trips").update(payload as never).eq("id", id);
+
+      if (!error) {
+        return NextResponse.json({
+          success: true,
+          ...(skippedColumns.length > 0 && {
+            warning: `Część pól nie została zapisana — brak kolumn w bazie: ${skippedColumns.join(", ")}. Uruchom migrację supabase/052_trips_reservation_success_message.sql.`,
+            skipped_columns: skippedColumns,
+          }),
+        });
+      }
+
+      if (error.code === "PGRST204" && error.message.includes("column")) {
         const columnMatch = error.message.match(/'([^']+)'/);
         const missingColumn = columnMatch?.[1];
-        
-        if (missingColumn && missingColumn in updateData) {
-          console.warn(`Column '${missingColumn}' does not exist in database schema cache. Removing from update.`);
-          const retryUpdateData = { ...updateData };
-          delete retryUpdateData[missingColumn as keyof typeof retryUpdateData];
-          
-          // Spróbuj ponownie bez problematycznej kolumny
-          if (Object.keys(retryUpdateData).length > 0) {
-            const { error: retryError } = await supabase.from("trips").update(retryUpdateData).eq("id", id);
-            if (retryError) {
-              return NextResponse.json({ 
-                error: "update_failed", 
-                details: retryError.message,
-                missing_column: missingColumn,
-                message: `Column '${missingColumn}' does not exist in database. Please run migrations: supabase/013_trips_content_fields.sql and supabase/014_trips_content_texts.sql`
-              }, { status: 500 });
-            }
-            return NextResponse.json({ 
-              success: true, 
-              warning: `Column '${missingColumn}' was skipped because it doesn't exist in the database. Please run migrations to add it.`
-            });
-          } else {
-            return NextResponse.json({ 
-              error: "update_failed", 
-              details: `All columns are missing. Column '${missingColumn}' does not exist.`,
-              missing_column: missingColumn,
-              message: "Please run migrations: supabase/013_trips_content_fields.sql and supabase/014_trips_content_texts.sql"
-            }, { status: 500 });
-          }
+        if (missingColumn && missingColumn in payload) {
+          console.warn(
+            `[PATCH trip content] Kolumna '${missingColumn}' nie istnieje w cache schematu — pomijam.`,
+          );
+          delete payload[missingColumn];
+          skippedColumns.push(missingColumn);
+          continue;
         }
       }
-      
+
+      console.error("Error updating trip content:", error);
       return NextResponse.json({ error: "update_failed", details: error.message }, { status: 500 });
     }
-
-    return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Error in PATCH /api/trips/[id]/content:", err);
     return NextResponse.json({ error: "unexpected", details: err instanceof Error ? err.message : String(err) }, { status: 500 });

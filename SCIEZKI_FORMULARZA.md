@@ -29,6 +29,11 @@ Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden m
 
 ### Warunki wyświetlania
 
+#### Alert informacyjny o rezerwacji (`reservation_info_text`)
+- **Pokazuje się gdy**: pole `reservation_info_text` w wycieczce jest niepuste (tekst ustawiany w panelu: Informacje → Formularz).
+- **Położenie**: **Na początku** zawartości kroku „Kontakt”, **nad** wyborem typu zgłaszającego i polami danych (Alert „Ważna informacja dotycząca rezerwacji”).
+- **Zawartość**: zwykły tekst (jak wpisano w panelu).
+
 #### Wybór typu zgłaszającego
 - **Pokazuje się gdy**: `tripConfig.registration_mode === "both"`
 - **Zawartość**: 
@@ -107,10 +112,6 @@ Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden m
 ## KROK 2: UCZESTNICY
 
 ### Warunki wyświetlania
-
-#### Alert informacyjny (tylko dla firm)
-- **Pokazuje się gdy**: `applicantType === "company" && reservationInfoText !== null`
-- **Zawartość**: Wyświetla tekst z `tripConfig.reservation_info_text`
 
 ### Widok dla FIRMY (`applicantType === "company"`)
 
@@ -400,7 +401,13 @@ Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden m
 - Wysokość: 400px (mobile) / 600px (desktop)
 - Informacja: "Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail."
 
-#### 5. Zgody
+#### 5. Komunikat po złożeniu rezerwacji (podgląd)
+
+**Warunek wyświetlania:** ustawiona w panelu treść komunikatu końcowego (`reservation_success_message` na wycieczce).
+
+**Zawartość:** Podgląd tego samego komunikatu, który klient zobaczy na stronie potwierdzenia rezerwacji oraz (po udanej płatności) na stronie sukcesu płatności — wyświetlany **na końcu** treści kroku „Zgody i podsumowanie”, nad przyciskami „Rezerwuj” / „ZAREZERWUJ”. Tytuł HTML z treścią jak na stronie `/booking/[token]`.
+
+#### 6. Zgody
 
 **Sekcja "Zapoznałem się i akceptuję":**
 
@@ -474,29 +481,32 @@ Formularz rezerwacji składa się z **4 głównych kroków**, z których jeden m
    - Dla firm: automatycznie ustawia liczbę uczestników
    - Dla osób fizycznych: limit dodawania uczestników
 
-6. **`tripConfig.reservation_info_text`**
-   - Tekst informacyjny wyświetlany dla firm w kroku "Uczestnicy"
+6. **`trip.reservation_info_text`** (ładowane przy starcie formularza)
+   - Tekst informacyjny wyświetlany **w kroku „Kontakt”** na górze (Alert), dla wszystkich typów zgłoszeń, gdy tekst jest niepusty
 
-7. **`tripConfig.company_participants_info`**
+7. **`trip.reservation_success_message`**
+   - Podgląd komunikatu końcowego w **kroku „Zgody i podsumowanie”**; po wysłaniu ten sam komunikat trafia na stronę rezerwacji i sukces płatności
+
+8. **`tripConfig.company_participants_info`**
    - Tekst informacyjny o przekazywaniu danych uczestników dla firm
 
-8. **`invoice.use_other_data`**
+9. **`invoice.use_other_data`**
    - `true` → Pokazuje sekcję danych do faktury
    - `false` → Ukrywa sekcję danych do faktury
 
-9. **`invoice.type`**
+10. **`invoice.type`**
    - `"individual"` → Pokazuje pola dla osoby fizycznej
    - `"company"` → Pokazuje pola dla firmy
 
-10. **`fields.length`** (liczba uczestników)
+11. **`fields.length`** (liczba uczestników)
     - Dla osoby fizycznej: określa, czy można wybierać usługi dodatkowe
     - Określa, czy można dodać kolejnego uczestnika (limit: `seats_total`)
 
-11. **`tripConfig.diets`**, **`tripConfig.extra_insurances`**, **`tripConfig.additional_attractions`**
+12. **`tripConfig.diets`**, **`tripConfig.extra_insurances`**, **`tripConfig.additional_attractions`**
     - Filtrowane przez `enabled !== false`
     - Określają, które usługi są dostępne
 
-12. **`tripPrice`**
+13. **`tripPrice`**
     - `null` → Ukrywa sekcję ceny
     - `number` → Pokazuje sekcję ceny
 

@@ -65,10 +65,12 @@ export default function TripDashboardPage() {
     const loadCoordinators = async () => {
       try {
         const res = await fetch(`/api/trips/${selectedTrip.id}/coordinators`)
-        if (res.ok) {
-          const data = await res.json()
-          setCoordinators(data || [])
+        const ct = res.headers.get("content-type") ?? ""
+        if (!res.ok || !ct.includes("application/json")) {
+          return
         }
+        const data = await res.json()
+        setCoordinators(Array.isArray(data) ? data : [])
       } catch (err) {
         console.error("Failed to load coordinators:", err)
       }

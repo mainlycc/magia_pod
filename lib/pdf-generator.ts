@@ -198,8 +198,12 @@ function parseHtmlToPdf(html: string, doc: jsPDF, fontFamily: string): void {
 }
 
 export async function generatePdfFromHtml(html: string, filename: string = "umowa.pdf"): Promise<{ base64: string; filename: string }> {
+  const isDev = process.env.NODE_ENV === "development";
+  const allowJspdfFallback = isDev; // w prod/Vercel nie wolno generować "uproszczonego" PDF, bo psuje układ
+  const forceNoChromium = process.env.PDF_FORCE_NO_CHROMIUM === "1"; // do testów/diagnozy
+
   // Spróbuj użyć Playwright jeśli jest dostępny (tylko w dev)
-  if (process.env.NODE_ENV === "development") {
+  if (isDev && !forceNoChromium) {
     try {
       // Dynamiczny import z użyciem eval aby uniknąć sprawdzania przez TypeScript podczas kompilacji
       // Najpierw spróbuj załadować pakiet "playwright", a jeśli go nie ma,
@@ -230,15 +234,20 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
         });
         await browser.close();
         const base64 = Buffer.from(pdfBuffer).toString("base64");
+        console.log("[generatePdfFromHtml] Render: playwright/chromium");
         return { base64, filename };
       }
     } catch (playwrightError) {
-      console.warn("Playwright not available, using jsPDF:", playwrightError instanceof Error ? playwrightError.message : String(playwrightError));
+      console.warn(
+        "[generatePdfFromHtml] Playwright not available:",
+        playwrightError instanceof Error ? playwrightError.message : String(playwrightError),
+      );
     }
   }
 
   // Spróbuj użyć puppeteer-core z @sparticuz/chromium (dla produkcji/Vercel)
-  try {
+  if (!forceNoChromium) {
+    try {
     // Dynamiczny import z użyciem eval aby uniknąć sprawdzania przez TypeScript podczas kompilacji
     // eslint-disable-next-line no-eval
     const puppeteerModule = await eval('import("puppeteer-core")').catch(() => null);
@@ -272,13 +281,27 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
       await browser.close();
       
       const base64 = Buffer.from(pdfBuffer).toString("base64");
+      console.log("[generatePdfFromHtml] Render: puppeteer/@sparticuz/chromium");
       return { base64, filename };
     }
   } catch (puppeteerError) {
-    console.warn("Puppeteer not available, using jsPDF:", puppeteerError instanceof Error ? puppeteerError.message : String(puppeteerError));
+    console.warn(
+      "[generatePdfFromHtml] Puppeteer/Chromium not available:",
+      puppeteerError instanceof Error ? puppeteerError.message : String(puppeteerError),
+    );
+  }
   }
 
-  // Fallback: użyj jsPDF z parsowaniem HTML
+  if (!allowJspdfFallback) {
+    // W produkcji wolimy jawny błąd niż wysłanie klientowi źle sformatowanego PDF.
+    throw new Error(
+      "Brak Chromium do renderowania HTML→PDF. Na produkcji fallback jsPDF jest wyłączony (chroni przed zepsutym formatowaniem).",
+    );
+  }
+
+  console.warn("[generatePdfFromHtml] Render: jsPDF fallback (dev only)");
+
+  // Fallback (dev only): użyj jsPDF z parsowaniem HTML
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -298,11 +321,11 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
 
   // Parsuj i renderuj HTML
   try {
-    console.log("Parsing HTML to PDF, HTML length:", html.length);
+    console.log("[generatePdfFromHtml] Parsing HTML to PDF (jsPDF), HTML length:", html.length);
     parseHtmlToPdf(html, doc, pdfFont);
-    console.log("HTML parsed successfully");
+    console.log("[generatePdfFromHtml] HTML parsed successfully (jsPDF)");
   } catch (parseError) {
-    console.warn("HTML parsing failed, using simple text conversion:", parseError);
+    console.warn("[generatePdfFromHtml] HTML parsing failed (jsPDF), using simple text conversion:", parseError);
     // Fallback do prostego tekstu
     const textContent = html
       .replace(/<[^>]*>/g, " ")
@@ -320,10 +343,10 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
     });
   }
 
-  console.log("Generating PDF buffer...");
+  console.log("[generatePdfFromHtml] Generating PDF buffer (jsPDF)...");
   const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
   const base64 = pdfBuffer.toString("base64");
-  console.log("PDF generated successfully, size:", base64.length);
+  console.log("[generatePdfFromHtml] PDF generated successfully (jsPDF), size:", base64.length);
 
   return { base64, filename };
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -11,7 +11,7 @@ import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number"
 
 type SuccessMessage = {
   id: string | null;
-  title: string;
+  title?: string;
   message: string;
   is_active: boolean;
 };
@@ -33,7 +33,6 @@ function SuccessContent() {
           const bookingRes = await fetch(`/api/bookings/by-token/${bookingToken}`);
           if (bookingRes.ok) {
             const data = await bookingRes.json();
-            const tripTitle = (data?.booking?.trip?.reservation_success_title || "").trim();
             const tripMessage = (data?.booking?.trip?.reservation_success_message || "").trim();
             const agreementText = formatAgreementNumber({
               reservationNumber: data?.booking?.trip?.reservation_number ?? null,
@@ -41,10 +40,9 @@ function SuccessContent() {
             });
             setAgreementNumberText(agreementText !== "-" ? agreementText : null);
 
-            if (tripTitle || tripMessage) {
+            if (tripMessage) {
               setMessage({
                 id: null,
-                title: tripTitle || "Rezerwacja i płatność zakończone pomyślnie!",
                 message: tripMessage,
                 is_active: true,
               });
@@ -84,37 +82,23 @@ function SuccessContent() {
     fetchMessage();
   }, []);
 
-  const defaultTitle = "Rezerwacja i płatność zakończone pomyślnie!";
   const defaultMessage = '<p class="mb-2">Dziękujemy za rezerwację i płatność! Twoja rezerwacja została potwierdzona, a płatność została zaksięgowana.</p><p class="mt-2 text-sm">Wszystkie dokumenty (umowa, potwierdzenie płatności) zostały wysłane na Twój adres e-mail.</p><p class="mt-2 text-sm">Nie musisz ręcznie wgrywać podpisanej umowy - wszystko zostało automatycznie przetworzone.</p>';
 
-  const displayTitle = message?.title || defaultTitle;
   const displayMessage = message?.message || defaultMessage;
 
   return (
     <div className="container mx-auto max-w-2xl space-y-6 p-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">{displayTitle}</CardTitle>
-          <CardDescription>
-            {agreementNumberText
-              ? `Numer umowy: ${agreementNumberText.replace(/^#/, "")}`
-              : "Potwierdzenie rezerwacji"}
-          </CardDescription>
-        </CardHeader>
         <CardContent className="space-y-4">
           <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertTitle className="text-green-800 dark:text-green-200">Sukces!</AlertTitle>
-            <AlertDescription className="text-green-700 dark:text-green-300">
+            <AlertDescription className="text-green-700 dark:text-green-300 whitespace-pre-wrap">
               {agreementNumberText ? (
                 <p className="mb-2 text-sm">
                   Numer umowy: <strong>{agreementNumberText.replace(/^#/, "")}</strong>
                 </p>
               ) : null}
-              <div 
-                dangerouslySetInnerHTML={{ __html: displayMessage }}
-                className="space-y-2"
-              />
+              {displayMessage}
             </AlertDescription>
           </Alert>
 
@@ -143,9 +127,7 @@ export default function PaymentSuccessPage() {
     <Suspense fallback={
       <div className="container mx-auto max-w-2xl space-y-6 p-6">
         <Card>
-          <CardHeader>
-            <CardTitle>Ładowanie...</CardTitle>
-          </CardHeader>
+          <CardContent className="p-6">Ładowanie...</CardContent>
         </Card>
       </div>
     }>

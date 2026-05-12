@@ -61,17 +61,31 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/api/pdf") ||
     path.startsWith("/api/email") ||
     path.startsWith("/api/agreements") ||
+    // Publiczny formularz rezerwacji: szablony i dokumenty bez sesji
+    path.startsWith("/api/trips/by-slug/") ||
+    path.startsWith("/api/documents/trip/") ||
+    path.startsWith("/api/documents/file/") ||
     // webhook Paynow musi być dostępny bez logowania
     path.startsWith("/api/payments/paynow/webhook") ||
     path.startsWith("/auth") ||
     path.startsWith("/login");
 
   if (!user && !isPublicPath) {
-    // no user, potentially respond by redirecting the user to the login page
+    // Żądania fetch() do API nie mogą dostawać przekierowania na HTML logowania (status 200 + <!DOCTYPE…),
+    // bo klient wywołuje res.json() i się wywala — zwracamy JSON 401.
+    if (path.startsWith("/api/")) {
+      const unauthorized = NextResponse.json(
+        { error: "unauthorized" },
+        { status: 401 },
+      );
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        unauthorized.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return unauthorized;
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     const redirectResponse = NextResponse.redirect(url);
-    // Copy cookies from supabaseResponse to maintain session
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
     });

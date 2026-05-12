@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
+import { canManageTrip } from "@/lib/trips/can-manage-trip";
 
-// Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
   const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
@@ -29,23 +29,27 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     console.log("User:", user?.id, "Auth error:", authError);
     
-    // Sprawdź czy użytkownik jest adminem - jeśli tak, może zobaczyć wszystkie wycieczki
     const isAdmin = await checkAdmin(supabase);
-    console.log("Is admin:", isAdmin);
-    
-    let query = supabase
-      .from("trips")
-      .select(
-        "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule",
-      )
-      .eq("id", id);
-    
-    // Jeśli nie jest adminem, filtruj tylko aktywne wycieczki (zgodnie z RLS)
-    if (!isAdmin) {
-      query = query.eq("is_active", true);
+    const canManage = await canManageTrip(supabase, id);
+    console.log("Is admin:", isAdmin, "canManage:", canManage);
+
+    const selectCols =
+      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
+
+    let data: Record<string, unknown> | null = null;
+    let error: { message: string } | null = null;
+
+    if (isAdmin || canManage) {
+      const admin = createAdminClient();
+      const res = await admin.from("trips").select(selectCols).eq("id", id).single();
+      data = res.data;
+      error = res.error;
+    } else {
+      let query = supabase.from("trips").select(selectCols).eq("id", id).eq("is_active", true);
+      const res = await query.single();
+      data = res.data;
+      error = res.error;
     }
-    
-    const { data, error } = await query.single();
     
     console.log("Query result - data:", data, "error:", error);
     
@@ -156,14 +160,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payload.payment_schedule = body.payment_schedule ?? null;
 
     const supabase = await createClient();
-    
-    // Sprawdź czy użytkownik jest adminem
-    const isAdmin = await checkAdmin(supabase);
-    if (!isAdmin) {
+
+    const allowed = await canManageTrip(supabase, id);
+    if (!allowed) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    const { error } = await supabase.from("trips").update(payload).eq("id", id);
+    const admin = createAdminClient();
+    const { error } = await admin.from("trips").update(payload).eq("id", id);
     if (error) {
       console.error("Error updating trip:", error);
       return NextResponse.json({ error: "update_failed", details: error.message }, { status: 500 });

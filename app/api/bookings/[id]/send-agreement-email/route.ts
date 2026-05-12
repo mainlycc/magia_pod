@@ -131,6 +131,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const arrayBuffer = await fileBlob.arrayBuffer();
+    // Bezpiecznik: jeśli PDF jest podejrzanie mały, to zwykle oznacza błąd generowania (np. fallback/HTML/empty).
+    // Lepiej przerwać wysyłkę niż wysłać klientowi "rozjechany" dokument.
+    if (arrayBuffer.byteLength < 5_000) {
+      console.error("send-agreement-email: suspiciously small PDF", {
+        pdfUrl,
+        bytes: arrayBuffer.byteLength,
+      });
+      return NextResponse.json(
+        { error: "Plik PDF wygląda na uszkodzony (zbyt mały). Wygeneruj umowę ponownie i spróbuj jeszcze raz." },
+        { status: 500 },
+      );
+    }
     const base64 = Buffer.from(arrayBuffer).toString("base64");
 
     const baseUrl = resolvePublicBaseUrl(request);

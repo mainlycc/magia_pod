@@ -10,7 +10,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { TripCreationProgress } from "@/components/trip-creation-progress"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-import { TripContentEditor } from "@/components/trip-content-editor"
 import { BasicSettingsSection } from "@/components/trip-form/sections/basic-settings-section"
 import { CompanyParticipantsSection } from "@/components/trip-form/sections/company-participants-section"
 import { AttractionsSection } from "@/components/trip-form/sections/attractions-section"
@@ -58,7 +57,6 @@ function TripFormContent() {
   const [extraInsurances, setExtraInsurances] = useState<ExtraInsurance[]>([])
   const [expandedInsurances, setExpandedInsurances] = useState<Set<string>>(new Set())
   const [reservationInfoText, setReservationInfoText] = useState<string>("")
-  const [reservationSuccessTitle, setReservationSuccessTitle] = useState<string>("")
   const [reservationSuccessMessage, setReservationSuccessMessage] = useState<string>("")
 
   // Best-effort backfill: zsynchronizuj Typ 2/3 z modułu Ubezpieczenia do
@@ -211,11 +209,9 @@ function TripFormContent() {
       // Wczytaj tekst informacyjny o rezerwacji z treści wycieczki (content)
       if (tripContentData) {
         setReservationInfoText(tripContentData.reservation_info_text || "")
-        setReservationSuccessTitle(tripContentData.reservation_success_title || "")
         setReservationSuccessMessage(tripContentData.reservation_success_message || "")
       } else {
         setReservationInfoText("")
-        setReservationSuccessTitle("")
         setReservationSuccessMessage("")
       }
 
@@ -337,7 +333,6 @@ function TripFormContent() {
             duration_text: step2Data.durationText || "",
             additional_fields: step2Data.additionalFieldSections || [],
             reservation_info_text: reservationInfoText || "",
-            reservation_success_title: reservationSuccessTitle || "",
             reservation_success_message: reservationSuccessMessage || "",
           }),
         })
@@ -439,26 +434,35 @@ function TripFormContent() {
         return
       }
 
-      // Zapisz tekst informacyjny o rezerwacji w treści wycieczki
-      try {
-        const contentRes = await fetch(`/api/trips/${selectedTrip.id}/content`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reservation_info_text: reservationInfoText || "",
-            reservation_success_title: reservationSuccessTitle || "",
-            reservation_success_message: reservationSuccessMessage || "",
-          }),
-        })
+      const contentRes = await fetch(`/api/trips/${selectedTrip.id}/content`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservation_info_text: reservationInfoText || "",
+          reservation_success_message: reservationSuccessMessage || "",
+        }),
+      })
 
-        if (!contentRes.ok) {
-          toast.error("Nie udało się zapisać tekstu informacyjnego o rezerwacji")
+      if (!contentRes.ok) {
+        let detail = ""
+        try {
+          const errBody = (await contentRes.json()) as {
+            error?: string
+            details?: string
+            message?: string
+          }
+          detail = errBody?.details || errBody?.message || errBody?.error || ""
+        } catch {
+          /* odpowiedź nie-JSON */
         }
-      } catch (err) {
-        toast.error("Nie udało się zapisać tekstu informacyjnego o rezerwacji")
+        toast.error(
+          detail
+            ? `Nie udało się zapisać komunikatów: ${detail}`
+            : `Nie udało się zapisać komunikatów (HTTP ${contentRes.status}).`,
+        )
+        return
       }
 
-      // Invaliduj cache, żeby dane zostały przeładowane
       invalidateTripCache()
       toast.success("Ustawienia formularza zostały zapisane")
     } catch (err) {
@@ -533,24 +537,12 @@ function TripFormContent() {
         </CardHeader>
         <div className="px-4 pb-4 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="reservation-success-title" className="text-xs font-semibold">
-              Tytuł (opcjonalnie)
-            </Label>
-            <Textarea
-              id="reservation-success-title"
-              value={reservationSuccessTitle}
-              onChange={(e) => setReservationSuccessTitle(e.target.value)}
-              placeholder='Np. "Dziękujemy! Rezerwacja przyjęta"'
-              className="min-h-[40px] text-xs"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label className="text-xs font-semibold">Treść komunikatu</Label>
-            <TripContentEditor
-              content={reservationSuccessMessage}
-              onChange={setReservationSuccessMessage}
-              label="Treść komunikatu po rezerwacji/płatności"
+            <Textarea
+              value={reservationSuccessMessage}
+              onChange={(e) => setReservationSuccessMessage(e.target.value)}
+              placeholder="Wpisz treść komunikatu (czysty tekst)."
+              className="min-h-[120px] text-xs"
             />
             <p className="text-xs text-muted-foreground">
               Ten komunikat będzie wyświetlany na końcu: po utworzeniu rezerwacji (na stronie rezerwacji) oraz po udanej płatności (na stronie sukcesu).

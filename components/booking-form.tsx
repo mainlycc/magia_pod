@@ -950,6 +950,7 @@ export function BookingForm({ slug }: BookingFormProps) {
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
   const [reservationInfoText, setReservationInfoText] = useState<string | null>(null);
+  const [reservationSuccessMessage, setReservationSuccessMessage] = useState<string | null>(null);
   const [applicantType, setApplicantType] = useState<"individual" | "company">("individual");
   const [tripPrice, setTripPrice] = useState<number | null>(null);
   const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState<number>(30);
@@ -981,7 +982,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text,reservation_success_message")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
           .maybeSingle<any>();
 
@@ -1021,6 +1022,9 @@ export function BookingForm({ slug }: BookingFormProps) {
           });
 
           setReservationInfoText(trip.reservation_info_text ?? null);
+          setReservationSuccessMessage(
+            typeof trip.reservation_success_message === "string" ? trip.reservation_success_message : null,
+          );
 
           if (trip.registration_mode === "company") {
             setApplicantType("company");
@@ -1131,7 +1135,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                   section_poznaj_title: "",
                   section_poznaj_description: "",
                   reservation_info_text: "",
-                  reservation_success_title: "",
                   reservation_success_message: "",
                   trip_info_text: "",
                   baggage_text: "",
@@ -1998,6 +2001,13 @@ export function BookingForm({ slug }: BookingFormProps) {
                   <CardTitle>Dane Osoby Zgłaszającej</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {reservationInfoText?.trim() ? (
+                    <Alert>
+                      <AlertTitle>Ważna informacja dotycząca rezerwacji</AlertTitle>
+                      <AlertDescription>{reservationInfoText}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
                   {tripConfig?.registration_mode === "both" && (
                     <div className="space-y-2">
                       <h3 className="font-medium text-sm">Typ osoby Zgłaszającej</h3>
@@ -2286,13 +2296,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                         />
                       </div>
                     </div>
-                  )}
-
-                  {reservationInfoText && (
-                    <Alert>
-                      <AlertTitle>Ważna informacja dotycząca rezerwacji</AlertTitle>
-                      <AlertDescription>{reservationInfoText}</AlertDescription>
-                    </Alert>
                   )}
 
                   <Separator />
@@ -4379,6 +4382,8 @@ export function BookingForm({ slug }: BookingFormProps) {
                           template={agreementTemplate} 
                           tripFullData={tripFullData}
                           tripContentData={tripContentData}
+                          requiredContactFields={tripConfig?.form_required_contact_fields ?? null}
+                          requirePeselFallback={tripConfig?.require_pesel ?? null}
                           formData={{
                             contact: {
                               first_name: form.watch("contact.first_name"),
@@ -4397,6 +4402,25 @@ export function BookingForm({ slug }: BookingFormProps) {
                       );
                     })()}
                   </section>
+
+                  {reservationSuccessMessage?.trim() && (
+                    <section className="space-y-3">
+                      <h3 className="font-medium text-sm text-muted-foreground">
+                        Komunikat po złożeniu rezerwacji
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Po wysłaniu zgłoszenia zobaczysz ten komunikat na stronie potwierdzenia (oraz po udanej
+                        płatności, jeśli z niej korzystasz).
+                      </p>
+                      <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                        {reservationSuccessMessage?.trim() ? (
+                          <AlertDescription className="text-green-700 dark:text-green-300 whitespace-pre-wrap">
+                            {reservationSuccessMessage}
+                          </AlertDescription>
+                        ) : null}
+                      </Alert>
+                    </section>
+                  )}
                 </CardContent>
                 <CardFooter className="flex flex-col gap-3">
                   <div className="flex justify-between gap-3 w-full">

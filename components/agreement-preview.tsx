@@ -13,6 +13,13 @@ interface AgreementPreviewProps {
   template: AgreementTemplate;
   tripFullData: TripFullData | null;
   tripContentData: TripContentData | null;
+  requiredContactFields?: {
+    pesel?: boolean;
+    phone?: boolean;
+    email?: boolean;
+    address?: boolean;
+  } | null;
+  requirePeselFallback?: boolean | null;
   formData?: {
     contact?: {
       first_name?: string;
@@ -50,7 +57,14 @@ interface AgreementPreviewProps {
   } | null;
 }
 
-export function AgreementPreview({ template, tripFullData, tripContentData, formData }: AgreementPreviewProps) {
+export function AgreementPreview({
+  template,
+  tripFullData,
+  tripContentData,
+  formData,
+  requiredContactFields,
+  requirePeselFallback,
+}: AgreementPreviewProps) {
   const html = templateToHtml(template);
   let htmlWithData = replaceTripPlaceholders(html, tripFullData, tripContentData);
   
@@ -60,7 +74,12 @@ export function AgreementPreview({ template, tripFullData, tripContentData, form
       htmlWithData,
       formData,
       tripFullData?.price_cents || null,
-      tripFullData?.start_date || null
+      tripFullData?.start_date || null,
+      null,
+      {
+        requiredContactFields,
+        requirePeselFallback,
+      },
     );
   }
 

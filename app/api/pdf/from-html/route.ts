@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generatePdfFromHtml } from "@/lib/pdf-generator";
+import { embedNotoSansIntoHtml } from "@/lib/pdf/embed-noto-fonts-into-html";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -16,7 +17,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "HTML is required" }, { status: 400 });
     }
 
-    const result = await generatePdfFromHtml(html, filename);
+    const withFonts = embedNotoSansIntoHtml(html);
+    console.log("[/api/pdf/from-html] embedNotoSansIntoHtml:", withFonts.embedded ? "ok" : "missing");
+    const result = await generatePdfFromHtml(withFonts.html, filename);
     return NextResponse.json(result);
   } catch (error) {
     console.error("PDF generation error:", error);

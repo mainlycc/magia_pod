@@ -8,6 +8,7 @@ import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agree
 import type { TripContentData, TripFullData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
 import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import { embedNotoSansIntoHtml } from "@/lib/pdf/embed-noto-fonts-into-html";
 
 // Konfiguracja runtime dla Vercel - upewniamy się, że funkcja działa w środowisku serverless
 export const runtime = "nodejs";
@@ -214,7 +215,6 @@ function buildTripContentDataFromTripRow(tripRow: any, overrides?: { reservation
     section_poznaj_title: "",
     section_poznaj_description: "",
     reservation_info_text: "",
-    reservation_success_title: tripRow?.reservation_success_title || "",
     reservation_success_message: tripRow?.reservation_success_message || "",
     trip_info_text: "",
     baggage_text: tripRow?.baggage_text || "",
@@ -891,10 +891,26 @@ export async function POST(req: Request) {
         tripFullData.price_cents ?? null,
         tripFullData.start_date ?? null,
         addonTotalCents,
+        {
+          requiredContactFields:
+            tripRow?.form_required_contact_fields &&
+            typeof tripRow.form_required_contact_fields === "object" &&
+            !Array.isArray(tripRow.form_required_contact_fields)
+              ? (tripRow.form_required_contact_fields as {
+                  pesel?: boolean;
+                  phone?: boolean;
+                  email?: boolean;
+                  address?: boolean;
+                })
+              : null,
+          requirePeselFallback: typeof tripRow?.require_pesel === "boolean" ? tripRow.require_pesel : null,
+        },
       );
       const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);
+      const withFonts = embedNotoSansIntoHtml(fullHtml);
+      console.log("[/api/pdf] embedNotoSansIntoHtml:", withFonts.embedded ? "ok" : "missing");
       const pdfResult = await generatePdfFromHtml(
-        fullHtml,
+        withFonts.html,
         generateAgreementFilename(body.reservation_number, body.agreement_number, body.booking_ref),
       );
       buf = Buffer.from(pdfResult.base64, "base64");

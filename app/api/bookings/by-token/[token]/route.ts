@@ -48,7 +48,7 @@ export async function GET(
           agreement_pdf_url,
           created_at,
           trip_id,
-          trips:trips(id, title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_title, reservation_success_message)
+          trips:trips(id, title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_message)
         `)
         .eq("booking_ref", token)
         .single();
@@ -77,7 +77,6 @@ export async function GET(
           trip_price_cents: trip?.price_cents || null,
           trip_reservation_number: trip?.reservation_number ?? null,
           trip_company_participants_info: trip?.company_participants_info ?? null,
-          trip_reservation_success_title: trip?.reservation_success_title ?? null,
           trip_reservation_success_message: trip?.reservation_success_message ?? null,
         }];
       }
@@ -103,7 +102,7 @@ export async function GET(
       const { data: tripRow, error: tripErr } = await adminSupabase
         .from("trips")
         .select(
-          "title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_title, reservation_success_message",
+          "title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_message",
         )
         .eq("id", booking.trip_id)
         .single();
@@ -118,8 +117,6 @@ export async function GET(
         booking.trip_reservation_number = booking.trip_reservation_number ?? tripRow.reservation_number ?? null;
         booking.trip_company_participants_info =
           booking.trip_company_participants_info ?? tripRow.company_participants_info ?? null;
-        booking.trip_reservation_success_title =
-          booking.trip_reservation_success_title ?? tripRow.reservation_success_title ?? null;
         booking.trip_reservation_success_message =
           booking.trip_reservation_success_message ?? tripRow.reservation_success_message ?? null;
       }
@@ -146,29 +143,24 @@ export async function GET(
     if (booking.trip_company_participants_info === undefined && booking.trip_id) {
       const { data: tripRow } = await adminSupabase
         .from("trips")
-        .select("company_participants_info, reservation_success_title, reservation_success_message")
+        .select("company_participants_info, reservation_success_message")
         .eq("id", booking.trip_id)
         .single();
       tripCompanyParticipantsInfo = tripRow?.company_participants_info ?? null;
     }
 
-    let tripReservationSuccessTitle: string | null =
-      typeof booking.trip_reservation_success_title === "string"
-        ? booking.trip_reservation_success_title
-        : null;
     let tripReservationSuccessMessage: string | null =
       typeof booking.trip_reservation_success_message === "string"
         ? booking.trip_reservation_success_message
         : null;
 
-    if ((booking.trip_reservation_success_title === undefined || booking.trip_reservation_success_message === undefined) && booking.trip_id) {
+    if (booking.trip_reservation_success_message === undefined && booking.trip_id) {
       const { data: tripRow } = await adminSupabase
         .from("trips")
-        .select("reservation_success_title, reservation_success_message")
+        .select("reservation_success_message")
         .eq("id", booking.trip_id)
         .single();
 
-      tripReservationSuccessTitle = tripRow?.reservation_success_title ?? tripReservationSuccessTitle;
       tripReservationSuccessMessage = tripRow?.reservation_success_message ?? tripReservationSuccessMessage;
     }
 
@@ -222,7 +214,6 @@ export async function GET(
           price_cents: booking.trip_price_cents,
           reservation_number: tripReservationNumber,
           company_participants_info: tripCompanyParticipantsInfo,
-          reservation_success_title: tripReservationSuccessTitle,
           reservation_success_message: tripReservationSuccessMessage,
         },
         participants: participants || [],

@@ -40,7 +40,6 @@ type BookingData = {
       price_cents: number | null;
       reservation_number: string | null;
       company_participants_info?: string | null;
-      reservation_success_title?: string | null;
       reservation_success_message?: string | null;
     };
     participants: Array<{
@@ -205,20 +204,10 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
         </div>
       </Card>
 
-      {shouldShowSuccessMessage && (booking.trip.reservation_success_title?.trim() || booking.trip.reservation_success_message?.trim()) && (
+      {shouldShowSuccessMessage && booking.trip.reservation_success_message?.trim() && (
         <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-          <AlertTitle className="text-green-800 dark:text-green-200">
-            {booking.trip.reservation_success_title?.trim()
-              ? booking.trip.reservation_success_title
-              : "Dziękujemy! Rezerwacja przyjęta."}
-          </AlertTitle>
-          <AlertDescription className="text-green-700 dark:text-green-300">
-            {booking.trip.reservation_success_message?.trim() ? (
-              <div
-                dangerouslySetInnerHTML={{ __html: booking.trip.reservation_success_message }}
-                className="space-y-2"
-              />
-            ) : null}
+          <AlertDescription className="text-green-700 dark:text-green-300 whitespace-pre-wrap">
+            {booking.trip.reservation_success_message}
           </AlertDescription>
         </Alert>
       )}

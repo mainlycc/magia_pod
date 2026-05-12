@@ -3,6 +3,13 @@
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 import { formatPostalAddressLine } from "./format-postal-address";
 
+type RequiredContactFields = {
+  pesel?: boolean;
+  phone?: boolean;
+  email?: boolean;
+  address?: boolean;
+};
+
 function formatDate(dateString: string | null): string {
   if (!dateString) return "-";
   try {
@@ -164,6 +171,59 @@ function hasParticipantNameEntered(p: { first_name?: string; last_name?: string 
   return first.length > 0 && last.length > 0;
 }
 
+function removeTableRowsContainingPlaceholder(html: string, placeholderName: string): string {
+  // Usuwamy tylko całe wiersze tabeli, żeby nie rozjeżdżać reszty HTML.
+  // Działa dla szablonów trzymanych jako HTML string (jak `DEFAULT_AGREEMENT_TEMPLATE_HTML`)
+  // oraz dla szablonów z edytora umowy.
+  const escaped = placeholderName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Ważne: dopasowanie musi zostać w obrębie *jednego* <tr> — inaczej regex może "zjeść"
+  // wiele wierszy na raz (od pierwszego <tr> do </tr> po placeholderze).
+  const re = new RegExp(
+    `<tr\\b[^>]*>(?:(?!<\\/tr>)[\\s\\S])*?\\{\\{${escaped}\\}\\}(?:(?!<\\/tr>)[\\s\\S])*?<\\/tr>`,
+    "gi",
+  );
+  return html.replace(re, "");
+}
+
+function applyContactFieldVisibilityToAgreementHtml(
+  html: string,
+  options?: {
+    requiredContactFields?: RequiredContactFields | null;
+    requirePeselFallback?: boolean | null;
+  },
+): string {
+  const required = options?.requiredContactFields ?? undefined;
+
+  // Uwaga: w formularzu email/phone są domyślnie zbierane, o ile nie ustawiono `false`.
+  const collectEmail = required?.email !== false;
+  const collectPhone = required?.phone !== false;
+  // Adres ma sens tylko gdy jest explicit true
+  const collectAddress = Boolean(required?.address);
+  // PESEL: zgodnie z formularzem: form_required_contact_fields?.pesel ?? require_pesel
+  const collectPesel = Boolean(required?.pesel ?? options?.requirePeselFallback ?? false);
+
+  let result = html;
+
+  if (!collectPesel) {
+    result = removeTableRowsContainingPlaceholder(result, "contact_pesel");
+  }
+  if (!collectPhone) {
+    result = removeTableRowsContainingPlaceholder(result, "contact_phone");
+  }
+  if (!collectEmail) {
+    result = removeTableRowsContainingPlaceholder(result, "contact_email");
+  }
+  if (!collectAddress) {
+    result = removeTableRowsContainingPlaceholder(result, "contact_address");
+    // Kompatybilność z szablonami rozbitymi na pola:
+    result = removeTableRowsContainingPlaceholder(result, "contact_street");
+    result = removeTableRowsContainingPlaceholder(result, "contact_city");
+    result = removeTableRowsContainingPlaceholder(result, "contact_zip");
+  }
+
+  return result;
+}
+
 /**
  * Zastępuje placeholdery związane z klientem/rezerwacją danymi z formularza
  */
@@ -207,11 +267,16 @@ export function replaceBookingPlaceholders(
   tripPrice?: number | null,
   tripStartDate?: string | null,
   /** Suma dopłat za usługi dodatkowe (diety, ubezp., atrakcje) w groszach — jak w PDF */
-  addonTotalCents?: number | null
+  addonTotalCents?: number | null,
+  options?: {
+    requiredContactFields?: RequiredContactFields | null;
+    /** Fallback do starego `require_pesel` na wycieczce (gdy brak nowej konfiguracji pól). */
+    requirePeselFallback?: boolean | null;
+  },
 ): string {
   if (!formData) return html;
 
-  let result = html;
+  let result = applyContactFieldVisibilityToAgreementHtml(html, options);
 
   // Dane zgłaszającego
   const effectiveContactFirstName =

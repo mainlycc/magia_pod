@@ -67,7 +67,6 @@ export type TripContentData = {
   section_poznaj_title: string
   section_poznaj_description: string
   reservation_info_text: string
-  reservation_success_title: string
   reservation_success_message: string
   trip_info_text: string
   baggage_text: string
