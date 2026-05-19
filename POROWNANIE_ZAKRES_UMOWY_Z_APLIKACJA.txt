@@ -1,0 +1,376 @@
+POROWNANIE ZAKRESU UMOWY Z AKTUALNYM STANEM APLIKACJI
+Data przygotowania: 2026-05-12
+
+Zrodla:
+- Umowa: ../umowa_aplikacji_webowej_magia_podrozowania_md.md
+- Aplikacja: katalog with-supabase-app
+- Dodatkowo sprawdzone: trasy app/, komponenty components/, logika lib/, migracje supabase/
+
+Uwaga:
+W aktualnym folderze aplikacji nie znalazlem osobnego pliku "umowa". Plik umowy znajduje sie poziom wyzej:
+../umowa_aplikacji_webowej_magia_podrozowania_md.md
+
+
+1. PODSUMOWANIE OGOLNE
+
+Aplikacja w duzej mierze realizuje zakres opisany w umowie: publiczna rezerwacja wycieczek, formularz uczestnikow, generowanie umow PDF, wysylka dokumentow e-mail, platnosci Paynow, panel administracyjny, panel koordynatora, ubezpieczenia HDI, role/uprawnienia, dokumenty i komunikacja.
+
+Najwazniejsze roznice wzgledem umowy:
+- Fakturowanie: w umowie wpisano Saldeo Smart, w aplikacji zaimplementowano Fakturownie.
+- Bank/mBank: nie znalazlem integracji z mBank API ani importu wyciagow bankowych do automatycznego przypisywania wplat.
+- Raporty analityczne: aplikacja ma raporty i panele operacyjne, ale zakres "analityki i statystyk" z umowy jest opisany szeroko; czesc jest zrobiona, ale nie widac pelnego zestawu KPI typu popularnosc kierunkow.
+- Integracja z magia-podrozowania.pl: aplikacja ma publiczne linki do wycieczek, ale w repo nie widac osobnej integracji technicznej z zewnetrzna strona WWW poza mozliwoscia linkowania.
+
+
+2. ZAKRES Z UMOWY VS STAN APLIKACJI
+
+2.1. Modul rezerwacji publicznej
+
+Wymaganie z umowy: dedykowany link do rezerwacji prowadzacy na strone z opisem wycieczki.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/trip/[slug]/page.tsx
+- app/trip/[slug]/reserve/page.tsx
+- app/api/trips/route.ts
+- app/api/trips/by-slug/[slug]/agreement-templates/route.ts
+
+Wymaganie z umowy: interaktywny formularz do zbierania danych osobowych uczestnikow.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- components/booking-form.tsx
+- components/booking-form/steps/contact-step.tsx
+- components/booking-form/steps/participants-step.tsx
+- components/booking-form/booking-form-schemas.ts
+- app/api/bookings/route.ts
+
+Zakres faktyczny jest szerszy niz minimum z umowy:
+- osoba fizyczna albo firma,
+- dane kontaktowe,
+- PESEL i pola wymagane konfigurowalnie,
+- uczestnicy,
+- dokumenty podrozy,
+- faktura na inne dane,
+- zgody,
+- uslugi dodatkowe: diety, atrakcje, ubezpieczenia.
+
+Wymaganie z umowy: automatyczne generowanie kompletnej umowy PDF do podgladu.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/api/pdf/route.tsx
+- app/api/pdf/preview/route.ts
+- app/api/pdf/from-html/route.ts
+- components/agreement-preview.tsx
+- components/agreement-editor.tsx
+- lib/agreement-placeholder-replacer.ts
+- lib/agreement-template-parser.ts
+- lib/agreements/default-template.ts
+- supabase/042_trip_agreement_templates.sql
+
+Zakres faktyczny jest szerszy niz minimum z umowy:
+- edytor szablonu umowy,
+- osobne szablony dla typu rejestracji,
+- placeholdery danych wycieczki i rezerwacji,
+- podglad umowy w formularzu,
+- generowanie PDF z HTML.
+
+Wymaganie z umowy: potwierdzenie rezerwacji i automatyczna wysylka dokumentow, w tym umowy PDF, na adres e-mail klienta.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/api/email/route.ts
+- app/api/bookings/[id]/send-agreement-email/route.ts
+- lib/email/send.ts
+- lib/email/send-transactional.ts
+- lib/email/templates/booking-confirmation.ts
+- lib/email/templates/agreement-updated.ts
+- lib/documents/email-attachments.ts
+
+Wymaganie z umowy: platnosci online przez Paynow.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- lib/paynow.ts
+- app/api/payments/paynow/init/route.ts
+- app/api/payments/paynow/webhook/route.ts
+- app/api/payments/paynow/check-status/route.ts
+- app/payments/return/page.tsx
+- app/payments/success/page.tsx
+
+Zakres faktyczny jest szerszy niz minimum z umowy:
+- historia platnosci,
+- raty/zaliczka/reszta,
+- sprawdzanie statusu platnosci,
+- webhook Paynow,
+- synchronizacja statusow z payment_history.
+
+
+2.2. Panel administracyjny / CRM
+
+Wymaganie z umowy: centralny panel z lista wycieczek.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/admin/page.tsx
+- app/admin/trips/page.tsx
+- app/admin/trips/new/page.tsx
+- app/admin/trips/[id]/edit/page.tsx
+- app/admin/trips/[id]/content/page.tsx
+- app/api/trips/route.ts
+- app/api/trips/[id]/route.ts
+
+Wymaganie z umowy: szczegolowy podglad uczestnikow dla kazdej wycieczki.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/admin/uczestnicy/page.tsx
+- app/admin/uczestnicy/[id]/page.tsx
+- app/trip-dashboard/uczestnicy/page.tsx
+- app/trip-dashboard/uczestnicy/[id]/page.tsx
+- app/coord/trips/[id]/participants/page.tsx
+
+Wymaganie z umowy: raporty analityczne i statystyki na podstawie danych rezerwacyjnych i finansowych.
+Status: CZESCIOWO ZREALIZOWANE.
+Dowody w aplikacji:
+- app/admin/page.tsx
+- app/trip-dashboard/page.tsx
+- app/trip-dashboard/raport-umow/page.tsx
+- app/api/admin/reports/tfg-agreements/route.ts
+- lib/reports/tfg-agreement-report.ts
+- package.json zawiera recharts
+
+Uwagi:
+Aplikacja ma podsumowania, raport umow/TFG i dane operacyjne, ale nie znalazlem pelnego, osobnego modulu analitycznego obejmujacego wszystkie przyklady z umowy, np. popularnosc kierunkow. Ten punkt najlepiej oznaczyc jako czesciowy.
+
+Wymaganie z umowy: fakturowanie i integracja z Saldeo Smart przez API.
+Status: ZAMIENNIK / ODSTEPSTWO.
+Stan faktyczny:
+Zamiast Saldeo Smart wdrozono Fakturownie.
+Dowody w aplikacji:
+- lib/fakturownia/client.ts
+- lib/invoices/invoice-service.ts
+- app/api/fakturownia/invoice/create/route.ts
+- app/api/fakturownia/invoice/manual/route.ts
+- app/api/fakturownia/invoice/[id]/pdf/route.ts
+- app/api/fakturownia/clients/route.ts
+- app/admin/faktury/page.tsx
+- app/admin/faktury/[id]/page.tsx
+- app/trip-dashboard/faktury/page.tsx
+- app/trip-dashboard/faktury/[id]/page.tsx
+- supabase/049_fakturownia_migration.sql
+
+Uwagi:
+To nie jest brak fakturowania. Funkcjonalnie fakturowanie istnieje i jest rozbudowane, ale integracja jest z innym dostawca niz zapisany w umowie.
+
+Wymaganie z umowy: ubezpieczenia i automatyczne wysylanie list uczestnikow do ubezpieczyciela HDI.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- lib/hdi/auth.ts
+- lib/hdi/client.ts
+- lib/hdi/config.ts
+- lib/insurance/service.ts
+- lib/insurance/mapper.ts
+- lib/insurance/validation.ts
+- app/api/insurance/submissions/route.ts
+- app/api/insurance/submissions/[id]/send/route.ts
+- app/api/insurance/submissions/[id]/calculate/route.ts
+- app/api/insurance/submissions/[id]/sync/route.ts
+- app/admin/insurance/page.tsx
+- app/admin/insurance/[id]/page.tsx
+- app/admin/insurance/config/page.tsx
+- app/trip-dashboard/ubezpieczenia/page.tsx
+- supabase/007_insurance_tables.sql
+- supabase/017_insurance_hdi_enhancements.sql
+
+Zakres faktyczny jest szerszy niz minimum z umowy:
+- konfiguracja produktow,
+- logi operacji ubezpieczeniowych,
+- statusy i synchronizacja,
+- dodatkowy lokalny modul ubezpieczen,
+- generowanie XLSX dla ubezpieczen lokalnych,
+- maile i logi ubezpieczeniowe.
+
+Wymaganie z umowy: automatyczne przypisywanie platnosci na podstawie mBank API lub dostarczonego wyciagu/pliku.
+Status: BRAK WIDOCZNEJ IMPLEMENTACJI.
+Sprawdzone:
+- wyszukiwanie po mBank/mbank,
+- wyszukiwanie po wyciag/wyciąg,
+- wyszukiwanie po import/csv w app, lib, supabase, scripts.
+
+Co jest zamiast tego:
+- historia platnosci i reczne dopisywanie wplat,
+- Paynow,
+- endpoint reconcile do przeliczenia statusow z payment_history.
+
+Dowody funkcji pokrewnych:
+- app/api/bookings/[id]/payments/route.ts
+- app/api/trips/[id]/reconcile-payments/route.ts
+- lib/bookings/recalculate-booking-payments.ts
+- app/admin/payments/page.tsx
+- app/trip-dashboard/platnosci/page.tsx
+
+Wymaganie z umowy: reczne dopisywanie platnosci.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/api/bookings/[id]/payments/route.ts
+- app/api/bookings/[id]/route.ts
+- app/admin/payments/page.tsx
+- app/trip-dashboard/platnosci/page.tsx
+- app/trip-dashboard/uczestnicy/page.tsx
+
+Wymaganie z umowy: statusy wplat: wplata pelna, brak wplaty, nadplata.
+Status: ZREALIZOWANE, z rozszerzeniem.
+Stan faktyczny:
+Aplikacja obsluguje statusy typu unpaid, partial, paid, overpaid oraz statusy rat: first_payment_status i second_payment_status.
+Dowody w aplikacji:
+- app/admin/trips/[id]/bookings/payment-status.ts
+- app/api/bookings/[id]/route.ts
+- lib/bookings/recalculate-booking-payments.ts
+- supabase/028_payment_split.sql
+- supabase/044_paid_amount_cents.sql
+
+Wymaganie z umowy: masowa lub indywidualna wysylka e-mail do klientow/uczestnikow.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/admin/komunikacja-masowa/page.tsx
+- app/trip-dashboard/komunikacja-masowa/page.tsx
+- app/api/message-templates/route.ts
+- app/api/participants/message/route.ts
+- app/api/trips/[id]/message/route.ts
+- app/api/coordinators/message/route.ts
+- supabase/021_message_templates_table.sql
+- supabase/022_seed_message_templates.sql
+
+
+2.3. Panel dla koordynatora
+
+Wymaganie z umowy: dedykowana rola Koordynatora z ograniczonymi uprawnieniami.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- lib/supabase/middleware.ts
+- lib/trips/can-manage-trip.ts
+- app/coord/layout.tsx
+- app/coord/page.tsx
+- components/coord-sidebar.tsx
+- app/admin/koordynatorzy/page.tsx
+- app/admin/coordinators/invite/page.tsx
+- lib/actions/invitations.ts
+- app/register/page.tsx
+
+Wymaganie z umowy: koordynator widzi uczestnikow i statusy wplat tylko dla przypisanego wyjazdu.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- lib/trips/can-manage-trip.ts
+- app/api/coord/trips/[id]/participants/route.ts
+- app/coord/trips/[id]/participants/page.tsx
+- app/api/profile/route.ts
+- app/admin/trips/page.tsx
+- app/admin/trips/new/page.tsx
+
+Uwagi:
+Mechanizm opiera sie na roli coordinator i allowed_trip_ids / przypisaniu do wycieczek.
+
+Wymaganie z umowy: koordynator moze wysylac wiadomosci do uczestnikow wycieczek.
+Status: ZREALIZOWANE.
+Dowody w aplikacji:
+- app/coord/trips/[id]/message/page.tsx
+- app/api/coordinators/message/route.ts
+- app/api/coordinators/list/route.ts
+
+
+2.4. Specyfikacja techniczna
+
+Wymaganie z umowy: frontend Next.js + React.
+Status: ZREALIZOWANE.
+Dowody:
+- package.json
+- app/
+- components/
+
+Wymaganie z umowy: backend Node.js, NestJS lub Express.
+Status: ZREALIZOWANE JAKO NEXT.JS ROUTE HANDLERS.
+Uwagi:
+Nie ma osobnego NestJS/Express. Backend jest zrobiony w Next.js przez app/api/**. To jest odstępstwo architektoniczne, ale nadal Node.js.
+
+Wymaganie z umowy: PostgreSQL.
+Status: ZREALIZOWANE PRZEZ SUPABASE POSTGRES.
+Dowody:
+- supabase/*.sql
+- lib/supabase/*
+
+Wymaganie z umowy: autoryzacja i pliki przez Supabase.
+Status: ZREALIZOWANE.
+Dowody:
+- lib/supabase/client.ts
+- lib/supabase/server.ts
+- lib/supabase/admin.ts
+- lib/supabase/middleware.ts
+- app/api/documents/*
+
+Wymaganie z umowy: webhooki i HMAC dla Paynow.
+Status: ZREALIZOWANE.
+Dowody:
+- lib/paynow.ts
+- app/api/payments/paynow/webhook/route.ts
+- lib/supabase/middleware.ts, gdzie webhook Paynow jest publicznym wyjatkiem
+
+
+2.5. Integracje zewnetrzne
+
+Integracja z istniejaca strona Klienta magia-podrozowania.pl.
+Status: CZESCIOWO / NIEJEDNOZNACZNE.
+Stan faktyczny:
+Aplikacja ma publiczne strony wycieczek i rezerwacji pod slugiem. Nie znalazlem osobnego kodu integracji z zewnetrzna strona WWW. Jesli wymaganiem bylo tylko linkowanie z istniejacej strony do aplikacji, zakres jest pokryty. Jesli wymaganiem bylo API, embed albo synchronizacja z CMS strony, nie widac tego w repo.
+
+Saldeo Smart.
+Status: BRAK, ZASTAPIONE FAKTUROWNIA.
+
+HDI.
+Status: ZREALIZOWANE.
+
+mBank.
+Status: BRAK WIDOCZNEJ IMPLEMENTACJI.
+
+Paynow.
+Status: ZREALIZOWANE.
+
+HMAC.
+Status: ZREALIZOWANE DLA PAYNOW.
+
+
+3. FUNKCJE ZROBIONE PONAD ZAKRES UMOWY
+
+Poniższe elementy nie wynikaja wprost z umowy albo sa znacznie bardziej rozbudowane niz opisany zakres:
+
+- Edytor szablonow umow per wycieczka i typ rejestracji.
+- System dokumentow globalnych i dokumentow per wycieczka.
+- Publiczny wyglad wycieczki z rozbudowana konfiguracja tresci.
+- Harmonogram platnosci, podzial na raty, statusy rat i historia platnosci.
+- Automatyczne przypomnienia o platnosci przez cron.
+- Rozbudowane faktury zaliczkowe w Fakturowni, pobieranie PDF, zapis w Storage i wysylka e-mail.
+- Zaproszenia koordynatorow, rejestracja z tokenu i panel zaproszen.
+- Lokalny modul ubezpieczen: warianty, maile, logi, XLSX, synchronizacja z formularzem.
+- Raporty TFG/umow w XLSX/PDF.
+- Testy automatyczne unit/integration/e2e.
+- Middleware RBAC dla admina i koordynatora.
+
+
+4. LISTA NAJWAZNIEJSZYCH BRAKOW LUB RYZYK DO DOPRECYZOWANIA
+
+1. mBank / import wyciagow bankowych
+Umowa przewiduje automatyczne przypisywanie platnosci na podstawie mBank API lub dostarczonego wyciagu/pliku. W aplikacji nie znalazlem tej integracji. To jest najbardziej jednoznaczny brak wzgledem umowy.
+
+2. Saldeo Smart
+Umowa wskazuje Saldeo Smart, aplikacja uzywa Fakturowni. Jesli klient zaakceptowal zmiane dostawcy, nalezy to opisac jako uzgodnione odstępstwo. Jesli nie, formalnie jest to niezgodnosc z literalnym zakresem.
+
+3. Raporty analityczne
+Sa raporty i dashboardy, ale umowa opisuje raportowanie szeroko. Warto ustalic, czy aktualne raporty wystarczaja, czy klient oczekuje dodatkowych statystyk: oblozenie, wplaty, popularnosc kierunkow, przekroje finansowe.
+
+4. Integracja z magia-podrozowania.pl
+Repo potwierdza publiczne linki i strony wycieczek, ale nie potwierdza osobnej integracji z zewnetrzna strona. Warto doprecyzowac, czy "integracja" oznaczala tylko linkowanie, czy synchronizacje/embedding.
+
+
+5. WNIOSEK
+
+Stan aplikacji jest wyraznie zaawansowany i pokrywa wiekszosc funkcji z umowy. W wielu miejscach zakres jest nawet szerszy niz umowny, szczegolnie w obszarach umow PDF, platnosci, fakturowania, dokumentow, koordynatorow i ubezpieczen.
+
+Do formalnego domkniecia zakresu wzgledem umowy najwazniejsze sa:
+- decyzja, czy Fakturownia oficjalnie zastepuje Saldeo Smart,
+- decyzja, czy mBank/import wyciagow ma byc jeszcze wdrozony,
+- doprecyzowanie, czy obecne raporty sa wystarczajace,
+- doprecyzowanie, co dokladnie oznaczala integracja z magia-podrozowania.pl.

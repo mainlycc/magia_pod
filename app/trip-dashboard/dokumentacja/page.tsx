@@ -7,18 +7,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { Upload, FileText, Trash2, Loader2, ExternalLink, RotateCcw, Info } from "lucide-react"
+import { Upload, FileText, Trash2, Loader2, ExternalLink, Info, Mail } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Switch } from "@/components/ui/switch"
+import {
+  DOCUMENTATION_UI_TYPES,
+  type DocumentationUiDocumentType,
+} from "@/lib/documents/constants"
 
-type DocumentType = 
-  | "agreement"
-  | "conditions_de_pl"
-  | "standard_form"
-  | "electronic_services"
-  | "rodo_info"
-  | "insurance_terms"
+type DocumentType = DocumentationUiDocumentType
 
 type Document = {
   id: string
@@ -64,10 +63,22 @@ const documentTypes: { type: DocumentType; label: string; description: string }[
   },
 ]
 
+const defaultEmailSettings = (): Record<DocumentType, boolean> =>
+  Object.fromEntries(DOCUMENTATION_UI_TYPES.map((t) => [t, true])) as Record<DocumentType, boolean>
+
 export default function DokumentacjaPage() {
   const { selectedTrip } = useTrip()
   const [documents, setDocuments] = useState<Document[]>([])
+  const [emailSettings, setEmailSettings] = useState<Record<DocumentType, boolean>>(defaultEmailSettings)
   const [loading, setLoading] = useState(true)
+  const [togglingAttach, setTogglingAttach] = useState<Record<DocumentType, boolean>>({
+    agreement: false,
+    conditions_de_pl: false,
+    standard_form: false,
+    electronic_services: false,
+    rodo_info: false,
+    insurance_terms: false,
+  })
   const [uploading, setUploading] = useState<Record<DocumentType, boolean>>({
     agreement: false,
     conditions_de_pl: false,
@@ -95,7 +106,19 @@ export default function DokumentacjaPage() {
         throw new Error("Failed to load documents")
       }
       const data = await res.json()
-      setDocuments(data)
+      const docsList = Array.isArray(data) ? data : data.documents ?? []
+      setDocuments(docsList)
+
+      const settings = defaultEmailSettings()
+      const apiSettings = Array.isArray(data) ? null : data.email_settings
+      if (apiSettings) {
+        for (const type of DOCUMENTATION_UI_TYPES) {
+          if (typeof apiSettings[type] === "boolean") {
+            settings[type] = apiSettings[type]
+          }
+        }
+      }
+      setEmailSettings(settings)
     } catch (error) {
       console.error("Error loading documents:", error)
       toast.error("Nie udało się załadować dokumentów")
@@ -174,6 +197,42 @@ export default function DokumentacjaPage() {
     }
   }
 
+  const handleToggleAttach = async (type: DocumentType, attachOnReservation: boolean) => {
+    if (!selectedTrip?.id) return
+
+    const previous = emailSettings[type]
+    setEmailSettings((prev) => ({ ...prev, [type]: attachOnReservation }))
+    setTogglingAttach((prev) => ({ ...prev, [type]: true }))
+
+    try {
+      const res = await fetch(`/api/documents/trip/${selectedTrip.id}/email-settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_type: type,
+          attach_on_reservation: attachOnReservation,
+        }),
+      })
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error || "Failed to update email settings")
+      }
+
+      toast.success(
+        attachOnReservation
+          ? "Dokument będzie wysyłany po rezerwacji"
+          : "Dokument nie będzie wysyłany po rezerwacji",
+      )
+    } catch (error: unknown) {
+      setEmailSettings((prev) => ({ ...prev, [type]: previous }))
+      const message = error instanceof Error ? error.message : "Nie udało się zapisać ustawienia"
+      toast.error(message)
+    } finally {
+      setTogglingAttach((prev) => ({ ...prev, [type]: false }))
+    }
+  }
+
   const getDocument = (type: DocumentType): Document | undefined => {
     return documents.find((doc) => doc.document_type === type)
   }
@@ -221,7 +280,8 @@ export default function DokumentacjaPage() {
         <AlertTitle>Informacja</AlertTitle>
         <AlertDescription>
           Dokumenty specyficzne dla wycieczki nadpisują dokumenty globalne. Jeśli usuniesz
-          dokument dla wycieczki, automatycznie zostanie użyty dokument globalny.
+          dokument dla wycieczki, automatycznie zostanie użyty dokument globalny. Przy każdym
+          dokumencie możesz włączyć lub wyłączyć wysyłkę w załączniku maila po rezerwacji.
         </AlertDescription>
       </Alert>
 
@@ -229,8 +289,10 @@ export default function DokumentacjaPage() {
         {documentTypes.map((docType) => {
           const document = getDocument(docType.type)
           const isUploading = uploading[docType.type]
+          const isTogglingAttach = togglingAttach[docType.type]
           const isGlobal = document?.source === "global"
           const isTripSpecific = document?.source === "trip"
+          const attachOnReservation = emailSettings[docType.type] ?? true
 
           return (
             <Card key={docType.type}>
@@ -303,6 +365,35 @@ export default function DokumentacjaPage() {
                     </p>
                   </div>
                 )}
+
+                <div
+                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${
+                    document ? "bg-background" : "bg-muted/50 opacity-70"
+                  }`}
+                >
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Mail className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <Label
+                        htmlFor={`attach-${docType.type}`}
+                        className={document ? "cursor-pointer" : "cursor-not-allowed"}
+                      >
+                        Wyślij w załączniku po rezerwacji
+                      </Label>
+                      {!document && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Wgraj lub ustaw dokument globalny, aby móc włączyć wysyłkę
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Switch
+                    id={`attach-${docType.type}`}
+                    checked={attachOnReservation}
+                    disabled={!document || isTogglingAttach}
+                    onCheckedChange={(checked) => handleToggleAttach(docType.type, checked)}
+                  />
+                </div>
 
                 <Separator />
 

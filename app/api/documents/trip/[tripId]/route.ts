@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  DOCUMENT_TYPES,
+  buildDefaultEmailSettings,
+  isValidDocumentType,
+} from "@/lib/documents/constants";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
@@ -80,13 +85,24 @@ export async function GET(
       (globalDocs || []).map((doc) => [doc.document_type, doc])
     );
 
+    const { data: emailSettingsRows, error: emailSettingsError } = await supabase
+      .from("trip_document_email_settings")
+      .select("document_type, attach_on_reservation")
+      .eq("trip_id", tripId);
+
+    if (emailSettingsError) {
+      console.error("Error fetching trip document email settings:", emailSettingsError);
+    }
+
+    const emailSettings = buildDefaultEmailSettings();
+    for (const row of emailSettingsRows || []) {
+      if (isValidDocumentType(row.document_type)) {
+        emailSettings[row.document_type] = row.attach_on_reservation;
+      }
+    }
+
     // Zwróć dokumenty z fallbackiem: jeśli jest dokument dla wycieczki, użyj go, w przeciwnym razie użyj globalnego
-    const documentTypes = [
-      "rodo", "terms", "conditions",
-      "agreement", "conditions_de_pl", "standard_form",
-      "electronic_services", "rodo_info", "insurance_terms"
-    ];
-    const result = documentTypes.map((type) => {
+    const result = DOCUMENT_TYPES.map((type) => {
       const tripDoc = tripDocsMap.get(type);
       const globalDoc = globalDocsMap.get(type);
 
@@ -112,7 +128,7 @@ export async function GET(
       return null;
     }).filter(Boolean);
 
-    return NextResponse.json(result);
+    return NextResponse.json({ documents: result, email_settings: emailSettings });
   } catch (error) {
     console.error("GET /api/documents/trip/[tripId] error", error);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
@@ -153,12 +169,7 @@ export async function POST(
       return NextResponse.json({ error: "no_file" }, { status: 400 });
     }
 
-    const validDocumentTypes = [
-      "rodo", "terms", "conditions",
-      "agreement", "conditions_de_pl", "standard_form",
-      "electronic_services", "rodo_info", "insurance_terms"
-    ];
-    if (!documentType || !validDocumentTypes.includes(documentType)) {
+    if (!documentType || !isValidDocumentType(documentType)) {
       return NextResponse.json({ error: "invalid_document_type" }, { status: 400 });
     }
 

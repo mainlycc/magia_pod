@@ -205,11 +205,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       </Card>
 
       {shouldShowSuccessMessage && booking.trip.reservation_success_message?.trim() && (
-        <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-          <AlertDescription className="text-green-700 dark:text-green-300 whitespace-pre-wrap">
-            {booking.trip.reservation_success_message}
-          </AlertDescription>
-        </Alert>
+        <p className="whitespace-pre-wrap">{booking.trip.reservation_success_message}</p>
       )}
 
       {/* Szczegóły rezerwacji */}

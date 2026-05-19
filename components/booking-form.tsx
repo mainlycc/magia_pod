@@ -950,7 +950,6 @@ export function BookingForm({ slug }: BookingFormProps) {
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
   const [reservationInfoText, setReservationInfoText] = useState<string | null>(null);
-  const [reservationSuccessMessage, setReservationSuccessMessage] = useState<string | null>(null);
   const [applicantType, setApplicantType] = useState<"individual" | "company">("individual");
   const [tripPrice, setTripPrice] = useState<number | null>(null);
   const [paymentSplitFirstPercent, setPaymentSplitFirstPercent] = useState<number>(30);
@@ -982,7 +981,7 @@ export function BookingForm({ slug }: BookingFormProps) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text,reservation_success_message")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
           .maybeSingle<any>();
 
@@ -1022,9 +1021,6 @@ export function BookingForm({ slug }: BookingFormProps) {
           });
 
           setReservationInfoText(trip.reservation_info_text ?? null);
-          setReservationSuccessMessage(
-            typeof trip.reservation_success_message === "string" ? trip.reservation_success_message : null,
-          );
 
           if (trip.registration_mode === "company") {
             setApplicantType("company");
@@ -1045,8 +1041,9 @@ export function BookingForm({ slug }: BookingFormProps) {
             const contentType = docsRes.headers.get("content-type") ?? "";
             if (docsRes.ok && contentType.includes("application/json")) {
               const docsData = await docsRes.json();
+              const docsList = Array.isArray(docsData) ? docsData : docsData.documents ?? [];
               const docsMap: typeof documents = {};
-              docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
+              docsList.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
                 const validTypes = [
                   "rodo", "terms", "conditions",
                   "agreement", "conditions_de_pl", "standard_form",
@@ -4403,24 +4400,6 @@ export function BookingForm({ slug }: BookingFormProps) {
                     })()}
                   </section>
 
-                  {reservationSuccessMessage?.trim() && (
-                    <section className="space-y-3">
-                      <h3 className="font-medium text-sm text-muted-foreground">
-                        Komunikat po złożeniu rezerwacji
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
-                        Po wysłaniu zgłoszenia zobaczysz ten komunikat na stronie potwierdzenia (oraz po udanej
-                        płatności, jeśli z niej korzystasz).
-                      </p>
-                      <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-                        {reservationSuccessMessage?.trim() ? (
-                          <AlertDescription className="text-green-700 dark:text-green-300 whitespace-pre-wrap">
-                            {reservationSuccessMessage}
-                          </AlertDescription>
-                        ) : null}
-                      </Alert>
-                    </section>
-                  )}
                 </CardContent>
                 <CardFooter className="flex flex-col gap-3">
                   <div className="flex justify-between gap-3 w-full">

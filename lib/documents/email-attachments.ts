@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { DOCUMENT_TYPES } from "@/lib/documents/constants";
 
 export type Base64Attachment = { filename: string; base64: string };
 
@@ -49,27 +50,32 @@ export async function getTripDocumentationEmailAttachments(params: {
     (globalDocs || []).map((d) => [d.document_type, d as DocumentRow]),
   );
 
-  // Trzymamy tę listę w jednym miejscu zgodnie z API /api/documents/trip/[tripId]
-  const documentTypes = [
-    "rodo",
-    "terms",
-    "conditions",
-    "agreement",
-    "conditions_de_pl",
-    "standard_form",
-    "electronic_services",
-    "rodo_info",
-    "insurance_terms",
-  ] as const;
+  const { data: emailSettingsRows, error: emailSettingsErr } = await adminClient
+    .from("trip_document_email_settings")
+    .select("document_type, attach_on_reservation")
+    .eq("trip_id", tripId);
 
-  const chosen: DocumentRow[] = [];
-  for (const t of documentTypes) {
+  if (emailSettingsErr) {
+    console.error("[DocsEmail] Failed to fetch trip_document_email_settings:", emailSettingsErr);
+  }
+
+  const attachSettingsMap = new Map<string, boolean>(
+    (emailSettingsRows || []).map((row) => [row.document_type, row.attach_on_reservation]),
+  );
+
+  const chosen: { row: DocumentRow; documentType: string }[] = [];
+  for (const t of DOCUMENT_TYPES) {
     const row = tripMap.get(t) ?? globalMap.get(t);
-    if (row?.file_name) chosen.push(row);
+    if (!row?.file_name) continue;
+
+    const attachOnReservation = attachSettingsMap.get(t) ?? true;
+    if (!attachOnReservation) continue;
+
+    chosen.push({ row, documentType: t });
   }
 
   const attachments: Base64Attachment[] = [];
-  for (const row of chosen) {
+  for (const { row } of chosen) {
     try {
       const { data: fileBlob, error: dlErr } = await adminClient.storage.from("documents").download(row.file_name);
       if (dlErr || !fileBlob) {

@@ -85,8 +85,9 @@ export function useTripConfig(slug: string) {
             const contentType = docsRes.headers.get("content-type") ?? "";
             if (docsRes.ok && contentType.includes("application/json")) {
               const docsData = await docsRes.json();
+              const docsList = Array.isArray(docsData) ? docsData : docsData.documents ?? [];
               const docsMap: typeof documents = {};
-              docsData.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
+              docsList.forEach((doc: { document_type: string; file_name: string; url?: string }) => {
                 const validTypes = [
                   "rodo", "terms", "conditions",
                   "agreement", "conditions_de_pl", "standard_form",
