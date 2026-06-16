@@ -239,14 +239,14 @@ async function buildXlsx(
   if (insuranceType === 1) {
     const { data } = await supabase
       .from("participants")
-      .select("first_name, last_name, date_of_birth, bookings!inner ( trip_id, status )")
+      .select("first_name, last_name, birth_date, bookings!inner ( trip_id, status )")
       .eq("bookings.trip_id", tripId)
       .neq("bookings.status", "cancelled")
 
-    participants = (data || []).map((p: { first_name: string; last_name: string; date_of_birth: string | null }) => ({
+    participants = (data || []).map((p: { first_name: string; last_name: string; birth_date: string | null }) => ({
       first_name: p.first_name,
       last_name: p.last_name,
-      date_of_birth: p.date_of_birth,
+      date_of_birth: p.birth_date,
     }))
   } else {
     const { data: tripVariants } = await supabase
@@ -260,7 +260,7 @@ async function buildXlsx(
     if (variantIds.length > 0) {
       let query = supabase
         .from("participant_insurances")
-        .select("participants ( first_name, last_name, date_of_birth )")
+        .select("participants ( first_name, last_name, birth_date )")
         .in("trip_insurance_variant_id", variantIds)
         .neq("status", "cancelled")
 
@@ -277,8 +277,8 @@ async function buildXlsx(
         pi: any
       ): Array<{ first_name: string; last_name: string; date_of_birth: string | null }> => {
         const p = pi?.participants as
-          | { first_name?: string; last_name?: string; date_of_birth?: string | null }
-          | Array<{ first_name?: string; last_name?: string; date_of_birth?: string | null }>
+          | { first_name?: string; last_name?: string; birth_date?: string | null }
+          | Array<{ first_name?: string; last_name?: string; birth_date?: string | null }>
           | null
           | undefined
 
@@ -287,7 +287,7 @@ async function buildXlsx(
         return arr.map((x) => ({
           first_name: String(x?.first_name ?? ""),
           last_name: String(x?.last_name ?? ""),
-          date_of_birth: (x?.date_of_birth ?? null) as string | null,
+          date_of_birth: (x?.birth_date ?? null) as string | null,
         }))
       }
 

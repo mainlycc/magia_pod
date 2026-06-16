@@ -38,12 +38,18 @@ type AgreementPreviewPayload = {
     participants?: Array<{
       first_name?: string;
       last_name?: string;
+      selected_services?: unknown;
     }>;
     participants_count?: number;
     participant_services?: Array<{
       service_type?: string;
       service_title?: string;
     }>;
+    service_catalogs?: {
+      form_diets?: unknown;
+      form_extra_insurances?: unknown;
+      form_additional_attractions?: unknown;
+    };
   };
   email: string;
   tripTitle?: string;

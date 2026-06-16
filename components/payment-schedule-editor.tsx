@@ -15,6 +15,103 @@ type PaymentScheduleEditorProps = {
   className?: string
 }
 
+const clampPercent = (v: number) => {
+  if (!Number.isFinite(v)) return 0
+  return Math.max(0, Math.min(100, v))
+}
+
+const roundToInt = (v: number) => {
+  if (!Number.isFinite(v)) return 0
+  return Math.round(v)
+}
+
+/**
+ * Rozdziela `total` na `count` liczb całkowitych tak, by suma była równa `total`.
+ * Bazuje na wagach (proporcjonalnie), z metodą największych reszt.
+ */
+const distributeIntsByWeights = (
+  total: number,
+  weights: number[]
+): number[] => {
+  const count = weights.length
+  if (count === 0) return []
+
+  const safeTotal = Math.max(0, roundToInt(total))
+  const cleanedWeights = weights.map((w) => (Number.isFinite(w) && w > 0 ? w : 0))
+  const sumWeights = cleanedWeights.reduce((a, b) => a + b, 0)
+  const baseWeight = sumWeights > 0 ? cleanedWeights : new Array(count).fill(1)
+  const denom = sumWeights > 0 ? sumWeights : count
+
+  const raw = baseWeight.map((w) => (safeTotal * w) / denom)
+  const floors = raw.map((x) => Math.floor(x))
+  let remainder = safeTotal - floors.reduce((a, b) => a + b, 0)
+
+  const order = raw
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac)
+
+  const out = [...floors]
+  let k = 0
+  while (remainder > 0) {
+    out[order[k % order.length].i] += 1
+    remainder -= 1
+    k += 1
+  }
+  return out
+}
+
+const normalizeScheduleTo100 = (
+  schedule: PaymentScheduleItem[],
+  lockedIndex?: number
+): PaymentScheduleItem[] => {
+  if (schedule.length === 0) return schedule
+
+  const lockedIdx =
+    typeof lockedIndex === "number" && lockedIndex >= 0 && lockedIndex < schedule.length
+      ? lockedIndex
+      : null
+
+  const currentPercents = schedule.map((s) => clampPercent(roundToInt(s.percent)))
+
+  // 1 rata zawsze 100%
+  if (schedule.length === 1) {
+    return [
+      {
+        ...schedule[0],
+        percent: 100,
+      },
+    ]
+  }
+
+  const lockedPercent = lockedIdx === null ? null : currentPercents[lockedIdx]
+  const remainingTotal = lockedPercent === null ? 100 : clampPercent(100 - lockedPercent)
+
+  const otherIdxs = schedule
+    .map((_, i) => i)
+    .filter((i) => (lockedIdx === null ? true : i !== lockedIdx))
+
+  const otherWeights =
+    lockedIdx === null
+      ? currentPercents
+      : otherIdxs.map((i) => currentPercents[i])
+
+  const distributed = distributeIntsByWeights(remainingTotal, otherWeights)
+
+  const nextPercents = [...currentPercents]
+  if (lockedIdx === null) {
+    for (let j = 0; j < schedule.length; j++) nextPercents[j] = distributed[j] ?? 0
+  } else {
+    for (let k = 0; k < otherIdxs.length; k++) {
+      nextPercents[otherIdxs[k]] = distributed[k] ?? 0
+    }
+  }
+
+  return schedule.map((item, i) => ({
+    ...item,
+    percent: clampPercent(nextPercents[i]),
+  }))
+}
+
 export function PaymentScheduleEditor({
   schedule,
   onChange,
@@ -66,7 +163,8 @@ export function PaymentScheduleEditor({
         due_date: defaultDate,
       },
     ]
-    updateSchedule(newSchedule)
+    // Dodanie raty nie powinno psuć sumy 100% (nowa rata startuje z 0%).
+    updateSchedule(normalizeScheduleTo100(newSchedule))
   }
 
   const removeInstallment = (index: number) => {
@@ -78,7 +176,8 @@ export function PaymentScheduleEditor({
         ...item,
         installment_number: idx + 1,
       }))
-    updateSchedule(newSchedule)
+    // Po usunięciu raty przeskaluj pozostałe do 100%.
+    updateSchedule(normalizeScheduleTo100(newSchedule))
   }
 
   const updateInstallment = (
@@ -89,8 +188,14 @@ export function PaymentScheduleEditor({
     const newSchedule = [...localSchedule]
     newSchedule[index] = {
       ...newSchedule[index],
-      [field]: field === "percent" ? Number(value) : value,
+      [field]: field === "percent" ? clampPercent(Number(value)) : value,
     }
+    if (field === "percent") {
+      // Po zmianie jednej raty automatycznie przelicz pozostałe, żeby suma była 100%.
+      updateSchedule(normalizeScheduleTo100(newSchedule, index))
+      return
+    }
+
     updateSchedule(newSchedule)
   }
 

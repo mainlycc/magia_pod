@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
           id,
           first_name,
           last_name,
-          date_of_birth,
+          birth_date,
           pesel
         ),
         trip_insurance_variants (
@@ -98,7 +98,24 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    return NextResponse.json(filtered)
+    const mapped = filtered.map((pi) => {
+      const raw = pi.participants as
+        | { id?: string; first_name?: string; last_name?: string; birth_date?: string | null; pesel?: string | null }
+        | Array<{ id?: string; first_name?: string; last_name?: string; birth_date?: string | null; pesel?: string | null }>
+        | null
+        | undefined
+      if (!raw) return pi
+      const normalize = (
+        p: { id?: string; first_name?: string; last_name?: string; birth_date?: string | null; pesel?: string | null },
+      ) => ({
+        ...p,
+        date_of_birth: p.birth_date ?? null,
+      })
+      const participants = Array.isArray(raw) ? raw.map(normalize) : normalize(raw)
+      return { ...pi, participants }
+    })
+
+    return NextResponse.json(mapped)
   } catch (err) {
     console.error("GET /api/insurance-local/participant-insurances error:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

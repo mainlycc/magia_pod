@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { PaymentScheduleEditor } from "@/components/payment-schedule-editor";
 import { PaymentScheduleItem } from "@/contexts/trip-context";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
@@ -217,18 +218,18 @@ export default function NewTripPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label>Data rozpoczęcia</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={setStartDate}
+                className="w-full"
               />
             </div>
             <div className="grid gap-2">
               <Label>Data zakończenia</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={setEndDate}
+                className="w-full"
               />
             </div>
           </div>

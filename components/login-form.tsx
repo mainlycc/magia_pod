@@ -51,6 +51,11 @@ export function LoginForm({
           );
         } else if (error.message.includes("Missing Supabase")) {
           setError(error.message);
+        } else if (
+          error.message === "Invalid login credentials" ||
+          ("code" in error && error.code === "invalid_credentials")
+        ) {
+          setError("Nieprawidłowy email lub hasło.");
         } else {
           setError(error.message);
         }

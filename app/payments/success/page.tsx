@@ -23,21 +23,46 @@ function SuccessContent() {
   const [message, setMessage] = useState<SuccessMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [agreementNumberText, setAgreementNumberText] = useState<string | null>(null);
+  const [isEnsuringAgreement, setIsEnsuringAgreement] = useState(false);
 
   useEffect(() => {
     const fetchMessage = async () => {
       try {
-        // 1) Jeśli mamy token/booking_ref - spróbuj pobrać komunikat per wycieczka z rezerwacji
         const bookingToken = token || bookingRef;
         if (bookingToken) {
           const bookingRes = await fetch(`/api/bookings/by-token/${bookingToken}`);
           if (bookingRes.ok) {
             const data = await bookingRes.json();
             const tripMessage = (data?.booking?.trip?.reservation_success_message || "").trim();
-            const agreementText = formatAgreementNumber({
+            let agreementText = formatAgreementNumber({
               reservationNumber: data?.booking?.trip?.reservation_number ?? null,
               agreementSeq: data?.booking?.agreement_seq ?? null,
             });
+
+            if (agreementText === "-") {
+              setIsEnsuringAgreement(true);
+              try {
+                const ensureRes = await fetch(
+                  `/api/bookings/by-token/${bookingToken}/ensure-agreement`,
+                  { method: "POST" },
+                );
+                if (ensureRes.ok) {
+                  const refreshed = await fetch(`/api/bookings/by-token/${bookingToken}`);
+                  if (refreshed.ok) {
+                    const refreshedData = await refreshed.json();
+                    agreementText = formatAgreementNumber({
+                      reservationNumber: refreshedData?.booking?.trip?.reservation_number ?? null,
+                      agreementSeq: refreshedData?.booking?.agreement_seq ?? null,
+                    });
+                  }
+                }
+              } catch (ensureErr) {
+                console.warn("ensure-agreement on success page failed:", ensureErr);
+              } finally {
+                setIsEnsuringAgreement(false);
+              }
+            }
+
             setAgreementNumberText(agreementText !== "-" ? agreementText : null);
 
             if (tripMessage) {
@@ -80,7 +105,7 @@ function SuccessContent() {
     };
 
     fetchMessage();
-  }, []);
+  }, [bookingRef, token]);
 
   const defaultMessage = '<p class="mb-2">Dziękujemy za rezerwację i płatność! Twoja rezerwacja została potwierdzona, a płatność została zaksięgowana.</p><p class="mt-2 text-sm">Wszystkie dokumenty (umowa, potwierdzenie płatności) zostały wysłane na Twój adres e-mail.</p><p class="mt-2 text-sm">Nie musisz ręcznie wgrywać podpisanej umowy - wszystko zostało automatycznie przetworzone.</p>';
 
@@ -93,7 +118,9 @@ function SuccessContent() {
           <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-700 dark:text-green-300 whitespace-pre-wrap">
-              {agreementNumberText ? (
+              {isEnsuringAgreement ? (
+                <p className="mb-2 text-sm text-muted-foreground">Przypisywanie numeru umowy…</p>
+              ) : agreementNumberText ? (
                 <p className="mb-2 text-sm">
                   Numer umowy: <strong>{agreementNumberText.replace(/^#/, "")}</strong>
                 </p>

@@ -5,28 +5,21 @@ import { sendInvitationEmail } from "@/lib/email/send";
 import { revalidatePath } from "next/cache";
 
 /**
- * Zwraca base URL aplikacji dla linków zaproszeń
- * PRIORYTET 1: NEXT_PUBLIC_APP_URL (jeśli ustawiony, zawsze używamy go)
- * PRIORYTET 2: magia-pod.vercel.app dla produkcji na Vercel
- * PRIORYTET 3: VERCEL_URL tylko dla production
- * PRIORYTET 4: localhost w development
+ * Zwraca base URL aplikacji dla linków zaproszeń (e-mail, ponowne wysyłki).
+ * Spójne z resztą aplikacji: bookings, Paynow itd.
  */
 function getBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL;
+  const fromEnv =
+    process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, "");
   }
-  
-  // Jeśli jesteśmy na Vercel w produkcji, używamy magia-pod.vercel.app
-  if (process.env.VERCEL_ENV === "production") {
-    return "https://magia-pod.vercel.app";
-  }
-  
-  // Fallback na VERCEL_URL jeśli jest dostępny
+
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;
   }
-  
-  // Development - localhost
+
   return "http://localhost:3000";
 }
 

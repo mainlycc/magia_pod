@@ -80,6 +80,9 @@ export type TripContentData = {
   additional_service_text: string
   reservation_number: string
   duration_text: string
+  agreement_room_type: string
+  agreement_meals_info: string
+  agreement_transfer_info: string
   additional_fields: Array<{ 
     id: string
     sectionTitle: string

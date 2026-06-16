@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTrip } from "@/contexts/trip-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,75 @@ import {
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
+
+function newFieldId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `field-${crypto.randomUUID()}`;
+  }
+  return `field-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function ensureTripInfoTableFields(template: AgreementTemplate): AgreementTemplate {
+  const required = [
+    { label: "Rodzaj, typ pokoju:", key: "room_type" },
+    { label: "Ilość, rodzaj posiłków:", key: "meals_info" },
+    { label: "Transfery:", key: "transfer_info" },
+  ] as const;
+
+  const sections = template.sections.map((section) => ({ ...section }));
+
+  const tripInfoTableIndex = sections.findIndex((s) => {
+    if (s.type !== "table" || !s.fields?.length) return false;
+    return s.fields.some((f) => f.value.includes("{{accommodation_location}}"));
+  });
+
+  if (tripInfoTableIndex === -1) return template;
+
+  const tripInfoTable = { ...sections[tripInfoTableIndex] };
+  const fields = [...(tripInfoTable.fields || [])];
+
+  // Jeśli w starszym szablonie ktoś użył placeholderów {{room_type}}/{{meals_info}}/{{transfer_info}},
+  // to przestawiamy je na ręczne (puste), żeby były czerwone i wymagały uzupełnienia.
+  const placeholderValues = new Set(required.map((r) => `{{${r.key}}}`));
+  const normalizedFields = fields.map((f) => {
+    if (placeholderValues.has(f.value.trim())) {
+      return { ...f, value: "", type: "static" as const };
+    }
+    return f;
+  });
+
+  const existingLabels = new Set(normalizedFields.map((f) => f.label.trim().toLowerCase()));
+  const toAdd = required.filter((r) => !existingLabels.has(r.label.trim().toLowerCase()));
+  if (toAdd.length === 0) {
+    if (normalizedFields !== fields) {
+      tripInfoTable.fields = normalizedFields;
+      sections[tripInfoTableIndex] = tripInfoTable;
+      return { ...template, sections };
+    }
+    return template;
+  }
+
+  const insertAfterIndex = normalizedFields.findIndex((f) =>
+    f.value.includes("{{accommodation_location}}"),
+  );
+  const baseIndex = insertAfterIndex === -1 ? normalizedFields.length - 1 : insertAfterIndex;
+
+  normalizedFields.splice(
+    baseIndex + 1,
+    0,
+    ...toAdd.map((r) => ({
+      id: newFieldId(),
+      label: r.label,
+      value: "",
+      type: "static" as const,
+    })),
+  );
+
+  tripInfoTable.fields = normalizedFields;
+  sections[tripInfoTableIndex] = tripInfoTable;
+
+  return { ...template, sections };
+}
 
 const PLACEHOLDERS = [
   {
@@ -70,6 +139,7 @@ const PLACEHOLDERS = [
       { name: "{{trip_deposit_amount}}", description: "Kwota zaliczki" },
       { name: "{{trip_deposit_deadline}}", description: "Termin zapłaty zaliczki" },
       { name: "{{trip_final_payment_deadline}}", description: "Termin zapłaty całości" },
+      { name: "{{insurance_scope}}", description: "Zakres ubezpieczenia (z modułu Ubezpieczenia)" },
     ],
   },
   {
@@ -77,89 +147,151 @@ const PLACEHOLDERS = [
     items: [
       { name: "{{nights_count}}", description: "Liczba noclegów (tekst)" },
       { name: "{{accommodation_location}}", description: "Lokalizacja, rodzaj, kategoria obiektu" },
-      { name: "{{room_type}}", description: "Rodzaj, typ pokoju" },
-      { name: "{{meals_info}}", description: "Ilość, rodzaj posiłków" },
+      { name: "{{room_type}}", description: "Rodzaj, typ pokoju (ręcznie w szablonie)" },
+      { name: "{{meals_info}}", description: "Ilość, rodzaj posiłków (ręcznie w szablonie)" },
       { name: "{{transport_type}}", description: "Rodzaj kategoria środka transportu" },
       { name: "{{flight_info}}", description: "Przelot liniami (szczegóły)" },
       { name: "{{baggage_info}}", description: "Bagaż (wymiary, waga)" },
-      { name: "{{transfer_info}}", description: "Transfery" },
+      { name: "{{transfer_info}}", description: "Transfery (ręcznie w szablonie)" },
       { name: "{{additional_services}}", description: "Dodatkowe świadczenia" },
-      { name: "{{selected_services}}", description: "Usługi dodatkowe (atrakcje, dieta, ubezpieczenie)" },
-      { name: "{{insurance_scope}}", description: "Zakres ubezpieczenia" },
+      { name: "{{selected_services}}", description: "Usługi dodatkowe pogrupowane per uczestnik (diety, ubezpieczenia, atrakcje z ceną)" },
       { name: "{{additional_costs}}", description: "Dodatkowe koszty" },
     ],
   },
 ];
 
+async function loadTemplatesFromApi(tripId: string): Promise<{
+  individual: AgreementTemplate;
+  company: AgreementTemplate;
+} | null> {
+  const templatesRes = await fetch(`/api/trips/${tripId}/agreement-templates`);
+
+  if (!templatesRes.ok) {
+    if (templatesRes.status === 403) {
+      toast.error("Brak uprawnień do wczytania szablonu umowy");
+    } else {
+      toast.error("Nie udało się wczytać szablonów umowy");
+    }
+    return null;
+  }
+
+  const templates = await templatesRes.json();
+  return {
+    individual: ensureTripInfoTableFields(
+      parseHtmlToTemplate(templates.individual || DEFAULT_TEMPLATE),
+    ),
+    company: ensureTripInfoTableFields(parseHtmlToTemplate(templates.company || DEFAULT_TEMPLATE)),
+  };
+}
+
 export default function AgreementPage() {
-  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData } = useTrip();
+  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData } =
+    useTrip();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [registrationMode, setRegistrationMode] = useState<"individual" | "company" | "both">("both");
   const [templateIndividual, setTemplateIndividual] = useState<AgreementTemplate | null>(null);
   const [templateCompany, setTemplateCompany] = useState<AgreementTemplate | null>(null);
+  const [insuranceScope, setInsuranceScope] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!selectedTrip) {
-      setLoading(false);
-      return;
+    if (tripFullData?.registration_mode) {
+      setRegistrationMode(
+        (tripFullData.registration_mode as "individual" | "company" | "both") || "both",
+      );
     }
+  }, [tripFullData?.registration_mode]);
 
-    if (!selectedTrip.id) {
-      setLoading(false);
-      toast.error("Brak ID wybranej wycieczki");
-      return;
-    }
-
-    // Jeśli dane są już załadowane w cache, użyj ich
-    if (tripFullData && tripFullData.id === selectedTrip.id) {
-      setRegistrationMode((tripFullData.registration_mode as "individual" | "company" | "both") || "both");
-    } else if (isLoadingTripData) {
-      // Czekaj na załadowanie danych
+  const loadTemplates = useCallback(async (tripId: string) => {
+    try {
       setLoading(true);
+      const loaded = await loadTemplatesFromApi(tripId);
+      if (loaded) {
+        setTemplateIndividual(loaded.individual);
+        setTemplateCompany(loaded.company);
+      } else {
+        setTemplateIndividual(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+        setTemplateCompany(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+      }
+    } catch {
+      toast.error("Nie udało się wczytać szablonów");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTrip?.id) {
+      setLoading(false);
       return;
     }
 
-    const loadTemplates = async () => {
-      try {
-        setLoading(true);
-        const templatesRes = await fetch(`/api/trips/${selectedTrip.id}/agreement-templates`);
+    void loadTemplates(selectedTrip.id);
+  }, [selectedTrip?.id, loadTemplates]);
 
-        if (templatesRes.ok) {
-          const templates = await templatesRes.json();
-          const htmlIndividual = templates.individual || DEFAULT_TEMPLATE;
-          const htmlCompany = templates.company || DEFAULT_TEMPLATE;
-          
-          // Parsuj HTML do struktury danych
-          setTemplateIndividual(parseHtmlToTemplate(htmlIndividual));
-          setTemplateCompany(parseHtmlToTemplate(htmlCompany));
-        } else {
-          // Użyj domyślnego szablonu jeśli nie ma zapisanego
-          setTemplateIndividual(parseHtmlToTemplate(DEFAULT_TEMPLATE));
-          setTemplateCompany(parseHtmlToTemplate(DEFAULT_TEMPLATE));
+  useEffect(() => {
+    if (!selectedTrip?.id) return;
+
+    const loadScope = async () => {
+      try {
+        const res = await fetch(`/api/trips/${selectedTrip.id}/insurance-scope`);
+        if (res.ok) {
+          const data = await res.json();
+          setInsuranceScope(data.scope || null);
         }
-      } catch (err) {
-        toast.error("Nie udało się wczytać szablonów");
-      } finally {
-        setLoading(false);
+      } catch {
+        setInsuranceScope(null);
       }
     };
 
-    void loadTemplates();
-  }, [selectedTrip, tripFullData, isLoadingTripData]);
+    void loadScope();
+  }, [selectedTrip?.id]);
+
+  const previewContentData = tripContentData
+    ? { ...tripContentData }
+    : {
+        program_atrakcje: "",
+        dodatkowe_swiadczenia: "",
+        gallery_urls: [],
+        intro_text: "",
+        section_poznaj_title: "",
+        section_poznaj_description: "",
+        reservation_info_text: "",
+        reservation_success_message: "",
+        trip_info_text: "",
+        baggage_text: "",
+        weather_text: "",
+        show_trip_info_card: true,
+        show_baggage_card: true,
+        show_weather_card: true,
+        show_seats_left: false,
+        included_in_price_text: "",
+        additional_costs_text: "",
+        additional_service_text: "",
+        reservation_number: "",
+        duration_text: "",
+        agreement_room_type: "",
+        agreement_meals_info: "",
+        agreement_transfer_info: "",
+        additional_fields: [],
+        public_middle_sections: null,
+        public_right_sections: null,
+        public_hidden_middle_sections: null,
+        public_hidden_right_sections: null,
+        public_hidden_additional_sections: null,
+      };
 
   const handleSave = async (type: "individual" | "company") => {
     if (!selectedTrip?.id) return;
-    
+
     const template = type === "individual" ? templateIndividual : templateCompany;
     if (!template) return;
 
     try {
       setSaving(true);
-      // Konwertuj strukturę danych z powrotem do HTML
       const html = templateToHtml(template);
-      
+
       const res = await fetch(`/api/trips/${selectedTrip.id}/agreement-templates`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -170,11 +302,23 @@ export default function AgreementPage() {
       });
 
       if (res.ok) {
-        toast.success(`Szablon umowy dla ${type === "individual" ? "osób fizycznych" : "firm"} został zapisany`);
+        toast.success(
+          `Szablon umowy dla ${type === "individual" ? "osób fizycznych" : "firm"} został zapisany`,
+        );
+        const reloaded = await loadTemplatesFromApi(selectedTrip.id);
+        if (reloaded) {
+          if (type === "individual") {
+            setTemplateIndividual(reloaded.individual);
+          } else {
+            setTemplateCompany(reloaded.company);
+          }
+        }
+      } else if (res.status === 403) {
+        toast.error("Brak uprawnień do zapisu szablonu umowy");
       } else {
         toast.error("Nie udało się zapisać szablonu");
       }
-    } catch (err) {
+    } catch {
       toast.error("Nie udało się zapisać szablonu");
     } finally {
       setSaving(false);
@@ -201,7 +345,7 @@ export default function AgreementPage() {
     );
   }
 
-  if (loading) {
+  if (loading || isLoadingTripData) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -217,9 +361,14 @@ export default function AgreementPage() {
     );
   }
 
+  const previewProps = {
+    tripFullData,
+    tripContentData: previewContentData,
+    insuranceScope,
+  };
+
   return (
     <div className="space-y-4">
-      {/* Podgląd dokumentu */}
       {registrationMode === "both" ? (
         <Tabs defaultValue="individual" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -227,40 +376,25 @@ export default function AgreementPage() {
             <TabsTrigger value="company">Podgląd - Firma</TabsTrigger>
           </TabsList>
           <TabsContent value="individual" className="mt-4">
-            <AgreementPreview 
-              template={templateIndividual} 
-              tripFullData={tripFullData}
-              tripContentData={tripContentData}
-            />
+            <AgreementPreview template={templateIndividual} {...previewProps} />
           </TabsContent>
           <TabsContent value="company" className="mt-4">
-            <AgreementPreview 
-              template={templateCompany} 
-              tripFullData={tripFullData}
-              tripContentData={tripContentData}
-            />
+            <AgreementPreview template={templateCompany} {...previewProps} />
           </TabsContent>
         </Tabs>
       ) : registrationMode === "individual" ? (
-        <AgreementPreview 
-          template={templateIndividual} 
-          tripFullData={tripFullData}
-          tripContentData={tripContentData}
-        />
+        <AgreementPreview template={templateIndividual} {...previewProps} />
       ) : (
-        <AgreementPreview 
-          template={templateCompany} 
-          tripFullData={tripFullData}
-          tripContentData={tripContentData}
-        />
+        <AgreementPreview template={templateCompany} {...previewProps} />
       )}
 
-      {/* Edytor */}
       <Card className="p-4">
         <CardHeader className="px-0 pb-2">
           <CardTitle>Edytor szablonu umowy</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Edytuj szablon umowy dla wycieczki. Przeciągnij sekcje, aby zmienić ich kolejność. Użyj placeholderów w formacie {"{{placeholder_name}}"} aby wstawić dane z formularza i wycieczki.
+            Edytuj szablon umowy dla wycieczki. Przeciągnij sekcje, aby zmienić ich kolejność. Użyj
+            placeholderów w formacie {"{{placeholder_name}}"} aby wstawić dane z formularza i
+            wycieczki.
           </p>
         </CardHeader>
         <CardContent className="px-0 pb-0">
@@ -317,11 +451,16 @@ export default function AgreementPage() {
                       <h4 className="font-semibold text-xs">{category.category}</h4>
                       <div className="grid grid-cols-1 gap-1.5">
                         {category.items.map((item) => (
-                          <div key={item.name} className="flex items-start gap-1.5 p-1.5 bg-muted/50 rounded text-xs">
+                          <div
+                            key={item.name}
+                            className="flex items-start gap-1.5 p-1.5 bg-muted/50 rounded text-xs"
+                          >
                             <Badge variant="outline" className="font-mono text-[10px] px-1 py-0">
                               {item.name}
                             </Badge>
-                            <span className="text-[10px] text-muted-foreground">{item.description}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {item.description}
+                            </span>
                           </div>
                         ))}
                       </div>

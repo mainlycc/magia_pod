@@ -66,6 +66,13 @@ const AUTO_FILLED_PLACEHOLDERS = [
   'trip_final_payment_deadline',
   'reservation_number',
   'nights_count',
+  'accommodation_location',
+  'insurance_scope',
+  'transport_type',
+  'flight_info',
+  'baggage_info',
+  'additional_services',
+  'additional_costs',
   // Usługi
   'selected_services',
 ];

@@ -2,6 +2,10 @@
 
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 import { formatPostalAddressLine } from "./format-postal-address";
+import {
+  formatSelectedServicesPerParticipant,
+  type ServiceCatalogs,
+} from "./resolve-participant-service-titles";
 
 type RequiredContactFields = {
   pesel?: boolean;
@@ -56,7 +60,8 @@ function calculateNights(startDate: string | null, endDate: string | null): numb
 export function replaceTripPlaceholders(
   html: string,
   tripFullData: TripFullData | null,
-  tripContentData: TripContentData | null
+  tripContentData: TripContentData | null,
+  options?: { insuranceScope?: string | null },
 ): string {
   if (!tripFullData) return html;
 
@@ -119,9 +124,21 @@ export function replaceTripPlaceholders(
   const nights = calculateNights(tripFullData.start_date, tripFullData.end_date);
   result = result.replace(/\{\{nights_count\}\}/g, nights > 0 ? String(nights) : "-");
 
-  // Dodatkowe świadczenia z tripContentData
-  if (tripContentData?.dodatkowe_swiadczenia) {
-    result = result.replace(/\{\{additional_services\}\}/g, tripContentData.dodatkowe_swiadczenia);
+  // Dodatkowe świadczenia z tripContentData (additional_service_text ma pierwszeństwo)
+  const additionalServicesText =
+    tripContentData?.additional_service_text?.trim() ||
+    tripContentData?.dodatkowe_swiadczenia?.trim() ||
+    "";
+  if (additionalServicesText) {
+    result = result.replace(/\{\{additional_services\}\}/g, additionalServicesText);
+  }
+
+  // Uwaga: {{room_type}}, {{meals_info}}, {{transfer_info}} są teraz traktowane jako pola ręczne
+  // uzupełniane bezpośrednio w szablonie (czerwone w edytorze), więc nie backfillujemy ich automatycznie.
+
+  const insuranceScope = options?.insuranceScope?.trim();
+  if (insuranceScope) {
+    result = result.replace(/\{\{insurance_scope\}\}/g, insuranceScope);
   }
 
   // Informacje o bagażu z tripContentData
@@ -257,12 +274,14 @@ export function replaceBookingPlaceholders(
     participants?: Array<{
       first_name?: string;
       last_name?: string;
+      selected_services?: unknown;
     }>;
     participants_count?: number;
     participant_services?: Array<{
       service_type?: string;
       service_title?: string;
     }>;
+    service_catalogs?: ServiceCatalogs;
   } | null,
   tripPrice?: number | null,
   tripStartDate?: string | null,
@@ -272,6 +291,8 @@ export function replaceBookingPlaceholders(
     requiredContactFields?: RequiredContactFields | null;
     /** Fallback do starego `require_pesel` na wycieczce (gdy brak nowej konfiguracji pól). */
     requirePeselFallback?: boolean | null;
+    /** Tekst zakresu ubezpieczenia dla {{insurance_scope}} */
+    insuranceScope?: string | null;
   },
 ): string {
   if (!formData) return html;
@@ -353,13 +374,30 @@ export function replaceBookingPlaceholders(
   result = result.replace(/\{\{participants_count\}\}/g, String(participantsCount));
   result = result.replace(/\{\{participants_list\}\}/g, participantsList);
 
-  // Usługi dodatkowe
-  const selectedServices = formData.participant_services
-    ?.map((s) => s.service_title || s.service_type || "")
-    .filter(Boolean)
-    .join(", ") || "";
+  // Usługi dodatkowe — pogrupowane per uczestnik
+  let selectedServicesText = "";
+  if (formData.service_catalogs && participantRows.length > 0) {
+    selectedServicesText = formatSelectedServicesPerParticipant(
+      participantRows.map((p) => ({ selected_services: p.selected_services })),
+      formData.service_catalogs,
+    );
+  } else {
+    selectedServicesText =
+      formData.participant_services
+        ?.map((s) => s.service_title || s.service_type || "")
+        .filter(Boolean)
+        .join(", ") || "";
+    if (!selectedServicesText) selectedServicesText = "brak";
+  }
 
-  result = result.replace(/\{\{selected_services\}\}/g, selectedServices || "-");
+  const selectedServicesHtml = selectedServicesText.replace(/\n/g, "<br>");
+  result = result.replace(/\{\{selected_services\}\}/g, selectedServicesHtml || "brak");
+
+  // Zakres ubezpieczenia
+  const insuranceScope = options?.insuranceScope?.trim();
+  if (insuranceScope) {
+    result = result.replace(/\{\{insurance_scope\}\}/g, insuranceScope);
+  }
 
   // Cena całkowita i zaliczka (baza × liczba osób + dopłaty za usługi dodatkowe)
   if (tripPrice && participantsCount > 0) {

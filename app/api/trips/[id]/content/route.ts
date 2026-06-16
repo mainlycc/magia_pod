@@ -46,6 +46,9 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       additional_service_text: row.additional_service_text || "",
       reservation_number: row.reservation_number || "",
       duration_text: row.duration_text || "",
+      agreement_room_type: row.agreement_room_type || "",
+      agreement_meals_info: row.agreement_meals_info || "",
+      agreement_transfer_info: row.agreement_transfer_info || "",
       additional_fields: row.additional_fields || [],
       public_middle_sections: row.public_middle_sections || null,
       public_right_sections: row.public_right_sections || null,
@@ -91,6 +94,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       additional_service_text,
       reservation_number,
       duration_text,
+      agreement_room_type,
+      agreement_meals_info,
+      agreement_transfer_info,
       additional_fields,
       public_middle_sections,
       public_right_sections,
@@ -118,6 +124,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       additional_service_text?: string;
       reservation_number?: string;
       duration_text?: string;
+      agreement_room_type?: string;
+      agreement_meals_info?: string;
+      agreement_transfer_info?: string;
       additional_fields?: Array<{ 
         id: string;
         sectionTitle: string;
@@ -151,6 +160,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       additional_service_text?: string | null;
       reservation_number?: string | null;
       duration_text?: string | null;
+      agreement_room_type?: string | null;
+      agreement_meals_info?: string | null;
+      agreement_transfer_info?: string | null;
       additional_fields?: Array<{ 
         id: string;
         sectionTitle: string;
@@ -226,6 +238,15 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
     if ("duration_text" in body) {
       updateData.duration_text = duration_text ?? null;
+    }
+    if ("agreement_room_type" in body) {
+      updateData.agreement_room_type = agreement_room_type ?? null;
+    }
+    if ("agreement_meals_info" in body) {
+      updateData.agreement_meals_info = agreement_meals_info ?? null;
+    }
+    if ("agreement_transfer_info" in body) {
+      updateData.agreement_transfer_info = agreement_transfer_info ?? null;
     }
     if ("additional_fields" in body) {
       if (Array.isArray(additional_fields)) {

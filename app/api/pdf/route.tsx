@@ -9,6 +9,7 @@ import type { TripContentData, TripFullData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
 import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 import { embedNotoSansIntoHtml } from "@/lib/pdf/embed-noto-fonts-into-html";
+import { buildInsuranceScope } from "@/lib/agreement-insurance-scope";
 
 // Konfiguracja runtime dla Vercel - upewniamy się, że funkcja działa w środowisku serverless
 export const runtime = "nodejs";
@@ -228,6 +229,9 @@ function buildTripContentDataFromTripRow(tripRow: any, overrides?: { reservation
     additional_service_text: tripRow?.additional_service_text || "",
     reservation_number: (overrides?.reservation_number ?? tripRow?.reservation_number ?? "") || "",
     duration_text: tripRow?.duration_text || "",
+    agreement_room_type: tripRow?.agreement_room_type || "",
+    agreement_meals_info: tripRow?.agreement_meals_info || "",
+    agreement_transfer_info: tripRow?.agreement_transfer_info || "",
     additional_fields: Array.isArray(tripRow?.additional_fields) ? tripRow.additional_fields : [],
     public_middle_sections: tripRow?.public_middle_sections ?? null,
     public_right_sections: tripRow?.public_right_sections ?? null,
@@ -277,44 +281,6 @@ function buildTripFullDataFromTripRow(tripRow: any): TripFullData {
       typeof tripRow.payment_reminder_days_before === "number" ? tripRow.payment_reminder_days_before : null,
     payment_schedule: Array.isArray(tripRow.payment_schedule) ? tripRow.payment_schedule : null,
   };
-}
-
-function buildParticipantServicesFromSelectedServices(participants: PdfPayload["participants"]) {
-  const out: Array<{ service_type?: string; service_title?: string }> = [];
-
-  for (const p of participants) {
-    const s = p.selected_services;
-    if (!s || typeof s !== "object") continue;
-    const o = s as Record<string, unknown>;
-
-    const diets = Array.isArray(o.diets) ? (o.diets as Array<Record<string, unknown>>) : [];
-    const insurances = Array.isArray(o.insurances) ? (o.insurances as Array<Record<string, unknown>>) : [];
-    const attractions = Array.isArray(o.attractions) ? (o.attractions as Array<Record<string, unknown>>) : [];
-
-    for (const d of diets) {
-      const title = typeof d.title === "string" ? d.title : "";
-      if (title) out.push({ service_type: "diet", service_title: title });
-    }
-    for (const ins of insurances) {
-      const title = typeof ins.title === "string" ? ins.title : "";
-      if (title) out.push({ service_type: "insurance", service_title: title });
-    }
-    for (const a of attractions) {
-      if (a.include_in_contract === false) continue;
-      const title = typeof a.title === "string" ? a.title : "";
-      if (title) out.push({ service_type: "attraction", service_title: title });
-    }
-  }
-
-  // Dedup (ten sam tytuł może pojawić się u wielu uczestników)
-  const seen = new Set<string>();
-  return out.filter((s) => {
-    const key = `${s.service_type ?? ""}:${s.service_title ?? ""}`.trim();
-    if (!key) return false;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function wrapAgreementHtmlForPdf(innerHtml: string): string {
@@ -857,7 +823,17 @@ export async function POST(req: Request) {
         reservation_number: body.reservation_number ?? null,
       });
 
-      const participant_services = buildParticipantServicesFromSelectedServices(body.participants);
+      const insuranceScope = await buildInsuranceScope(
+        supabaseAdmin,
+        body.trip_id as string,
+        body.participants.map((p) => ({
+          first_name: p.first_name,
+          last_name: p.last_name,
+          selected_services: p.selected_services,
+        })),
+        tripRow.form_extra_insurances,
+      );
+
       const formData = {
         contact: {
           first_name: body.contact_first_name ?? undefined,
@@ -877,14 +853,21 @@ export async function POST(req: Request) {
         participants: body.participants.map((p) => ({
           first_name: p.first_name,
           last_name: p.last_name,
+          selected_services: p.selected_services,
         })),
         participants_count: body.participants.length,
-        participant_services,
+        service_catalogs: {
+          form_diets: tripRow.form_diets,
+          form_extra_insurances: tripRow.form_extra_insurances,
+          form_additional_attractions: tripRow.form_additional_attractions,
+        },
       } as const;
 
       const addonTotalCents = sumAdditionalServicesCents(body.participants);
 
-      let filledInnerHtml = replaceTripPlaceholders(customTemplate, tripFullData, tripContentData);
+      let filledInnerHtml = replaceTripPlaceholders(customTemplate, tripFullData, tripContentData, {
+        insuranceScope,
+      });
       filledInnerHtml = replaceBookingPlaceholders(
         filledInnerHtml,
         formData,
@@ -904,6 +887,7 @@ export async function POST(req: Request) {
                 })
               : null,
           requirePeselFallback: typeof tripRow?.require_pesel === "boolean" ? tripRow.require_pesel : null,
+          insuranceScope,
         },
       );
       const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);

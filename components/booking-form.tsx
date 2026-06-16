@@ -47,6 +47,11 @@ import { AgreementPreview } from "@/components/agreement-preview";
 import { parseHtmlToTemplate, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
+import {
+  buildParticipantsWithSelectedServices,
+  getFieldsToValidate,
+  type StepValidationContext,
+} from "@/components/booking-form/utils/booking-form-utils";
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
 
@@ -834,35 +839,6 @@ const steps = [
   },
 ] as const;
 
-const stepFieldGroups: Record<(typeof steps)[number]["id"], FieldPath<BookingFormValues>[]> = {
-  contact: [
-    "contact.first_name",
-    "contact.last_name",
-    "contact.email",
-    "contact.phone",
-    "contact.address.street",
-    "contact.address.city",
-    "contact.address.zip",
-    "company.name",
-    "company.nip",
-    "company.address.street",
-    "company.address.city",
-    "company.address.zip",
-  ],
-  participants: ["participants"],
-  services: ["participant_services"],
-  summary: [
-    "consents.agreement_consent" as FieldPath<BookingFormValues>,
-    "consents.conditions_de_pl_consent" as FieldPath<BookingFormValues>,
-    "consents.standard_form_consent" as FieldPath<BookingFormValues>,
-    "consents.electronic_services_consent" as FieldPath<BookingFormValues>,
-    "consents.rodo_info_consent" as FieldPath<BookingFormValues>,
-    "consents.insurance_terms_consent" as FieldPath<BookingFormValues>,
-    "consents.insurance_data_consent" as FieldPath<BookingFormValues>,
-    "consents.insurance_other_person_consent" as FieldPath<BookingFormValues>,
-  ],
-};
-
 interface BookingFormProps {
   slug: string;
 }
@@ -1119,7 +1095,7 @@ export function BookingForm({ slug }: BookingFormProps) {
               // Pobierz dane content wycieczki
               const { data: contentData } = await supabase
                 .from("trips")
-                .select("program_atrakcje,dodatkowe_swiadczenia,reservation_number,duration_text,additional_costs_text")
+                .select("program_atrakcje,dodatkowe_swiadczenia,reservation_number,duration_text,additional_costs_text,agreement_room_type,agreement_meals_info,agreement_transfer_info,baggage_text,additional_service_text")
                 .eq("id", trip.id)
                 .maybeSingle();
 
@@ -1134,7 +1110,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                   reservation_info_text: "",
                   reservation_success_message: "",
                   trip_info_text: "",
-                  baggage_text: "",
+                  baggage_text: contentData.baggage_text || "",
                   weather_text: "",
                   show_trip_info_card: true,
                   show_baggage_card: true,
@@ -1142,9 +1118,12 @@ export function BookingForm({ slug }: BookingFormProps) {
                   show_seats_left: false,
                   included_in_price_text: "",
                   additional_costs_text: contentData.additional_costs_text || "",
-                  additional_service_text: "",
+                  additional_service_text: contentData.additional_service_text || "",
                   reservation_number: contentData.reservation_number || "",
                   duration_text: contentData.duration_text || "",
+                  agreement_room_type: contentData.agreement_room_type || "",
+                  agreement_meals_info: contentData.agreement_meals_info || "",
+                  agreement_transfer_info: contentData.agreement_transfer_info || "",
                   additional_fields: [],
                   public_middle_sections: null,
                   public_right_sections: null,
@@ -1323,58 +1302,40 @@ export function BookingForm({ slug }: BookingFormProps) {
 
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
-  const getFieldsToValidate = (stepId: (typeof steps)[number]["id"]): FieldPath<BookingFormValues>[] => {
-    const baseFields = stepFieldGroups[stepId] || [];
-    
-    if (stepId === "contact") {
-      // Dla kroku kontaktowego, dostosuj pola do walidacji w zależności od typu zgłaszającego
-      if (applicantType === "individual") {
-        // Dla osoby fizycznej: wymagaj first_name, last_name, nie waliduj pól firmy
-        const fields: FieldPath<BookingFormValues>[] = [
-          "applicant_type",
-          "contact.first_name",
-          "contact.last_name",
-        ];
-        if (tripConfig?.form_required_contact_fields?.email !== false) {
-          fields.push("contact.email");
-        }
-        if (tripConfig?.form_required_contact_fields?.phone !== false) {
-          fields.push("contact.phone");
-        }
-        if (tripConfig?.form_required_contact_fields?.pesel ?? tripConfig?.require_pesel) {
-          fields.push("contact.pesel");
-        }
-        if (tripConfig?.form_required_contact_fields?.address) {
-          fields.push("contact.address.street", "contact.address.city", "contact.address.zip");
-        }
-        return fields;
-      } else if (applicantType === "company") {
-        // Dla firmy: first_name i last_name są opcjonalne, nie wymagaj pesel, ale wymagaj pól firmy
-        return [
-          "applicant_type",
-          "contact.email",
-          "contact.phone",
-          "company.name",
-          "company.nip",
-          "company.address.street",
-          "company.address.city",
-          "company.address.zip",
-        ];
-      }
+  const getStepValidationContext = (): StepValidationContext => ({
+    requiredContactFields: tripConfig?.form_required_contact_fields ?? {
+      pesel: tripConfig?.require_pesel ?? false,
+      phone: true,
+      email: true,
+      address: false,
+    },
+    requiredParticipantFields: tripConfig?.form_required_participant_fields ?? null,
+    participantCount: form.getValues("participants")?.length ?? 0,
+    invoiceUseOtherData: form.getValues("invoice.use_other_data"),
+    invoiceType: form.getValues("invoice.type"),
+    companyHasRepresentative: form.getValues("company.has_representative"),
+  });
+
+  const validateCurrentStep = async (): Promise<boolean> => {
+    const fieldsToValidate = getFieldsToValidate(
+      currentStep.id,
+      applicantType,
+      getStepValidationContext(),
+    );
+    if (fieldsToValidate.length === 0) {
+      return true;
     }
-    
-    if (stepId === "participants") {
-      // Dla kroku uczestników: nie waliduj pól uczestników przy przechodzeniu do następnego kroku
-      // (pełna walidacja będzie przy wysyłaniu formularza)
-      // Sprawdzamy tylko, czy jest przynajmniej jeden uczestnik (dla osób fizycznych)
-      if (applicantType === "individual") {
-        return []; // Pusta tablica - nie walidujemy pól, tylko sprawdzamy w logice
-      } else {
-        return []; // Dla firm też nie walidujemy
-      }
+
+    // `getFieldsToValidate` zwraca poprawne ścieżki pól, ale typ `trigger` potrafi się rozjechać
+    // przez inferencję generików `useForm` w tym pliku (Next/TS build). Runtimeowo to są tylko nazwy pól.
+    const isValid = await trigger(fieldsToValidate as any, { shouldFocus: true });
+    if (!isValid) {
+      toast.error("Uzupełnij wymagane pola", {
+        description: formatValidationErrors(form.formState.errors),
+        duration: 5000,
+      });
     }
-    
-    return baseFields;
+    return isValid;
   };
 
   const handleTabsChange = async (value: string) => {
@@ -1382,20 +1343,8 @@ export function BookingForm({ slug }: BookingFormProps) {
     if (nextIndex === -1) return;
 
     if (nextIndex > activeStepIndex) {
-      // Dla kroku uczestników: sprawdź tylko, czy jest przynajmniej jeden uczestnik (dla osób fizycznych)
-      if (currentStep.id === "participants" && applicantType === "individual") {
-        const participants = form.getValues("participants");
-        if (!participants || participants.length === 0) {
-          // Nie powinno się zdarzyć, bo zawsze jest jeden uczestnik, ale na wszelki wypadek
-          return;
-        }
-      }
-      
-      const fieldsToValidate = getFieldsToValidate(currentStep.id);
-      if (fieldsToValidate.length > 0) {
-        const isValid = await trigger(fieldsToValidate);
-        if (!isValid) return;
-      }
+      const isValid = await validateCurrentStep();
+      if (!isValid) return;
     }
 
     if (canGoToStep(nextIndex)) {
@@ -1405,21 +1354,8 @@ export function BookingForm({ slug }: BookingFormProps) {
   };
 
   const goToNextStep = async () => {
-    // Dla kroku uczestników: sprawdź tylko, czy jest przynajmniej jeden uczestnik (dla osób fizycznych)
-    if (currentStep.id === "participants" && applicantType === "individual") {
-      const participants = form.getValues("participants");
-      if (!participants || participants.length === 0) {
-        // Nie powinno się zdarzyć, bo zawsze jest jeden uczestnik, ale na wszelki wypadek
-        return;
-      }
-    }
-    
-    const fieldsToValidate = getFieldsToValidate(currentStep.id);
-    if (fieldsToValidate.length > 0) {
-      const isValid = await trigger(fieldsToValidate);
-      if (!isValid) return;
-    }
-    
+    const isValid = await validateCurrentStep();
+    if (!isValid) return;
     // Znajdź następny widoczny krok
     let nextIndex = activeStepIndex + 1;
     while (nextIndex < steps.length) {
@@ -1955,9 +1891,17 @@ export function BookingForm({ slug }: BookingFormProps) {
                 
                 // Znajdź krok z błędami
                 let stepWithError: string | null = null;
+                const validationContext = getStepValidationContext();
                 for (const step of steps) {
-                  const stepFields = getFieldsToValidate(step.id);
-                  const hasError = stepFields.some((field) => errorFields.some((errorField) => errorField.startsWith(field)));
+                  const stepFields = getFieldsToValidate(step.id, applicantType, validationContext);
+                  const hasError = stepFields.some((field) =>
+                    errorFields.some(
+                      (errorField) =>
+                        errorField === field ||
+                        errorField.startsWith(`${field}.`) ||
+                        (field.startsWith("participants.") && errorField.startsWith("participants.")),
+                    ),
+                  );
                   if (hasError) {
                     stepWithError = step.id;
                     break;
@@ -4351,28 +4295,11 @@ export function BookingForm({ slug }: BookingFormProps) {
                       </p>
                     </div>
                     {agreementTemplate && (() => {
-                      // Mapuj participant_services do odpowiedniego formatu
-                      const participantServices = form.watch("participant_services") || [];
-                      const mappedServices = participantServices.map((service: any) => {
-                        // Znajdź tytuł usługi z konfiguracji wycieczki
-                        let serviceTitle = service.service_id;
-                        
-                        if (service.type === "attraction" && tripConfig?.additional_attractions) {
-                          const attraction = tripConfig.additional_attractions.find((a: any) => a.id === service.service_id);
-                          if (attraction) serviceTitle = attraction.title;
-                        } else if (service.type === "diet" && tripConfig?.diets) {
-                          const diet = tripConfig.diets.find((d: any) => d.id === service.service_id);
-                          if (diet) serviceTitle = diet.title;
-                        } else if (service.type === "insurance" && tripConfig?.extra_insurances) {
-                          const insurance = tripConfig.extra_insurances.find((i: any) => i.id === service.service_id);
-                          if (insurance) serviceTitle = insurance.title;
-                        }
-
-                        return {
-                          service_type: service.type,
-                          service_title: serviceTitle,
-                        };
-                      });
+                      const previewParticipants = buildParticipantsWithSelectedServices(
+                        form.getValues() as any,
+                        applicantType,
+                        tripConfig?.seats_total,
+                      );
 
                       return (
                         <AgreementPreview 
@@ -4391,9 +4318,13 @@ export function BookingForm({ slug }: BookingFormProps) {
                               address: form.watch("contact.address"),
                             },
                             company: applicantType === "company" ? form.watch("company") : undefined,
-                            participants: form.watch("participants"),
+                            participants: previewParticipants,
                             participants_count: form.watch("participants_count"),
-                            participant_services: mappedServices as Array<{ service_type?: string; service_title?: string }>,
+                            service_catalogs: {
+                              form_diets: tripConfig?.diets,
+                              form_extra_insurances: tripConfig?.extra_insurances,
+                              form_additional_attractions: tripConfig?.additional_attractions,
+                            },
                           }}
                         />
                       );

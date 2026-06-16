@@ -24,10 +24,13 @@ function Calendar({
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
 }) {
   const defaultClassNames = getDefaultClassNames()
+  const hideNav = captionLayout !== "label"
 
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      // Gdy używamy dropdownów miesiąc/rok, nawigacja strzałkami tylko przeszkadza.
+      hideNavigation={hideNav}
       className={cn(
         "bg-background group/calendar p-3 [--cell-size:2rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
@@ -62,7 +65,8 @@ function Calendar({
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          "flex items-center justify-center h-(--cell-size) w-full px-(--cell-size)",
+          "flex items-center justify-center h-(--cell-size) w-full",
+          hideNav ? "px-0" : "px-(--cell-size)",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(

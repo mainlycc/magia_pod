@@ -301,7 +301,9 @@ describe("booking-form-utils", () => {
   describe("getFieldsToValidate", () => {
     it("powinien zwrócić pola kontaktowe dla osoby fizycznej", () => {
       const fields = getFieldsToValidate("contact", "individual", {
-        pesel: true,
+        requiredContactFields: {
+          pesel: true,
+        },
       });
 
       expect(fields).toContain("applicant_type");
@@ -316,6 +318,8 @@ describe("booking-form-utils", () => {
       const fields = getFieldsToValidate("contact", "company");
       
       expect(fields).toContain("applicant_type");
+      expect(fields).toContain("contact.first_name");
+      expect(fields).toContain("contact.last_name");
       expect(fields).toContain("contact.email");
       expect(fields).toContain("contact.phone");
       expect(fields).toContain("company.name");
@@ -326,9 +330,15 @@ describe("booking-form-utils", () => {
     });
 
     it("powinien zwrócić pola uczestników dla osoby fizycznej", () => {
-      const fields = getFieldsToValidate("participants", "individual");
+      const fields = getFieldsToValidate("participants", "individual", {
+        participantCount: 2,
+        requiredParticipantFields: { document: true, phone: true },
+      });
       
-      expect(fields).toContain("participants");
+      expect(fields).toContain("participants.0.first_name");
+      expect(fields).toContain("participants.1.birth_date");
+      expect(fields).toContain("participants.0.document_type");
+      expect(fields).toContain("participants.1.phone");
     });
 
     it("powinien zwrócić pustą tablicę dla uczestników firmy", () => {
@@ -337,7 +347,14 @@ describe("booking-form-utils", () => {
       expect(fields).toEqual([]);
     });
 
-    it("powinien zwrócić pustą tablicę dla innych kroków", () => {
+    it("powinien zwrócić pola zgód dla kroku podsumowania", () => {
+      const fields = getFieldsToValidate("summary", "individual");
+
+      expect(fields).toContain("consents.agreement_consent");
+      expect(fields).toContain("consents.insurance_other_person_consent");
+    });
+
+    it("powinien zwrócić pustą tablicę dla usług dodatkowych", () => {
       const fields = getFieldsToValidate("services", "individual");
       
       expect(fields).toEqual([]);

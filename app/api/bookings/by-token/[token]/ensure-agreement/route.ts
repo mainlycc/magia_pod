@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  ensureAgreementForBooking,
+  resolvePdfBaseUrl,
+} from "@/lib/agreements/ensure-agreement";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -20,7 +24,6 @@ export async function POST(
 
     const supabase = await createClient();
 
-    // Sprawdź czy token to UUID (access_token) czy booking_ref
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const isUuid = uuidRegex.test(token);
@@ -49,23 +52,25 @@ export async function POST(
     }
 
     const { origin } = new URL(request.url);
-    const res = await fetch(`${origin}/api/bookings/${bookingId}/agreement`, {
-      method: "POST",
-    });
+    const baseUrl = resolvePdfBaseUrl(origin);
+    const result = await ensureAgreementForBooking(bookingId, { baseUrl });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
+    if (!result.ok) {
       return NextResponse.json(
-        { error: "Failed to generate agreement", details: text || res.statusText },
-        { status: 500 },
+        { error: result.error, details: result.details },
+        { status: result.status },
       );
     }
 
-    const data = await res.json().catch(() => ({}));
-    return NextResponse.json({ success: true, booking_id: bookingId, ...data });
+    return NextResponse.json({
+      success: true,
+      booking_id: bookingId,
+      agreement_seq: result.agreement_seq,
+      filename: result.filename,
+      created: result.created,
+    });
   } catch (error) {
     console.error("POST /api/bookings/by-token/[token]/ensure-agreement error", error);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
 }
-

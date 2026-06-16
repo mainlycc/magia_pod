@@ -7,7 +7,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 
 /** Placeholdery tworzone przy zgłoszeniu firmy bez listy imion (booking-form). */
@@ -60,6 +61,42 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEnsuringAgreement, setIsEnsuringAgreement] = useState(false);
+  const [ensureFailed, setEnsureFailed] = useState(false);
+  const [isSyncingPayment, setIsSyncingPayment] = useState(false);
+  const [paymentSynced, setPaymentSynced] = useState(false);
+
+  const refreshBooking = async () => {
+    const response = await fetch(`/api/bookings/by-token/${token}`, {
+      cache: "no-store",
+      headers: { "cache-control": "no-cache" },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      setBookingData(data);
+      return data as BookingData;
+    }
+    return null;
+  };
+
+  const runEnsureAgreement = async () => {
+    setIsEnsuringAgreement(true);
+    setEnsureFailed(false);
+    try {
+      const res = await fetch(`/api/bookings/by-token/${token}/ensure-agreement`, { method: "POST" });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        console.warn("ensure-agreement failed:", t || res.statusText);
+        setEnsureFailed(true);
+        return;
+      }
+      await refreshBooking();
+    } catch (e) {
+      console.warn("ensure-agreement error:", e);
+      setEnsureFailed(true);
+    } finally {
+      setIsEnsuringAgreement(false);
+    }
+  };
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -84,6 +121,47 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     fetchBooking();
   }, [token]);
 
+  // Po powrocie z Paynow (continueUrl → /booking/{token}?paymentStatus=...) zsynchronizuj wpłatę i wystaw fakturę
+  useEffect(() => {
+    const syncPaymentAfterPaynow = async () => {
+      if (!bookingData?.booking?.booking_ref) return;
+      if (isSyncingPayment || paymentSynced) return;
+
+      const paymentStatusFromUrl = (searchParams.get("paymentStatus") || "").trim().toUpperCase();
+      const paymentIdFromUrl = searchParams.get("paymentId") || undefined;
+      const returningFromPaynow =
+        paymentStatusFromUrl === "CONFIRMED" ||
+        paymentStatusFromUrl === "PAID" ||
+        paymentStatusFromUrl === "PENDING" ||
+        Boolean(paymentIdFromUrl);
+
+      if (!returningFromPaynow) return;
+
+      setIsSyncingPayment(true);
+      try {
+        const response = await fetch("/api/payments/paynow/check-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            booking_ref: bookingData.booking.booking_ref,
+            payment_id: paymentIdFromUrl,
+          }),
+        });
+
+        if (response.ok) {
+          await refreshBooking();
+        }
+      } catch (syncErr) {
+        console.warn("Payment sync after Paynow return failed:", syncErr);
+      } finally {
+        setIsSyncingPayment(false);
+        setPaymentSynced(true);
+      }
+    };
+
+    void syncPaymentAfterPaynow();
+  }, [bookingData, isSyncingPayment, paymentSynced, searchParams]);
+
   useEffect(() => {
     const maybeEnsureAgreement = async () => {
       if (!bookingData?.booking) return;
@@ -97,34 +175,14 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
       // Jeśli umowa już ma numer, nic nie robimy
       if (!shouldEnsure) return;
+      if (ensureFailed) return;
       if (typeof bookingData.booking.agreement_seq === "number" && bookingData.booking.agreement_seq > 0) return;
 
-      setIsEnsuringAgreement(true);
-      try {
-        const res = await fetch(`/api/bookings/by-token/${token}/ensure-agreement`, { method: "POST" });
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          console.warn("ensure-agreement failed:", t || res.statusText);
-          return;
-        }
-        // Po wygenerowaniu odśwież dane rezerwacji, żeby pobrać agreement_seq
-        const refreshed = await fetch(`/api/bookings/by-token/${token}`, {
-          cache: "no-store",
-          headers: { "cache-control": "no-cache" },
-        });
-        if (refreshed.ok) {
-          const data = await refreshed.json();
-          setBookingData(data);
-        }
-      } catch (e) {
-        console.warn("ensure-agreement error:", e);
-      } finally {
-        setIsEnsuringAgreement(false);
-      }
+      void runEnsureAgreement();
     };
 
     void maybeEnsureAgreement();
-  }, [bookingData, isEnsuringAgreement, searchParams, token]);
+  }, [bookingData, ensureFailed, searchParams, token]);
 
   if (loading) {
     return (
@@ -189,9 +247,16 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">{agreementHeaderLabel}</p>
-                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {agreementHeaderText}
-                </h1>
+                {isEnsuringAgreement ? (
+                  <div className="flex items-center gap-2 py-1">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-lg text-muted-foreground">Przypisywanie numeru…</span>
+                  </div>
+                ) : (
+                  <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                    {agreementHeaderText}
+                  </h1>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant={paymentUi.variant}>{paymentUi.label}</Badge>
@@ -203,6 +268,25 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
           </CardHeader>
         </div>
       </Card>
+
+      {ensureFailed && agreementHeaderText === "—" && (
+        <Alert variant="destructive">
+          <AlertTitle>Nie udało się przypisać numeru umowy</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>Spróbuj odświeżyć — numer powinien pojawić się automatycznie po zawarciu umowy.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void runEnsureAgreement()}
+              disabled={isEnsuringAgreement}
+              className="shrink-0"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Odśwież
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {shouldShowSuccessMessage && booking.trip.reservation_success_message?.trim() && (
         <p className="whitespace-pre-wrap">{booking.trip.reservation_success_message}</p>

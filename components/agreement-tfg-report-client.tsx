@@ -57,7 +57,7 @@ export function AgreementTfgReportClient() {
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`,
   );
   const [dateTo, setDateTo] = useState(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`,
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
   );
   const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
 
@@ -163,8 +163,9 @@ export function AgreementTfgReportClient() {
         <CardHeader>
           <CardTitle>Generowanie raportu umów (TFG)</CardTitle>
           <CardDescription>
-            Comiesięczne zestawienia na podstawie daty wygenerowania umowy (zawarte) lub daty anulacji
-            rezerwacji (rezygnacje). Jedna linia szczegółów = jedna umowa lub jedna anulowana rezerwacja.
+            Comiesięczne zestawienia na podstawie daty zawarcia umowy — potwierdzenie płatności (zawarte)
+            lub daty anulacji rezerwacji (rezygnacje). Jedna linia szczegółów = jedna umowa lub jedna
+            anulowana rezerwacja.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -88,7 +88,7 @@ const PLACEHOLDERS = [
       { name: "{{baggage_info}}", description: "Bagaż (wymiary, waga)" },
       { name: "{{transfer_info}}", description: "Transfery" },
       { name: "{{additional_services}}", description: "Dodatkowe świadczenia" },
-      { name: "{{selected_services}}", description: "Usługi dodatkowe (atrakcje, dieta, ubezpieczenie)" },
+      { name: "{{selected_services}}", description: "Usługi dodatkowe pogrupowane per uczestnik (diety, ubezpieczenia, atrakcje z ceną)" },
       { name: "{{insurance_scope}}", description: "Zakres ubezpieczenia" },
       { name: "{{additional_costs}}", description: "Dodatkowe koszty" },
     ],

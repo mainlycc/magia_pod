@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { syncParticipantInsurancesForBooking } from "@/lib/insurance-local/sync-participant-insurances";
 
 const dietEntrySchema = z.object({
   service_id: z.string().min(1),
@@ -60,7 +61,7 @@ export async function PATCH(
 
     const { data: participant, error: fetchError } = await supabase
       .from("participants")
-      .select("id")
+      .select("id, booking_id")
       .eq("id", participantId)
       .single();
 
@@ -82,6 +83,14 @@ export async function PATCH(
     if (updateError) {
       console.error("selected_services update failed", updateError);
       return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    }
+
+    if (participant.booking_id) {
+      try {
+        await syncParticipantInsurancesForBooking(participant.booking_id);
+      } catch (syncErr) {
+        console.error("participant_insurances sync failed after selected-services update:", syncErr);
+      }
     }
 
     return NextResponse.json({ success: true, selected_services: normalized });

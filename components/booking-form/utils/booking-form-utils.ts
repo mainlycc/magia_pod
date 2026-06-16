@@ -5,6 +5,126 @@ import type { BookingFormValues } from "../booking-form-types";
 import type { FieldPath } from "react-hook-form";
 import { steps } from "../booking-form-types";
 
+type SelectedServicesPayload = {
+  insurances?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
+  attractions?: Array<{
+    service_id: string;
+    price_cents?: number | null;
+    currency?: string;
+    include_in_contract?: boolean;
+  }>;
+  diets?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
+};
+
+function mapFormServicesToSelectedServices(
+  participantServices: NonNullable<BookingFormValues["participant_services"]>,
+): SelectedServicesPayload {
+  const selectedServices: SelectedServicesPayload = {};
+
+  participantServices.forEach((service) => {
+    if (service.type === "insurance") {
+      if (!selectedServices.insurances) selectedServices.insurances = [];
+      selectedServices.insurances.push({
+        service_id: service.service_id,
+        variant_id: service.variant_id,
+        price_cents: service.price_cents ?? null,
+      });
+    } else if (service.type === "attraction") {
+      if (!selectedServices.attractions) selectedServices.attractions = [];
+      selectedServices.attractions.push({
+        service_id: service.service_id,
+        price_cents: service.price_cents ?? null,
+        currency: service.currency || "PLN",
+        include_in_contract: service.include_in_contract ?? true,
+      });
+    } else if (service.type === "diet") {
+      if (!selectedServices.diets) selectedServices.diets = [];
+      selectedServices.diets.push({
+        service_id: service.service_id,
+        variant_id: service.variant_id,
+        price_cents: service.price_cents ?? null,
+      });
+    }
+  });
+
+  return selectedServices;
+}
+
+/** Buduje listę uczestników z selected_services — wspólna logika submitu i podglądu umowy. */
+export function buildParticipantsWithSelectedServices(
+  values: BookingFormValues,
+  applicantType: "individual" | "company",
+  tripSeatsTotal?: number | null,
+): Array<{
+  first_name?: string;
+  last_name?: string;
+  selected_services?: SelectedServicesPayload;
+}> {
+  if (applicantType === "company") {
+    const services = values.participant_services || [];
+    const participantsCount = (tripSeatsTotal ?? values.participants_count ?? 0) as number;
+    const uniqueParticipants = new Map<
+      string,
+      { first_name: string; last_name: string; services: typeof services }
+    >();
+
+    services.forEach((service) => {
+      if (service.participant_first_name && service.participant_last_name) {
+        const key = `${service.participant_first_name}_${service.participant_last_name}`;
+        if (!uniqueParticipants.has(key)) {
+          uniqueParticipants.set(key, {
+            first_name: service.participant_first_name,
+            last_name: service.participant_last_name,
+            services: [],
+          });
+        }
+        uniqueParticipants.get(key)!.services.push(service);
+      }
+    });
+
+    if (uniqueParticipants.size === 0) {
+      if (participantsCount > 0) {
+        for (let i = 0; i < participantsCount; i++) {
+          uniqueParticipants.set(`participant_${i}`, {
+            first_name: `Uczestnik ${i + 1}`,
+            last_name: "(dane do uzupełnienia)",
+            services: [],
+          });
+        }
+      } else {
+        uniqueParticipants.set("default_participant", {
+          first_name: "Uczestnik",
+          last_name: "(dane do uzupełnienia)",
+          services: [],
+        });
+      }
+    }
+
+    return Array.from(uniqueParticipants.values()).map((participantData) => {
+      const selectedServices = mapFormServicesToSelectedServices(participantData.services);
+      return {
+        first_name: participantData.first_name,
+        last_name: participantData.last_name,
+        selected_services:
+          Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
+      };
+    });
+  }
+
+  return values.participants.map((p, index) => {
+    const participantServices = (values.participant_services || []).filter(
+      (service) => service.participant_index === index,
+    );
+    const selectedServices = mapFormServicesToSelectedServices(participantServices);
+    return {
+      first_name: p.first_name,
+      last_name: p.last_name,
+      selected_services:
+        Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
+    };
+  });
+}
+
 export async function submitBooking(
   form: UseFormReturn<BookingFormValues>,
   values: BookingFormValues,
@@ -62,155 +182,38 @@ export async function submitBooking(
       values.company?.has_representative && values.company?.representative_last_name && values.company.representative_last_name.trim() !== ""
         ? values.company.representative_last_name
         : undefined,
-    participants: (() => {
-      if (applicantType === "company") {
-        // Dla firmy: utwórz uczestników na podstawie usług lub participants_count
-        const services = values.participant_services || [];
-        const participantsCount = (tripSeatsTotal ?? values.participants_count ?? 0) as number;
-        const uniqueParticipants = new Map<string, { first_name: string; last_name: string; services: any[] }>();
-        
-        // Najpierw zbierz uczestników z usług
-        services.forEach((service: any) => {
-          if (service.participant_first_name && service.participant_last_name) {
-            const key = `${service.participant_first_name}_${service.participant_last_name}`;
-            if (!uniqueParticipants.has(key)) {
-              uniqueParticipants.set(key, {
-                first_name: service.participant_first_name,
-                last_name: service.participant_last_name,
-                services: [],
-              });
-            }
-            uniqueParticipants.get(key)!.services.push(service);
-          }
-        });
-        
-        // Jeśli nie ma uczestników z usług ani z participants_count,
-        // zwróć przynajmniej jednego domyślnego uczestnika aby spełnić walidację
-        // (użytkownik będzie musiał uzupełnić dane po stronie backoffice)
-        if (uniqueParticipants.size === 0) {
-          if (participantsCount > 0) {
-            // Jeśli podano liczbę uczestników, utwórz odpowiednią ilość z domyślnymi danymi
-            for (let i = 0; i < participantsCount; i++) {
-              const key = `participant_${i}`;
-              uniqueParticipants.set(key, {
-                first_name: `Uczestnik ${i + 1}`,
-                last_name: "(dane do uzupełnienia)",
-                services: [],
-              });
-            }
-          } else {
-            // Jeśli nie podano liczby uczestników, utwórz jednego domyślnego
-            uniqueParticipants.set('default_participant', {
-              first_name: "Uczestnik",
-              last_name: "(dane do uzupełnienia)",
-              services: [],
-            });
-          }
-        }
-        
-        return Array.from(uniqueParticipants.values()).map((participantData) => {
-          const selectedServices: {
-            insurances?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
-            attractions?: Array<{ service_id: string; price_cents?: number | null; currency?: string; include_in_contract?: boolean }>;
-            diets?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
-          } = {};
-          
-          participantData.services.forEach((service) => {
-            if (service.type === "insurance") {
-              if (!selectedServices.insurances) selectedServices.insurances = [];
-              selectedServices.insurances.push({
-                service_id: service.service_id,
-                variant_id: service.variant_id,
-                price_cents: service.price_cents ?? null,
-              });
-            } else if (service.type === "attraction") {
-              if (!selectedServices.attractions) selectedServices.attractions = [];
-              selectedServices.attractions.push({
-                service_id: service.service_id,
-                price_cents: service.price_cents ?? null,
-                currency: service.currency || "PLN",
-                include_in_contract: service.include_in_contract ?? true,
-              });
-            } else if (service.type === "diet") {
-              if (!selectedServices.diets) selectedServices.diets = [];
-              selectedServices.diets.push({
-                service_id: service.service_id,
-                variant_id: service.variant_id,
-                price_cents: service.price_cents ?? null,
-              });
-            }
-          });
-          
+    participants: buildParticipantsWithSelectedServices(values, applicantType, tripSeatsTotal).map(
+      (p, index) => {
+        if (applicantType === "company") {
           return {
-            first_name: participantData.first_name,
-            last_name: participantData.last_name,
+            first_name: p.first_name,
+            last_name: p.last_name,
             pesel: undefined,
             email: undefined,
             phone: undefined,
             gender_code: undefined,
             document_type: undefined,
             document_number: undefined,
-            selected_services: Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
+            selected_services: p.selected_services,
           };
-        });
-      } else {
-        // Dla osoby fizycznej: użyj istniejących uczestników
-        return values.participants.map((p, index) => {
-          // Znajdź usługi przypisane do tego uczestnika
-          const participantServices = (values.participant_services || []).filter((service) => {
-            return service.participant_index === index;
-          });
-          
-          // Przekształć usługi na format selected_services
-          const selectedServices: {
-            insurances?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
-            attractions?: Array<{ service_id: string; price_cents?: number | null; currency?: string; include_in_contract?: boolean }>;
-            diets?: Array<{ service_id: string; variant_id?: string; price_cents?: number | null }>;
-          } = {};
-          
-          participantServices.forEach((service) => {
-            if (service.type === "insurance") {
-              if (!selectedServices.insurances) selectedServices.insurances = [];
-              selectedServices.insurances.push({
-                service_id: service.service_id,
-                variant_id: service.variant_id,
-                price_cents: service.price_cents ?? null,
-              });
-            } else if (service.type === "attraction") {
-              if (!selectedServices.attractions) selectedServices.attractions = [];
-              selectedServices.attractions.push({
-                service_id: service.service_id,
-                price_cents: service.price_cents ?? null,
-                currency: service.currency || "PLN",
-                include_in_contract: service.include_in_contract ?? true,
-              });
-            } else if (service.type === "diet") {
-              if (!selectedServices.diets) selectedServices.diets = [];
-              selectedServices.diets.push({
-                service_id: service.service_id,
-                variant_id: service.variant_id,
-                price_cents: service.price_cents ?? null,
-              });
-            }
-          });
-          
-          return {
-            first_name: p.first_name,
-            last_name: p.last_name,
-            birth_date: p.birth_date,
-            email: p.email && p.email.trim() !== "" ? p.email : undefined,
-            phone: p.phone && p.phone.trim() !== "" ? p.phone : undefined,
-            gender_code: p.gender_code || undefined,
-            document_type: p.document_type || undefined,
-            document_number:
-              p.document_number && p.document_number.trim() !== ""
-                ? p.document_number
-                : undefined,
-            selected_services: Object.keys(selectedServices).length > 0 ? selectedServices : undefined,
-          };
-        });
-      }
-    })(),
+        }
+        const source = values.participants[index];
+        return {
+          first_name: p.first_name,
+          last_name: p.last_name,
+          birth_date: source?.birth_date,
+          email: source?.email && source.email.trim() !== "" ? source.email : undefined,
+          phone: source?.phone && source.phone.trim() !== "" ? source.phone : undefined,
+          gender_code: source?.gender_code || undefined,
+          document_type: source?.document_type || undefined,
+          document_number:
+            source?.document_number && source.document_number.trim() !== ""
+              ? source.document_number
+              : undefined,
+          selected_services: p.selected_services,
+        };
+      },
+    ),
     consents: values.consents,
   };
 
@@ -351,11 +354,70 @@ export async function submitBooking(
   }
 }
 
+export type StepValidationContext = {
+  requiredContactFields?: { pesel?: boolean; phone?: boolean; email?: boolean; address?: boolean } | null;
+  requiredParticipantFields?: { document?: boolean; gender?: boolean; phone?: boolean } | null;
+  participantCount?: number;
+  invoiceUseOtherData?: boolean;
+  invoiceType?: "individual" | "company";
+  companyHasRepresentative?: boolean;
+};
+
+const SUMMARY_CONSENT_FIELDS: FieldPath<BookingFormValues>[] = [
+  "consents.agreement_consent",
+  "consents.conditions_de_pl_consent",
+  "consents.standard_form_consent",
+  "consents.electronic_services_consent",
+  "consents.rodo_info_consent",
+  "consents.insurance_terms_consent",
+  "consents.insurance_data_consent",
+  "consents.insurance_other_person_consent",
+];
+
+function appendInvoiceFields(
+  fields: FieldPath<BookingFormValues>[],
+  context?: StepValidationContext,
+) {
+  if (!context?.invoiceUseOtherData) return;
+  fields.push("invoice.type");
+  if (context.invoiceType === "individual") {
+    fields.push("invoice.person.first_name", "invoice.person.last_name");
+  } else if (context.invoiceType === "company") {
+    fields.push("invoice.company.name", "invoice.company.nip");
+  }
+}
+
+function getParticipantFieldPaths(
+  count: number,
+  requiredParticipantFields?: { document?: boolean; gender?: boolean; phone?: boolean } | null,
+): FieldPath<BookingFormValues>[] {
+  const fields: FieldPath<BookingFormValues>[] = [];
+  for (let i = 0; i < count; i++) {
+    fields.push(
+      `participants.${i}.first_name`,
+      `participants.${i}.last_name`,
+      `participants.${i}.birth_date`,
+    );
+    if (requiredParticipantFields?.document) {
+      fields.push(`participants.${i}.document_type`, `participants.${i}.document_number`);
+    }
+    if (requiredParticipantFields?.gender) {
+      fields.push(`participants.${i}.gender_code`);
+    }
+    if (requiredParticipantFields?.phone) {
+      fields.push(`participants.${i}.phone`);
+    }
+  }
+  return fields;
+}
+
 export function getFieldsToValidate(
   stepId: (typeof steps)[number]["id"],
   applicantType: "individual" | "company",
-  requiredContactFields?: { pesel?: boolean; phone?: boolean; email?: boolean } | null
+  context?: StepValidationContext,
 ): FieldPath<BookingFormValues>[] {
+  const requiredContactFields = context?.requiredContactFields;
+
   if (stepId === "contact") {
     if (applicantType === "individual") {
       const fields: FieldPath<BookingFormValues>[] = [
@@ -372,30 +434,46 @@ export function getFieldsToValidate(
       if (requiredContactFields?.pesel) {
         fields.push("contact.pesel");
       }
+      if (requiredContactFields?.address) {
+        fields.push("contact.address.street", "contact.address.city", "contact.address.zip");
+      }
+      appendInvoiceFields(fields, context);
       return fields;
-    } else if (applicantType === "company") {
-      return [
+    }
+
+    if (applicantType === "company") {
+      const fields: FieldPath<BookingFormValues>[] = [
         "applicant_type",
         "contact.first_name",
         "contact.last_name",
-        "contact.email",
-        "contact.phone",
         "company.name",
         "company.nip",
         "company.address.street",
         "company.address.city",
         "company.address.zip",
       ];
+      if (requiredContactFields?.email !== false) {
+        fields.push("contact.email");
+      }
+      if (requiredContactFields?.phone !== false) {
+        fields.push("contact.phone");
+      }
+      if (context?.companyHasRepresentative) {
+        fields.push("company.representative_first_name", "company.representative_last_name");
+      }
+      appendInvoiceFields(fields, context);
+      return fields;
     }
   }
-  
-  if (stepId === "participants") {
-    if (applicantType === "company") {
-      return [];
-    } else {
-      return ["participants"];
-    }
+
+  if (stepId === "participants" && applicantType === "individual") {
+    const count = Math.max(context?.participantCount ?? 1, 1);
+    return getParticipantFieldPaths(count, context?.requiredParticipantFields);
   }
-  
+
+  if (stepId === "summary") {
+    return SUMMARY_CONSENT_FIELDS;
+  }
+
   return [];
 }

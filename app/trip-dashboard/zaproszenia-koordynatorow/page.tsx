@@ -127,7 +127,8 @@ export default function ZaproszeniaKoordynatorowPage() {
       return
     }
 
-    const baseUrl = window.location.origin
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") || window.location.origin
     const invitationLink = `${baseUrl}/register?token=${token}`
 
     try {

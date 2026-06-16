@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useTrip } from "@/contexts/trip-context"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,6 +11,7 @@ import { InsuranceSettings } from "./components/InsuranceSettings"
 
 export default function UbezpieczeniaPage() {
   const { selectedTrip, invalidateTripCache } = useTrip()
+  const [insuranceDataKey, setInsuranceDataKey] = useState(0)
 
   // Backfill: po wejściu na zakładkę synchronizujemy form_extra_insurances
   // z aktualnym stanem trip_insurance_variants (Typ 2 i 3) — dzięki temu
@@ -21,19 +22,33 @@ export default function UbezpieczeniaPage() {
     const tripId = selectedTrip?.id
     if (!tripId) return
     let cancelled = false
-    fetch(`/api/insurance-local/trip-config/${tripId}/sync-form-insurances`, {
-      method: "POST",
-    })
-      .then((res) => {
-        if (!cancelled && res.ok) {
-          // Wymuś przeładowanie cache wycieczki w kontekście,
-          // żeby edytor uczestników natychmiast zobaczył nowe pozycje.
+
+    const runSync = async () => {
+      try {
+        const [formRes, participantRes] = await Promise.all([
+          fetch(`/api/insurance-local/trip-config/${tripId}/sync-form-insurances`, {
+            method: "POST",
+          }),
+          fetch(`/api/insurance-local/trip-config/${tripId}/sync-participant-insurances`, {
+            method: "POST",
+          }),
+        ])
+
+        if (cancelled) return
+
+        if (formRes.ok) {
           invalidateTripCache()
         }
-      })
-      .catch(() => {
+        if (participantRes.ok) {
+          setInsuranceDataKey((k) => k + 1)
+        }
+      } catch {
         // Synchronizacja jest "best effort" — nie blokujemy UI.
-      })
+      }
+    }
+
+    void runSync()
+
     return () => {
       cancelled = true
     }
@@ -66,15 +81,19 @@ export default function UbezpieczeniaPage() {
         </TabsList>
 
         <TabsContent value="typ1" className="mt-6">
-          <InsuranceType1 tripId={selectedTrip.id} tripTitle={selectedTrip.title} />
+          <InsuranceType1
+            key={`typ1-${insuranceDataKey}`}
+            tripId={selectedTrip.id}
+            tripTitle={selectedTrip.title}
+          />
         </TabsContent>
 
         <TabsContent value="typ2" className="mt-6">
-          <InsuranceType2 tripId={selectedTrip.id} />
+          <InsuranceType2 key={`typ2-${insuranceDataKey}`} tripId={selectedTrip.id} />
         </TabsContent>
 
         <TabsContent value="typ3" className="mt-6">
-          <InsuranceType3 tripId={selectedTrip.id} />
+          <InsuranceType3 key={`typ3-${insuranceDataKey}`} tripId={selectedTrip.id} />
         </TabsContent>
 
         <TabsContent value="ustawienia" className="mt-6">

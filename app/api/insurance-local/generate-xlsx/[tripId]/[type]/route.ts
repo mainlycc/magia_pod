@@ -43,7 +43,7 @@ export async function GET(
         .select(`
           first_name,
           last_name,
-          date_of_birth,
+          birth_date,
           bookings!inner ( trip_id, status )
         `)
         .eq("bookings.trip_id", tripId)
@@ -53,7 +53,7 @@ export async function GET(
       participants = (data || []).map((p) => ({
         first_name: p.first_name,
         last_name: p.last_name,
-        date_of_birth: p.date_of_birth,
+        date_of_birth: p.birth_date,
       }))
     } else {
       // Pobierz ID wariantów dla tej wycieczki i danego typu
@@ -79,7 +79,7 @@ export async function GET(
             participants (
               first_name,
               last_name,
-              date_of_birth
+              birth_date
             )
           `)
           .in("trip_insurance_variant_id", variantIds)
@@ -103,19 +103,19 @@ export async function GET(
 
         const toParticipantRows = (pi: any): Array<{ first_name: string; last_name: string; date_of_birth: string | null }> => {
           const p = pi?.participants as
-            | { first_name?: string; last_name?: string; date_of_birth?: string | null }
-            | Array<{ first_name?: string; last_name?: string; date_of_birth?: string | null }>
+            | { first_name?: string; last_name?: string; birth_date?: string | null }
+            | Array<{ first_name?: string; last_name?: string; birth_date?: string | null }>
             | null
             | undefined
 
           if (!p) return []
           const arr = Array.isArray(p) ? p : [p]
           return arr
-            .filter((x) => x && (x.first_name || x.last_name || x.date_of_birth !== undefined))
+            .filter((x) => x && (x.first_name || x.last_name || x.birth_date !== undefined))
             .map((x) => ({
               first_name: String(x.first_name ?? ""),
               last_name: String(x.last_name ?? ""),
-              date_of_birth: x.date_of_birth ?? null,
+              date_of_birth: x.birth_date ?? null,
             }))
         }
 

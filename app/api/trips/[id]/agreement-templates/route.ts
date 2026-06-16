@@ -1,32 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-// Helper do sprawdzenia czy użytkownik to admin
-async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
-  const { data: claims } = await supabase.auth.getClaims();
-  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
-  if (!userId) return false;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  return profile?.role === "admin";
-}
+import { createAdminClient } from "@/lib/supabase/admin";
+import { canManageTrip } from "@/lib/trips/can-manage-trip";
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
-    if (!isAdmin) {
+    const allowed = await canManageTrip(supabase, id);
+    if (!allowed) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    // Pobierz szablony umów dla wycieczki
-    const { data: templates, error } = await supabase
+    const admin = createAdminClient();
+    const { data: templates, error } = await admin
       .from("trip_agreement_templates")
       .select("registration_type, template_html")
       .eq("trip_id", id);
@@ -36,7 +23,6 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json({ error: "fetch_failed", details: error.message }, { status: 500 });
     }
 
-    // Zwróć jako obiekt z kluczami individual i company
     const result: { individual: string | null; company: string | null } = {
       individual: null,
       company: null,
@@ -63,8 +49,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   try {
     const { id } = await context.params;
     const supabase = await createClient();
-    const isAdmin = await checkAdmin(supabase);
-    if (!isAdmin) {
+    const allowed = await canManageTrip(supabase, id);
+    if (!allowed) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
@@ -82,8 +68,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: "invalid_template_html" }, { status: 400 });
     }
 
-    // Sprawdź czy szablon już istnieje
-    const { data: existing, error: checkError } = await supabase
+    const admin = createAdminClient();
+
+    const { data: existing, error: checkError } = await admin
       .from("trip_agreement_templates")
       .select("id")
       .eq("trip_id", id)
@@ -96,8 +83,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
 
     if (existing) {
-      // Aktualizuj istniejący szablon
-      const { error: updateError } = await supabase
+      const { error: updateError } = await admin
         .from("trip_agreement_templates")
         .update({
           template_html: template_html,
@@ -110,8 +96,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         return NextResponse.json({ error: "update_failed", details: updateError.message }, { status: 500 });
       }
     } else {
-      // Utwórz nowy szablon
-      const { error: insertError } = await supabase
+      const { error: insertError } = await admin
         .from("trip_agreement_templates")
         .insert({
           trip_id: id,

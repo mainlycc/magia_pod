@@ -3,9 +3,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
+import {
+  ensureAgreementForBooking,
+  resolvePdfBaseUrl,
+} from "@/lib/agreements/ensure-agreement";
+import { createInvoiceForPaynowPayment } from "@/lib/payments/invoice-after-paynow-payment";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -536,59 +540,89 @@ export async function POST(request: NextRequest) {
   if (
     (newPaymentStatus === "paid" || newPaymentStatus === "partial") &&
     paymentHistoryInserted &&
-    paymentHistoryRowIdForInvoice
+    paymentHistoryRowIdForInvoice &&
+    amountCents > 0
   ) {
     try {
-      console.log(
-        `[Paynow Webhook] Creating advance invoice for booking ${booking.id}, payment_history ${paymentHistoryRowIdForInvoice}`
-      );
-
-      const invoiceResult = await processPaymentInvoice({
+      await createInvoiceForPaynowPayment({
         bookingId: booking.id,
         paymentHistoryId: paymentHistoryRowIdForInvoice,
         amountCents,
+        logPrefix: "[Paynow Webhook]",
         scheduleAfterResponse: (task) => waitUntil(task),
       });
-
-      if (invoiceResult.success) {
-        console.log(`[Paynow Webhook] ✓ Invoice created:`, {
-          invoiceId: invoiceResult.invoiceId,
-          invoiceNumber: invoiceResult.invoiceNumber,
-          providerInvoiceId: invoiceResult.providerInvoiceId,
-        });
-      } else {
-        console.error(`[Paynow Webhook] Failed to create invoice:`, invoiceResult.error);
-      }
     } catch (err) {
       console.error("[Paynow Webhook] Error creating invoice:", err);
+    }
+  }
+
+  // Wygeneruj brakującą umowę / numer po potwierdzeniu płatności
+  if (status === "CONFIRMED") {
+    try {
+      const { data: agreementRow } = await supabase
+        .from("agreements")
+        .select("agreement_seq, pdf_url")
+        .eq("booking_id", booking.id)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("generated_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+
+      const hasSeq =
+        typeof agreementRow?.agreement_seq === "number" && agreementRow.agreement_seq > 0;
+      const hasPdf = Boolean(agreementRow?.pdf_url) || Boolean(booking.agreement_pdf_url);
+
+      if (!hasSeq || !hasPdf) {
+        const { origin } = new URL(request.url);
+        const baseUrl = resolvePdfBaseUrl(origin);
+        const ensureResult = await ensureAgreementForBooking(booking.id, { baseUrl });
+
+        if (ensureResult.ok) {
+          if (ensureResult.filename) {
+            booking.agreement_pdf_url = ensureResult.filename;
+          }
+          console.log(
+            `[Paynow Webhook] ✓ Ensured agreement for booking ${booking.id}: seq=${ensureResult.agreement_seq}, pdf=${ensureResult.filename ?? "none"}`,
+          );
+        } else {
+          console.error("[Paynow Webhook] ensureAgreementForBooking failed:", ensureResult);
+        }
+      }
+    } catch (ensureErr) {
+      console.error("[Paynow Webhook] Error ensuring agreement:", ensureErr);
     }
   }
 
   // Oznacz umowę jako podpisaną po pomyślnej płatności
   if (status === "CONFIRMED") {
     try {
-      const { data: agreement } = await supabase
+      const { data: agreement, error: agreementLookupError } = await supabase
         .from("agreements")
-        .select("id")
+        .select("id, status, signed_at")
         .eq("booking_id", booking.id)
-        .eq("status", "generated")
-        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("generated_at", { ascending: false, nullsFirst: false })
         .limit(1)
-        .single();
-      
-      if (agreement) {
+        .maybeSingle();
+
+      if (agreementLookupError && agreementLookupError.code !== "PGRST116") {
+        console.error("[Paynow Webhook] Failed to lookup agreement for signing:", agreementLookupError);
+      } else if (agreement) {
+        const signedAt = agreement.signed_at ?? new Date().toISOString();
         const { error: updateAgreementError } = await supabase
           .from("agreements")
           .update({
             status: "signed",
-            signed_at: new Date().toISOString(),
+            signed_at: signedAt,
           })
           .eq("id", agreement.id);
-        
+
         if (updateAgreementError) {
           console.error("[Paynow Webhook] Failed to mark agreement as signed:", updateAgreementError);
         } else {
-          console.log(`[Paynow Webhook] ✓ Marked agreement ${agreement.id} as signed for booking ${booking.id}`);
+          console.log(
+            `[Paynow Webhook] ✓ Marked agreement ${agreement.id} as signed for booking ${booking.id} (signed_at=${signedAt})`,
+          );
         }
       }
     } catch (agreementErr) {

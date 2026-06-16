@@ -92,3 +92,55 @@ describe("replaceBookingPlaceholders — widoczność pól kontaktu (wiersze <tr
     expect(out).toContain(">90010112345<");
   });
 });
+
+describe("replaceBookingPlaceholders — selected_services per uczestnik", () => {
+  const catalogs = {
+    form_diets: [{ id: "diet-1", title: "Dieta wegetariańska" }],
+    form_extra_insurances: [
+      { id: "ins-2", title: "Ubezpieczenie typ 2" },
+      { id: "ins-3", title: "Ubezpieczenie typ 3" },
+    ],
+    form_additional_attractions: [],
+  };
+
+  it("podstawia usługi pogrupowane per uczestnik z <br>", () => {
+    const html = "<td>{{selected_services}}</td>";
+    const formData = {
+      participants: [
+        {
+          first_name: "Jan",
+          last_name: "Kowalski",
+          selected_services: {
+            diets: [{ service_id: "diet-1", price_cents: 0 }],
+            insurances: [{ service_id: "ins-2", price_cents: 10000 }],
+          },
+        },
+        {
+          first_name: "Anna",
+          last_name: "Nowak",
+          selected_services: {
+            insurances: [{ service_id: "ins-3", price_cents: 12000 }],
+          },
+        },
+      ],
+      service_catalogs: catalogs,
+    };
+
+    const out = replaceBookingPlaceholders(html, formData, null, null);
+    expect(out).toContain("Uczestnik 1<br>");
+    expect(out).toContain("Dieta wegetariańska - bezpłatna<br>");
+    expect(out).toContain("Ubezpieczenie typ 2 - 100.00 zł");
+    expect(out).toContain("Uczestnik 2<br>");
+    expect(out).toContain("Ubezpieczenie typ 3 - 120.00 zł");
+  });
+
+  it("podstawia brak gdy nie ma usług", () => {
+    const html = "{{selected_services}}";
+    const formData = {
+      participants: [{ first_name: "Jan", last_name: "Kowalski", selected_services: {} }],
+      service_catalogs: catalogs,
+    };
+    const out = replaceBookingPlaceholders(html, formData, null, null);
+    expect(out).toBe("brak");
+  });
+});

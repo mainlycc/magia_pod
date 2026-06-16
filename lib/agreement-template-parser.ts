@@ -66,11 +66,14 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
       }
       // Tabela - sekcja z polami
       else if (element.tagName === 'TABLE') {
-        if (currentSection && currentSection.type === 'title') {
-          currentSection.type = 'table';
-          currentSection.fields = [];
-        } else if (!currentSection) {
-          // Tabela bez tytułu - utwórz sekcję
+        if (
+          currentSection &&
+          currentSection.type === 'table' &&
+          currentSection.fields &&
+          currentSection.fields.length > 0
+        ) {
+          // Druga tabela bez H2 między nimi (np. domyślny szablon) — osobna sekcja
+          sections.push(currentSection);
           currentSection = {
             id: `section-${order++}`,
             title: '',
@@ -78,8 +81,30 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
             fields: [],
             order: sections.length,
           };
+        } else if (currentSection && currentSection.type === 'title') {
+          currentSection.type = 'table';
+          currentSection.fields = [];
+        } else if (!currentSection) {
+          currentSection = {
+            id: `section-${order++}`,
+            title: '',
+            type: 'table',
+            fields: [],
+            order: sections.length,
+          };
+        } else if (currentSection.type !== 'table') {
+          sections.push(currentSection);
+          currentSection = {
+            id: `section-${order++}`,
+            title: '',
+            type: 'table',
+            fields: [],
+            order: sections.length,
+          };
+        } else if (!currentSection.fields) {
+          currentSection.fields = [];
         }
-        
+
         if (currentSection && currentSection.type === 'table') {
           const rows = element.querySelectorAll('tr');
           rows.forEach((row) => {
@@ -209,10 +234,16 @@ export function templateToHtml(template: AgreementTemplate): string {
   
   // Sortuj sekcje według order przed renderowaniem (zachowaj kolejność po drag & drop)
   const sortedSections = [...template.sections].sort((a, b) => a.order - b.order);
-  
-  // Sprawdź czy pierwsza sekcja po sortowaniu to paragraf (organizator) - powinien być przed H1
+
+  // Tylko blok organizatora (pierwsza sekcja) idzie przed H1 — nie każdy paragraf
   const firstSection = sortedSections[0];
-  if (firstSection && firstSection.type === 'paragraph' && firstSection.content) {
+  const isOrganizerBlock =
+    firstSection?.type === "paragraph" &&
+    firstSection.content &&
+    (firstSection.content.includes("ORGANIZATOR IMPREZY TURYSTYCZNEJ") ||
+      firstSection.content.includes("<div"));
+
+  if (isOrganizerBlock && firstSection.content) {
     // Jeśli zawiera HTML (DIV z paragrafami), użyj go bezpośrednio
     const organizerContent = firstSection.content;
     if (organizerContent.includes('<div') || organizerContent.includes('<p')) {
@@ -229,7 +260,7 @@ export function templateToHtml(template: AgreementTemplate): string {
   html += `<h1>${escapeHtml(template.title)}</h1>\n\n`;
   
   // Renderuj sekcje (pomijając pierwszą jeśli była paragrafem organizatora)
-  const startIndex = (firstSection && firstSection.type === 'paragraph') ? 1 : 0;
+  const startIndex = isOrganizerBlock ? 1 : 0;
   sortedSections.slice(startIndex).forEach((section) => {
     // Wyświetl tytuł sekcji jeśli istnieje
     if (section.title) {

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         id,
         first_name,
         last_name,
-        date_of_birth,
+        birth_date,
         bookings!inner (
           id,
           booking_ref,
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       id: p.id,
       first_name: p.first_name,
       last_name: p.last_name,
-      date_of_birth: p.date_of_birth,
+      date_of_birth: p.birth_date,
       booking_ref: (p.bookings as unknown as { booking_ref: string }[] | { booking_ref: string })
         ? Array.isArray(p.bookings)
           ? (p.bookings as { booking_ref: string }[])[0]?.booking_ref || "—"

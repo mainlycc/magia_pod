@@ -6,6 +6,20 @@ import { NOTO_SANS_FAMILY, registerNotoFonts } from "@/lib/pdf/register-noto-fon
 import { format } from "date-fns/format";
 import { parseISO } from "date-fns/parseISO";
 import { pl } from "date-fns/locale";
+import {
+  getAgreementConclusionDate,
+  isConcludedAgreement,
+  isEffectiveDateInRange,
+  resolvePeriodBounds,
+} from "@/lib/reports/tfg-agreement-report-dates";
+
+export {
+  getAgreementConclusionDate,
+  isConcludedAgreement,
+  isEffectiveDateInRange,
+  REPORT_TIMEZONE,
+  resolvePeriodBounds,
+} from "@/lib/reports/tfg-agreement-report-dates";
 
 export const TFG_REPORT_TYPES = [
   "tfg_signed_detail",
@@ -17,22 +31,6 @@ export const TFG_REPORT_TYPES = [
 export type TfgReportType = (typeof TFG_REPORT_TYPES)[number];
 
 export type TfgReportFormat = "xlsx" | "pdf";
-
-export function resolvePeriodBounds(
-  period: "month" | "range",
-  opts: { year?: number; month?: number; dateFrom?: string; dateTo?: string },
-): { startIso: string; endIso: string } {
-  if (period === "month") {
-    const y = opts.year!;
-    const m = opts.month!;
-    const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
-    const end = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
-    return { startIso: start.toISOString(), endIso: end.toISOString() };
-  }
-  const start = new Date(`${opts.dateFrom}T00:00:00.000Z`);
-  const end = new Date(`${opts.dateTo}T23:59:59.999Z`);
-  return { startIso: start.toISOString(), endIso: end.toISOString() };
-}
 
 export const DETAIL_HEADERS = [
   "Numer umowy",
@@ -66,10 +64,20 @@ type TripLite = {
 type BookingLite = {
   id: string;
   status: string;
+  payment_status: string | null;
   booking_ref: string;
   cancelled_at: string | null;
   trips: TripLite | TripLite[] | null;
   participants: { id: string }[] | null;
+};
+
+type AgreementLite = {
+  id: string;
+  agreement_seq: number | null;
+  generated_at: string;
+  signed_at: string | null;
+  status: string;
+  booking_id: string;
 };
 
 function unwrapTrip(t: BookingLite["trips"]): TripLite | null {
@@ -119,7 +127,7 @@ function formatMoneyPln(value: number): string {
 
 export function buildDetailRowFromBooking(
   booking: BookingLite,
-  agreement: { agreement_seq: number | null; generated_at: string } | null,
+  agreement: { agreement_seq: number | null; conclusion_date: string } | null,
   options: { cancellationDate?: string | null },
 ): string[] {
   const trip = unwrapTrip(booking.trips);
@@ -131,7 +139,7 @@ export function buildDetailRowFromBooking(
   return [
     formatAgreementNumber(resNum, seq),
     trip?.title ?? "",
-    agreement ? formatPlDate(agreement.generated_at) : "",
+    agreement ? formatPlDate(agreement.conclusion_date) : "",
     formatPlDate(trip?.start_date ?? null),
     formatPlDate(trip?.end_date ?? null),
     String(n),
@@ -182,20 +190,40 @@ const SUMMARY_HEADERS = [
   "Suma wartości (PLN)",
 ] as const;
 
+async function fetchAgreementsInConclusionPeriod(
+  admin: SupabaseClient,
+  startIso: string,
+  endIso: string,
+): Promise<AgreementLite[]> {
+  const orFilter = [
+    `and(signed_at.gte.${startIso},signed_at.lte.${endIso})`,
+    `and(signed_at.is.null,generated_at.gte.${startIso},generated_at.lte.${endIso})`,
+  ].join(",");
+
+  const { data, error } = await admin
+    .from("agreements")
+    .select("id, agreement_seq, generated_at, signed_at, status, booking_id")
+    .or(orFilter);
+
+  if (error) throw new Error(error.message);
+
+  const byId = new Map<string, AgreementLite>();
+  for (const row of data ?? []) {
+    const ag = row as AgreementLite;
+    const conclusionDate = getAgreementConclusionDate(ag);
+    if (!isEffectiveDateInRange(conclusionDate, startIso, endIso)) continue;
+    byId.set(ag.id, ag);
+  }
+
+  return [...byId.values()];
+}
+
 export async function fetchSignedAgreementRows(
   admin: SupabaseClient,
   startIso: string,
   endIso: string,
 ): Promise<{ detail: string[][]; summaryInputs: { category: string; participants: number; valuePln: number }[] }> {
-  const { data: agreements, error: agErr } = await admin
-    .from("agreements")
-    .select("id, agreement_seq, generated_at, booking_id")
-    .gte("generated_at", startIso)
-    .lte("generated_at", endIso);
-
-  if (agErr) throw new Error(agErr.message);
-
-  const list = agreements ?? [];
+  const list = await fetchAgreementsInConclusionPeriod(admin, startIso, endIso);
   if (list.length === 0) {
     return { detail: [], summaryInputs: [] };
   }
@@ -207,6 +235,7 @@ export async function fetchSignedAgreementRows(
       `
       id,
       status,
+      payment_status,
       booking_ref,
       cancelled_at,
       trips (
@@ -234,14 +263,19 @@ export async function fetchSignedAgreementRows(
 
   for (const ag of list) {
     const b = byId.get(ag.booking_id);
-    if (!b || b.status === "cancelled") continue;
+    if (!b || !isConcludedAgreement(ag, b)) continue;
 
     const trip = unwrapTrip(b.trips);
     const n = participantCount(b);
     const valuePln = contractPricePln(trip, n);
+    const conclusionDate = getAgreementConclusionDate(ag);
 
     detail.push(
-      buildDetailRowFromBooking(b, { agreement_seq: ag.agreement_seq, generated_at: ag.generated_at }, {}),
+      buildDetailRowFromBooking(
+        b,
+        { agreement_seq: ag.agreement_seq, conclusion_date: conclusionDate },
+        {},
+      ),
     );
     summaryInputs.push({
       category: trip?.category ?? "",
@@ -264,6 +298,7 @@ export async function fetchCancellationRows(
       `
       id,
       status,
+      payment_status,
       booking_ref,
       cancelled_at,
       trips (
@@ -294,18 +329,21 @@ export async function fetchCancellationRows(
   const bookingIds = blist.map((b) => b.id);
   const { data: agreements, error: agErr } = await admin
     .from("agreements")
-    .select("booking_id, agreement_seq, generated_at")
+    .select("booking_id, agreement_seq, generated_at, signed_at")
     .in("booking_id", bookingIds);
 
   if (agErr) throw new Error(agErr.message);
 
-  const bestAg = new Map<string, { agreement_seq: number | null; generated_at: string }>();
+  const bestAg = new Map<string, { agreement_seq: number | null; conclusion_date: string }>();
   for (const a of agreements ?? []) {
+    const conclusionDate = getAgreementConclusionDate(
+      a as { signed_at: string | null; generated_at: string },
+    );
     const prev = bestAg.get(a.booking_id);
-    if (!prev || new Date(a.generated_at).getTime() >= new Date(prev.generated_at).getTime()) {
+    if (!prev || Date.parse(conclusionDate) >= Date.parse(prev.conclusion_date)) {
       bestAg.set(a.booking_id, {
         agreement_seq: a.agreement_seq,
-        generated_at: a.generated_at,
+        conclusion_date: conclusionDate,
       });
     }
   }

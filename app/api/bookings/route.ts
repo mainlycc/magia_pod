@@ -5,10 +5,13 @@ import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
+import { persistAgreementSeq } from "@/lib/agreements/ensure-agreement";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 import { createPaynowPayment } from "@/lib/paynow";
 import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
 import { getTripDocumentationEmailAttachments } from "@/lib/documents/email-attachments";
+import { getInsuranceOwuEmailAttachments } from "@/lib/insurance-local/owu-email-attachments";
+import { syncParticipantInsurancesForBooking } from "@/lib/insurance-local/sync-participant-insurances";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -505,6 +508,12 @@ export async function POST(req: Request) {
     
     console.log("✅ Successfully inserted participants:", participantsData);
 
+    try {
+      await syncParticipantInsurancesForBooking(booking.id);
+    } catch (syncErr) {
+      console.error("⚠️ participant_insurances sync failed after booking:", syncErr);
+    }
+
     // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
     // W przeciwnym razie Paynow przekieruje na localhost zamiast produkcyjnego URL
     const { origin } = new URL(req.url);
@@ -537,6 +546,20 @@ export async function POST(req: Request) {
       reservationNumber,
       agreementSeq: agreementNumber,
     }).replace(/^#/, "");
+
+    // Numer umowy zapisujemy od razu — niezależnie od powodzenia generowania PDF
+    try {
+      const persistResult = await persistAgreementSeq(
+        adminSupabase,
+        booking.id,
+        agreementNumber,
+      );
+      if (persistResult.error) {
+        console.error("Error persisting agreement_seq before PDF:", persistResult.error);
+      }
+    } catch (persistErr) {
+      console.error("Error persisting agreement_seq before PDF:", persistErr);
+    }
 
     try {
       // W development zawsze używaj origin (localhost), w produkcji baseUrl
@@ -582,18 +605,19 @@ export async function POST(req: Request) {
         attachment = { filename, base64 };
         agreementPdfUrl = filename;
 
-        // Zapisz informację o umowie w tabeli agreements
+        // Uzupełnij rekord umowy o wygenerowany PDF
         try {
-          await adminSupabase.from("agreements").insert({
-            booking_id: booking.id,
-            status: "generated",
-            pdf_url: filename,
-            agreement_seq: agreementNumber,
-            generated_at: new Date().toISOString(),
-          });
+          const persistResult = await persistAgreementSeq(
+            adminSupabase,
+            booking.id,
+            agreementNumber,
+            { pdfUrl: filename, generatedAt: new Date().toISOString() },
+          );
+          if (persistResult.error) {
+            console.error("Error updating agreement PDF in database:", persistResult.error);
+          }
         } catch (agreementErr) {
-          console.error("Error saving agreement to database:", agreementErr);
-          // Nie blokujemy rezerwacji jeśli zapis umowy się nie powiedzie
+          console.error("Error updating agreement PDF in database:", agreementErr);
         }
       }
     } catch (err) {
@@ -609,6 +633,19 @@ export async function POST(req: Request) {
         attachment = { filename: "umowa.pdf", base64: buf.toString("base64") };
         agreementPdfUrl = "example-agreement.pdf";
         console.warn("Using fallback agreement PDF attachment (example-agreement.pdf)");
+        try {
+          const persistResult = await persistAgreementSeq(
+            adminSupabase,
+            booking.id,
+            agreementNumber,
+            { pdfUrl: "example-agreement.pdf", generatedAt: new Date().toISOString() },
+          );
+          if (persistResult.error) {
+            console.error("Error persisting fallback agreement:", persistResult.error);
+          }
+        } catch (fallbackPersistErr) {
+          console.error("Error persisting fallback agreement:", fallbackPersistErr);
+        }
       } catch (fallbackErr) {
         console.error("Failed to attach fallback agreement PDF:", fallbackErr);
       }
@@ -690,10 +727,37 @@ export async function POST(req: Request) {
           docsAttachmentCount = 0;
         }
 
+        let owuDocs: { filename: string; base64: string }[] = [];
+        let owuAttachmentCount = 0;
+        try {
+          owuDocs = await getInsuranceOwuEmailAttachments({
+            tripId: trip.id,
+            bookingId: booking.id,
+            adminClient: adminSupabase,
+          });
+          owuAttachmentCount = owuDocs.length;
+        } catch (owuErr) {
+          console.error("[Bookings POST] Failed to attach insurance OWU PDFs:", owuErr);
+          owuDocs = [];
+          owuAttachmentCount = 0;
+        }
+
         const agreementFilenameForEmail = attachment ? `umowa-${booking.booking_ref}.pdf` : null;
+        const extraAttachments = [
+          ...docs.map((d) => ({
+            filename: d.filename,
+            content: d.base64,
+            encoding: "base64" as const,
+          })),
+          ...owuDocs.map((d) => ({
+            filename: d.filename,
+            content: d.base64,
+            encoding: "base64" as const,
+          })),
+        ];
 
         const attachments =
-          attachment || docs.length > 0
+          attachment || extraAttachments.length > 0
             ? [
                 ...(attachment
                   ? [
@@ -704,11 +768,7 @@ export async function POST(req: Request) {
                       },
                     ]
                   : []),
-                ...docs.map((d) => ({
-                  filename: d.filename,
-                  content: d.base64,
-                  encoding: "base64" as const,
-                })),
+                ...extraAttachments,
               ]
             : undefined;
 
@@ -729,6 +789,7 @@ export async function POST(req: Request) {
             booking_ref: booking.booking_ref,
             agreementAttached: !!attachment,
             docsAttached: docsAttachmentCount,
+            owuAttached: owuAttachmentCount,
           });
         }
       } catch (err) {

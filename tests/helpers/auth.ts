@@ -11,23 +11,33 @@ export async function loginUser(page: Page, email?: string, password?: string) {
 
   console.log(`[TEST] Próba logowania jako: ${testEmail}`);
   
-  await page.goto('/auth/login');
+  // Retry: przy starcie dev servera / w CI zdarza się, że pierwsze przejście na /auth/login
+  // trafia w chwilowy loading/blank (zwłaszcza w Firefox/WebKit). Robimy 3 próby.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await page.goto('/auth/login', { waitUntil: 'domcontentloaded' });
+    const emailInput = page.getByLabel(/email/i);
+    const passwordInput = page.locator('input#password');
+    const loginButton = page.getByRole('button', { name: /zaloguj/i });
+
+    const ready = await emailInput.isVisible({ timeout: 10000 }).catch(() => false);
+    if (ready) {
+      await passwordInput.waitFor({ state: 'visible', timeout: 10000 });
+      await loginButton.waitFor({ state: 'visible', timeout: 10000 });
+
+      await emailInput.fill(testEmail);
+      await passwordInput.fill(testPassword);
+      await expect(loginButton).toBeEnabled({ timeout: 15000 });
+      await loginButton.click();
+      break;
+    }
+
+    if (attempt === 3) {
+      await expect(emailInput).toBeVisible({ timeout: 1000 });
+    }
+  }
   
-  // Sprawdź czy strona logowania się załadowała
-  await expect(page).toHaveURL(/\/auth\/login/);
-  await expect(page.getByLabel(/email/i)).toBeVisible();
-  
-  await page.getByLabel(/email/i).fill(testEmail);
-  // Używamy ID zamiast label, bo przycisk "Pokaż hasło" też ma label z "hasło"
-  await page.locator('input#password').fill(testPassword);
-  
-  // Poczekaj na przycisk i sprawdź czy nie jest disabled
-  const loginButton = page.getByRole('button', { name: /zaloguj/i });
-  await expect(loginButton).toBeEnabled({ timeout: 5000 });
-  await loginButton.click();
-  
-  // Poczekaj na przekierowanie
-  await page.waitForURL(/\/(trip-dashboard|admin|coord)/, { timeout: 10000 });
+  // Poczekaj na przekierowanie (login czasem idzie wolniej przy RLS / SSR)
+  await page.waitForURL(/\/(trip-dashboard|admin|coord)/, { timeout: 30000 });
   
   const currentUrl = page.url();
   console.log(`[TEST] Zalogowano pomyślnie, przekierowano do: ${currentUrl}`);

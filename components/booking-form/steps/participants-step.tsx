@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
 import type { BookingFormValues, TripConfig } from "../booking-form-types";
 
 interface ParticipantsStepProps {
@@ -171,10 +172,10 @@ export function ParticipantsStep({
                       <FormItem>
                         <FormLabel>Data urodzenia</FormLabel>
                         <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            value={field.value || ""}
+                          <DatePicker
+                            value={(field.value as string) || ""}
+                            onChange={(v) => field.onChange(v)}
+                            className="w-full"
                           />
                         </FormControl>
                         <FormMessage />
@@ -274,10 +275,10 @@ export function ParticipantsStep({
                           <FormItem>
                             <FormLabel>Data wydania</FormLabel>
                             <FormControl>
-                              <Input
-                                type="date"
-                                {...field}
-                                value={field.value || ""}
+                              <DatePicker
+                                value={(field.value as string) || ""}
+                                onChange={(v) => field.onChange(v)}
+                                className="w-full"
                               />
                             </FormControl>
                             <FormMessage />
@@ -291,10 +292,10 @@ export function ParticipantsStep({
                           <FormItem>
                             <FormLabel>Data ważności</FormLabel>
                             <FormControl>
-                              <Input
-                                type="date"
-                                {...field}
-                                value={field.value || ""}
+                              <DatePicker
+                                value={(field.value as string) || ""}
+                                onChange={(v) => field.onChange(v)}
+                                className="w-full"
                               />
                             </FormControl>
                             <FormMessage />

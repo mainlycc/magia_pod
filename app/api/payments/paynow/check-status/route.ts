@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPaynowPaymentStatus } from "@/lib/paynow";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
+import { createInvoiceForPaynowPayment } from "@/lib/payments/invoice-after-paynow-payment";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -147,6 +149,9 @@ export async function POST(request: NextRequest) {
 
       console.log(`Paynow payment status: ${status}, current booking status: ${booking.payment_status}`);
 
+      let paymentHistoryRowIdForInvoice: string | null = null;
+      let invoiceAmountCents = 0;
+
       if (status === "CONFIRMED") {
         newPaymentStatus = "paid";
         shouldUpdate = true;
@@ -205,6 +210,8 @@ export async function POST(request: NextRequest) {
               }
             } else {
               insertSuccess = true;
+              paymentHistoryRowIdForInvoice = insertedPayment?.[0]?.id ?? null;
+              invoiceAmountCents = paymentStatus.amount;
               console.log(`[Paynow Check Status] ✓ Successfully inserted payment history entry for payment ${foundPaymentId}:`, insertedPayment);
             }
           }
@@ -213,6 +220,8 @@ export async function POST(request: NextRequest) {
             console.error(`[Paynow Check Status] ⚠️ CRITICAL: Failed to insert payment history after 3 attempts. Payment ${foundPaymentId} may not be recorded in payment_history!`);
           }
         } else if (existingPayment && existingPayment.length > 0) {
+          paymentHistoryRowIdForInvoice = existingPayment[0].id;
+          invoiceAmountCents = existingPayment[0].amount_cents || paymentStatus.amount || 0;
           console.log(`[Paynow Check Status] Payment history entry already exists for payment ${foundPaymentId} (id: ${existingPayment[0].id}, amount: ${existingPayment[0].amount_cents})`);
         } else {
           console.log(`[Paynow Check Status] Skipping payment history insert - no amount provided (amount: ${paymentStatus.amount})`);
@@ -307,6 +316,27 @@ export async function POST(request: NextRequest) {
         const syncPaid = await recalculateBookingPaymentsFromHistory(adminClient, booking.id);
         if (!syncPaid.ok) {
           console.error("[Paynow Check Status] recalculateBookingPaymentsFromHistory failed:", syncPaid.error);
+        } else {
+          newPaymentStatus = syncPaid.paymentStatus as typeof newPaymentStatus;
+        }
+
+        // Wystaw fakturę — fallback gdy webhook Paynow nie dotarł (np. localhost)
+        if (
+          paymentHistoryRowIdForInvoice &&
+          invoiceAmountCents > 0 &&
+          (newPaymentStatus === "paid" || newPaymentStatus === "partial")
+        ) {
+          try {
+            await createInvoiceForPaynowPayment({
+              bookingId: booking.id,
+              paymentHistoryId: paymentHistoryRowIdForInvoice,
+              amountCents: invoiceAmountCents,
+              logPrefix: "[Paynow Check Status]",
+              scheduleAfterResponse: (task) => waitUntil(task),
+            });
+          } catch (invoiceErr) {
+            console.error("[Paynow Check Status] Error creating invoice:", invoiceErr);
+          }
         }
 
         return NextResponse.json({

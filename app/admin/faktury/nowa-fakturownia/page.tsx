@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, Loader2, CheckCircle, XCircle, ExternalLink } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface InvoiceItemForm {
   name: string;
@@ -308,19 +309,15 @@ export default function NowaFakturowniaPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Data wystawienia *</Label>
-                  <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                  <DatePicker value={issueDate} onChange={setIssueDate} className="w-full" />
                 </div>
                 <div className="space-y-2">
                   <Label>Data sprzedaży *</Label>
-                  <Input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
+                  <DatePicker value={saleDate} onChange={setSaleDate} className="w-full" />
                 </div>
                 <div className="space-y-2">
                   <Label>Termin płatności</Label>
-                  <Input
-                    type="date"
-                    value={paymentTo}
-                    onChange={(e) => setPaymentTo(e.target.value)}
-                  />
+                  <DatePicker value={paymentTo} onChange={setPaymentTo} className="w-full" />
                   <p className="text-xs text-muted-foreground">Puste = brak terminu</p>
                 </div>
                 <div className="space-y-2">

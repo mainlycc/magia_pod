@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -473,13 +474,10 @@ export default function AdminParticipantsPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="birth_date">Data urodzenia</Label>
-                <Input
-                  id="birth_date"
-                  type="date"
+                <DatePicker
                   value={formData.birth_date || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, birth_date: e.target.value })
-                  }
+                  onChange={(v) => setFormData({ ...formData, birth_date: v })}
+                  className="w-full"
                 />
               </div>
             </div>

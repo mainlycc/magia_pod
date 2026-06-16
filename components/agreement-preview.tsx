@@ -13,6 +13,7 @@ interface AgreementPreviewProps {
   template: AgreementTemplate;
   tripFullData: TripFullData | null;
   tripContentData: TripContentData | null;
+  insuranceScope?: string | null;
   requiredContactFields?: {
     pesel?: boolean;
     phone?: boolean;
@@ -48,12 +49,18 @@ interface AgreementPreviewProps {
     participants?: Array<{
       first_name?: string;
       last_name?: string;
+      selected_services?: unknown;
     }>;
     participants_count?: number;
     participant_services?: Array<{
       service_type?: string;
       service_title?: string;
     }>;
+    service_catalogs?: {
+      form_diets?: unknown;
+      form_extra_insurances?: unknown;
+      form_additional_attractions?: unknown;
+    };
   } | null;
 }
 
@@ -61,14 +68,14 @@ export function AgreementPreview({
   template,
   tripFullData,
   tripContentData,
+  insuranceScope,
   formData,
   requiredContactFields,
   requirePeselFallback,
 }: AgreementPreviewProps) {
   const html = templateToHtml(template);
-  let htmlWithData = replaceTripPlaceholders(html, tripFullData, tripContentData);
-  
-  // Jeśli są dane z formularza, zastąp również placeholdery związane z klientem
+  let htmlWithData = replaceTripPlaceholders(html, tripFullData, tripContentData, { insuranceScope });
+
   if (formData) {
     htmlWithData = replaceBookingPlaceholders(
       htmlWithData,
@@ -79,8 +86,11 @@ export function AgreementPreview({
       {
         requiredContactFields,
         requirePeselFallback,
+        insuranceScope,
       },
     );
+  } else if (insuranceScope) {
+    htmlWithData = htmlWithData.replace(/\{\{insurance_scope\}\}/g, insuranceScope);
   }
 
   const [pages, setPages] = useState<string[]>([htmlWithData]);
