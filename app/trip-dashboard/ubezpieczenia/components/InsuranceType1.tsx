@@ -29,7 +29,7 @@ type Participant = {
   first_name: string
   last_name: string
   date_of_birth: string | null
-  booking_ref: string
+  agreement_number: string
 }
 
 export function InsuranceType1({ tripId, tripTitle }: Props) {
@@ -87,7 +87,7 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
             first_name: pi.participants.first_name,
             last_name: pi.participants.last_name,
             date_of_birth: pi.participants.date_of_birth,
-            booking_ref: (() => {
+            agreement_number: (() => {
               const b: any = pi.bookings
               const trip = Array.isArray(b?.trips) ? b.trips[0] : b?.trips
               const agreements = Array.isArray(b?.agreements) ? b.agreements : b?.agreements ? [b.agreements] : []
@@ -190,10 +190,10 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
         cell: ({ row }) => formatDate(row.original.date_of_birth),
       },
       {
-        id: "booking_ref",
-        header: "Nr rezerwacji",
+        id: "agreement_number",
+        header: "Numer umowy",
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">{row.original.booking_ref}</span>
+          <span className="text-sm text-muted-foreground">{row.original.agreement_number}</span>
         ),
       },
     ],

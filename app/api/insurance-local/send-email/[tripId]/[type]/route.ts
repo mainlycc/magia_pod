@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import ExcelJS from "exceljs"
 import { Resend } from "resend"
+import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
 
 // POST /api/insurance-local/send-email/[tripId]/[type]
 // Generuje XLSX, wypełnia szablon emaila i wysyła
@@ -201,7 +202,10 @@ async function buildKrContractList(
     .from("participant_insurances")
     .select(`
       purchased_at,
-      bookings ( booking_ref ),
+      bookings (
+        agreements:agreements(agreement_seq),
+        trips:trips(reservation_number)
+      ),
       trip_insurance_variants ( insurance_variants ( name ) )
     `)
     .in("trip_insurance_variant_id", variantIds)
@@ -212,13 +216,32 @@ async function buildKrContractList(
   if (!data || data.length === 0) return "Brak ubezpieczeń KR z poprzedniego dnia."
 
   return (data as Array<{
-    bookings: { booking_ref: string } | null
+    bookings: {
+      agreements?: { agreement_seq?: number | null } | Array<{ agreement_seq?: number | null }> | null
+      trips?: { reservation_number?: string | null } | Array<{ reservation_number?: string | null }> | null
+    } | null
     trip_insurance_variants: { insurance_variants: { name: string } } | null
   }>)
     .map((pi) => {
-      const ref = pi.bookings?.booking_ref || "—"
+      const b = pi.bookings
+      const trip = Array.isArray(b?.trips) ? b.trips[0] : b?.trips
+      const agreements = Array.isArray(b?.agreements)
+        ? b.agreements
+        : b?.agreements
+          ? [b.agreements]
+          : []
+      const seq =
+        agreements
+          .map((a) => a?.agreement_seq ?? 0)
+          .filter((n) => n > 0)
+          .sort((a, c) => c - a)[0] ?? null
+      const agreementNumber = formatPublicAgreementNumber({
+        reservationNumber: trip?.reservation_number ?? null,
+        agreementSeq: seq,
+      })
+      const ref = agreementNumber === "-" ? "—" : agreementNumber
       const variant = pi.trip_insurance_variants?.insurance_variants?.name || "—"
-      return `• Umowa #${ref} — ${variant}`
+      return `• Umowa ${ref} — ${variant}`
     })
     .join("\n")
 }

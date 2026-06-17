@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { formatAgreementNumberFromBooking } from "@/lib/agreements/agreement-number-spec"
 
 // GET ?trip_id=
 // Zwraca wszystkich aktywnych uczestników z rezerwacji dla danej wycieczki (dla ubezpieczenia Typ 1)
@@ -25,9 +26,10 @@ export async function GET(request: NextRequest) {
         birth_date,
         bookings!inner (
           id,
-          booking_ref,
           trip_id,
-          status
+          status,
+          agreements:agreements(agreement_seq),
+          trips:trips(reservation_number)
         )
       `)
       .eq("bookings.trip_id", tripId)
@@ -41,11 +43,7 @@ export async function GET(request: NextRequest) {
       first_name: p.first_name,
       last_name: p.last_name,
       date_of_birth: p.birth_date,
-      booking_ref: (p.bookings as unknown as { booking_ref: string }[] | { booking_ref: string })
-        ? Array.isArray(p.bookings)
-          ? (p.bookings as { booking_ref: string }[])[0]?.booking_ref || "—"
-          : (p.bookings as unknown as { booking_ref: string }).booking_ref || "—"
-        : "—",
+      agreement_number: formatAgreementNumberFromBooking(p.bookings),
     }))
 
     return NextResponse.json(result)
