@@ -47,6 +47,7 @@ import { AgreementPreview } from "@/components/agreement-preview";
 import { parseHtmlToTemplate, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
+import { getBookingFormPreviewDefaults } from "@/lib/agreements/agreement-preview-sample-data";
 import {
   buildParticipantsWithSelectedServices,
   getFieldsToValidate,
@@ -841,6 +842,8 @@ const steps = [
 
 interface BookingFormProps {
   slug: string;
+  /** Od razu przejdź do kroku podsumowania z przykładowymi danymi (np. ?podglad=1). */
+  startAtAgreementPreview?: boolean;
 }
 
 // Funkcja pomocnicza do formatowania błędów walidacji
@@ -918,7 +921,7 @@ const formatValidationErrors = (errors: any): string => {
     : "Sprawdź formularz i popraw błędy przed wysłaniem rezerwacji.";
 };
 
-export function BookingForm({ slug }: BookingFormProps) {
+export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1299,6 +1302,22 @@ export function BookingForm({ slug }: BookingFormProps) {
     }
     return visibleSteps.findIndex(s => s.id === currentStepId);
   }, [activeStepIndex, hasAdditionalServices, visibleSteps]);
+
+  // Tryb podglądu umowy (?podglad=1) — przykładowe dane + krok podsumowania
+  useEffect(() => {
+    if (!startAtAgreementPreview || !tripConfig || !agreementTemplateIndividual) return;
+
+    const summaryIndex = steps.findIndex((step) => step.id === "summary");
+    if (summaryIndex < 0) return;
+
+    form.reset({
+      ...form.getValues(),
+      ...getBookingFormPreviewDefaults(),
+    } as Parameters<typeof form.reset>[0]);
+
+    setActiveStepIndex(summaryIndex);
+    setMaxAvailableStep(summaryIndex);
+  }, [startAtAgreementPreview, tripConfig, agreementTemplateIndividual, form]);
 
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
@@ -1829,6 +1848,15 @@ export function BookingForm({ slug }: BookingFormProps) {
 
   return (
     <>
+      {startAtAgreementPreview && (
+        <Alert className="mb-4 border-amber-200 bg-amber-50 text-amber-950">
+          <AlertTitle>Tryb podglądu umowy</AlertTitle>
+          <AlertDescription>
+            Formularz ma przykładowe dane klienta — od razu zobaczysz podgląd umowy na dole strony.
+            Aby wysłać rezerwację, przejdź przez kroki i użyj prawdziwych danych.
+          </AlertDescription>
+        </Alert>
+      )}
       <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="w-full">
         <TabsList className={cn("grid w-full gap-2", hasAdditionalServices ? "grid-cols-1 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
           {visibleSteps.map((step, index) => {

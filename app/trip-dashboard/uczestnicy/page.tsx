@@ -21,8 +21,8 @@ import { ChevronDown, Banknote, Loader2, Save, Trash2, FileText } from "lucide-r
 import { toast } from "sonner"
 import {
   getPaymentStatusBadgeClass,
-} from "@/app/admin/trips/[id]/bookings/payment-status"
-import type { PaymentStatusValue } from "@/app/admin/trips/[id]/bookings/payment-status"
+} from "@/lib/payment-status"
+import type { PaymentStatusValue } from "@/lib/payment-status"
 import { cn } from "@/lib/utils"
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number"
 import {

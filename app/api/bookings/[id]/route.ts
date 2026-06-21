@@ -3,7 +3,7 @@ import { z } from "zod";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PAYMENT_STATUS_VALUES } from "@/app/admin/trips/[id]/bookings/payment-status";
+import { PAYMENT_STATUS_VALUES } from "@/lib/payment-status";
 import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
 import { deriveInstallmentStatuses } from "@/lib/bookings/recalculate-booking-payments";
 

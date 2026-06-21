@@ -93,6 +93,47 @@ describe("replaceBookingPlaceholders — widoczność pól kontaktu (wiersze <tr
   });
 });
 
+describe("replaceBookingPlaceholders — widoczność sekcji firmy", () => {
+  const companySectionHtml = `
+    <h2>Dane Zgłaszającego</h2>
+    <table><tr><td>Imię:</td><td>{{contact_full_name}}</td></tr></table>
+    <h2>Dane firmy</h2>
+    <table>
+      <tr><td>Nazwa firmy:</td><td>{{company_name}}</td></tr>
+      <tr><td>NIP/KRS:</td><td>{{company_nip}}</td></tr>
+      <tr><td>Adres firmy:</td><td>{{company_address}}</td></tr>
+    </table>
+    <h2>Dane uczestników</h2>
+    <table><tr><td>Liczba:</td><td>{{participants_count}}</td></tr></table>
+  `;
+
+  const formDataIndividual = {
+    contact: { first_name: "Jan", last_name: "Kowalski" },
+    participants: [],
+    participants_count: 1,
+  };
+
+  const formDataCompany = {
+    ...formDataIndividual,
+    company: { name: "Firma Sp. z o.o.", nip: "1234567890" },
+  };
+
+  it("usuwa sekcję Dane firmy gdy brak danych firmy (osoba fizyczna)", () => {
+    const out = replaceBookingPlaceholders(companySectionHtml, formDataIndividual, null, null);
+    expect(out).not.toContain("Dane firmy");
+    expect(out).not.toContain("Nazwa firmy:");
+    expect(out).not.toContain("NIP/KRS:");
+    expect(out).toContain("Jan Kowalski");
+  });
+
+  it("zostawia sekcję Dane firmy gdy są dane firmy", () => {
+    const out = replaceBookingPlaceholders(companySectionHtml, formDataCompany, null, null);
+    expect(out).toContain("Dane firmy");
+    expect(out).toContain("Firma Sp. z o.o.");
+    expect(out).toContain("1234567890");
+  });
+});
+
 describe("replaceBookingPlaceholders — selected_services per uczestnik", () => {
   const catalogs = {
     form_diets: [{ id: "diet-1", title: "Dieta wegetariańska" }],

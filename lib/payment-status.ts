@@ -28,4 +28,3 @@ export function getPaymentStatusLabel(status: string | null | undefined) {
 export function getPaymentStatusBadgeClass(status: PaymentStatusValue) {
   return BADGE_STYLES[status] ?? "";
 }
-

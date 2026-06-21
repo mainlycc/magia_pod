@@ -49,4 +49,66 @@ describe("agreement-template-parser round-trip", () => {
     const roundTripped = templateToHtml(parsed);
     expect(roundTripped).toContain("Pokój 2-osobowy deluxe");
   });
+
+  it("round-trip: dodane pole tabeli jest zachowane", () => {
+    const parsed = parseHtmlToTemplate(DEFAULT_AGREEMENT_TEMPLATE_HTML);
+    const table = parsed.sections.find((s) => s.type === "table" && s.fields?.length);
+    expect(table).toBeDefined();
+
+    const marker = "TEST-CUSTOM-FIELD-123";
+    table!.fields!.push({
+      id: "field-custom-test",
+      label: "TEST Etykieta:",
+      value: marker,
+      type: "static",
+    });
+
+    const html = templateToHtml(parsed);
+    expect(html).toContain(marker);
+    expect(html).toContain("TEST Etykieta:");
+
+    const reparsed = parseHtmlToTemplate(html);
+    const customField = reparsed.sections
+      .flatMap((s) => (s.type === "table" ? s.fields || [] : []))
+      .find((f) => f.value === marker);
+    expect(customField?.label).toContain("TEST Etykieta");
+  });
+
+  it("round-trip: usunięte pole tabeli znika z HTML", () => {
+    const parsed = parseHtmlToTemplate(DEFAULT_AGREEMENT_TEMPLATE_HTML);
+    const marker = "TEST-REMOVE-FIELD";
+    const table = parsed.sections.find((s) => s.type === "table" && s.fields?.length);
+    table!.fields!.push({
+      id: "field-to-remove",
+      label: "Do usunięcia:",
+      value: marker,
+      type: "static",
+    });
+
+    const withField = templateToHtml(parsed);
+    expect(withField).toContain(marker);
+
+    table!.fields = table!.fields!.filter((f) => f.value !== marker);
+    const withoutField = templateToHtml(parsed);
+    expect(withoutField).not.toContain(marker);
+  });
+
+  it("round-trip: dodany paragraf jest zachowany", () => {
+    const parsed = parseHtmlToTemplate(DEFAULT_AGREEMENT_TEMPLATE_HTML);
+    const marker = "PARAGRAF-TEST-MARKER";
+    parsed.sections.push({
+      id: "section-para-test",
+      title: "Sekcja testowa",
+      type: "paragraph",
+      order: parsed.sections.length,
+      content: `<p>${marker}</p>`,
+    });
+
+    const html = templateToHtml(parsed);
+    expect(html).toContain(marker);
+
+    const reparsed = parseHtmlToTemplate(html);
+    const para = reparsed.sections.find((s) => (s.content || "").includes(marker));
+    expect(para?.type).toBe("paragraph");
+  });
 });

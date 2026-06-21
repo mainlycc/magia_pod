@@ -22,6 +22,11 @@ import {
   type AgreementTemplate,
 } from "@/lib/agreement-template-parser";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
+import {
+  getAgreementPreviewSampleFormDataCompany,
+  getAgreementPreviewSampleFormDataIndividual,
+} from "@/lib/agreements/agreement-preview-sample-data";
+import { ExternalLink } from "lucide-react";
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
 
@@ -51,12 +56,13 @@ function ensureTripInfoTableFields(template: AgreementTemplate): AgreementTempla
   const tripInfoTable = { ...sections[tripInfoTableIndex] };
   const fields = [...(tripInfoTable.fields || [])];
 
-  // Jeśli w starszym szablonie ktoś użył placeholderów {{room_type}}/{{meals_info}}/{{transfer_info}},
-  // to przestawiamy je na ręczne (puste), żeby były czerwone i wymagały uzupełnienia.
-  const placeholderValues = new Set(required.map((r) => `{{${r.key}}}`));
   const normalizedFields = fields.map((f) => {
-    if (placeholderValues.has(f.value.trim())) {
-      return { ...f, value: "", type: "static" as const };
+    const labelLower = f.label.trim().toLowerCase();
+    const match = required.find((r) => r.label.trim().toLowerCase() === labelLower);
+    if (!match) return f;
+    const placeholder = `{{${match.key}}}`;
+    if (!f.value.trim() || f.value.trim() === placeholder) {
+      return { ...f, value: placeholder, type: "static" as const };
     }
     return f;
   });
@@ -83,7 +89,7 @@ function ensureTripInfoTableFields(template: AgreementTemplate): AgreementTempla
     ...toAdd.map((r) => ({
       id: newFieldId(),
       label: r.label,
-      value: "",
+      value: `{{${r.key}}}`,
       type: "static" as const,
     })),
   );
@@ -140,6 +146,9 @@ const PLACEHOLDERS = [
       { name: "{{trip_deposit_deadline}}", description: "Termin zapłaty zaliczki" },
       { name: "{{trip_final_payment_deadline}}", description: "Termin zapłaty całości" },
       { name: "{{insurance_scope}}", description: "Zakres ubezpieczenia (z modułu Ubezpieczenia)" },
+      { name: "{{room_type}}", description: "Rodzaj, typ pokoju (pole w szablonie umowy)" },
+      { name: "{{meals_info}}", description: "Ilość, rodzaj posiłków (pole w szablonie umowy)" },
+      { name: "{{transfer_info}}", description: "Transfery (pole w szablonie umowy)" },
     ],
   },
   {
@@ -147,12 +156,9 @@ const PLACEHOLDERS = [
     items: [
       { name: "{{nights_count}}", description: "Liczba noclegów (tekst)" },
       { name: "{{accommodation_location}}", description: "Lokalizacja, rodzaj, kategoria obiektu" },
-      { name: "{{room_type}}", description: "Rodzaj, typ pokoju (ręcznie w szablonie)" },
-      { name: "{{meals_info}}", description: "Ilość, rodzaj posiłków (ręcznie w szablonie)" },
       { name: "{{transport_type}}", description: "Rodzaj kategoria środka transportu" },
       { name: "{{flight_info}}", description: "Przelot liniami (szczegóły)" },
       { name: "{{baggage_info}}", description: "Bagaż (wymiary, waga)" },
-      { name: "{{transfer_info}}", description: "Transfery (ręcznie w szablonie)" },
       { name: "{{additional_services}}", description: "Dodatkowe świadczenia" },
       { name: "{{selected_services}}", description: "Usługi dodatkowe pogrupowane per uczestnik (diety, ubezpieczenia, atrakcje z ceną)" },
       { name: "{{additional_costs}}", description: "Dodatkowe koszty" },
@@ -185,8 +191,7 @@ async function loadTemplatesFromApi(tripId: string): Promise<{
 }
 
 export default function AgreementPage() {
-  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData } =
-    useTrip();
+  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData } = useTrip();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -248,39 +253,7 @@ export default function AgreementPage() {
     void loadScope();
   }, [selectedTrip?.id]);
 
-  const previewContentData = tripContentData
-    ? { ...tripContentData }
-    : {
-        program_atrakcje: "",
-        dodatkowe_swiadczenia: "",
-        gallery_urls: [],
-        intro_text: "",
-        section_poznaj_title: "",
-        section_poznaj_description: "",
-        reservation_info_text: "",
-        reservation_success_message: "",
-        trip_info_text: "",
-        baggage_text: "",
-        weather_text: "",
-        show_trip_info_card: true,
-        show_baggage_card: true,
-        show_weather_card: true,
-        show_seats_left: false,
-        included_in_price_text: "",
-        additional_costs_text: "",
-        additional_service_text: "",
-        reservation_number: "",
-        duration_text: "",
-        agreement_room_type: "",
-        agreement_meals_info: "",
-        agreement_transfer_info: "",
-        additional_fields: [],
-        public_middle_sections: null,
-        public_right_sections: null,
-        public_hidden_middle_sections: null,
-        public_hidden_right_sections: null,
-        public_hidden_additional_sections: null,
-      };
+  const previewContentData = tripContentData;
 
   const handleSave = async (type: "individual" | "company") => {
     if (!selectedTrip?.id) return;
@@ -367,8 +340,26 @@ export default function AgreementPage() {
     insuranceScope,
   };
 
+  const reserveSlug = tripFullData?.slug || selectedTrip.slug;
+  const reservePreviewUrl = `/trip/${reserveSlug}/reserve?podglad=1`;
+
+  const sampleFormIndividual = getAgreementPreviewSampleFormDataIndividual();
+  const sampleFormCompany = getAgreementPreviewSampleFormDataCompany();
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+        <p className="text-sm text-muted-foreground">
+          Podgląd poniżej używa przykładowych danych klienta — tak jak na ostatnim kroku rezerwacji.
+          Po zapisie szablonu odśwież podgląd lub otwórz stronę rezerwacji w trybie podglądu.
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <a href={reservePreviewUrl} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Podgląd na stronie rezerwacji
+          </a>
+        </Button>
+      </div>
       {registrationMode === "both" ? (
         <Tabs defaultValue="individual" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -376,16 +367,34 @@ export default function AgreementPage() {
             <TabsTrigger value="company">Podgląd - Firma</TabsTrigger>
           </TabsList>
           <TabsContent value="individual" className="mt-4">
-            <AgreementPreview template={templateIndividual} {...previewProps} />
+            <AgreementPreview
+              template={templateIndividual}
+              {...previewProps}
+              hideCompanySection
+              formData={sampleFormIndividual}
+            />
           </TabsContent>
           <TabsContent value="company" className="mt-4">
-            <AgreementPreview template={templateCompany} {...previewProps} />
+            <AgreementPreview
+              template={templateCompany}
+              {...previewProps}
+              formData={sampleFormCompany}
+            />
           </TabsContent>
         </Tabs>
       ) : registrationMode === "individual" ? (
-        <AgreementPreview template={templateIndividual} {...previewProps} />
+        <AgreementPreview
+          template={templateIndividual}
+          {...previewProps}
+          hideCompanySection
+          formData={sampleFormIndividual}
+        />
       ) : (
-        <AgreementPreview template={templateCompany} {...previewProps} />
+        <AgreementPreview
+          template={templateCompany}
+          {...previewProps}
+          formData={sampleFormCompany}
+        />
       )}
 
       <Card className="p-4">

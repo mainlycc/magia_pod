@@ -20,7 +20,7 @@ import {
   getPaymentStatusBadgeClass,
   getPaymentStatusLabel,
   type PaymentStatusValue,
-} from "@/app/admin/trips/[id]/bookings/payment-status"
+} from "@/lib/payment-status"
 import { toast } from "sonner"
 import { useTransition } from "react"
 import { Loader2Icon, RefreshCwIcon, CheckCircle2Icon } from "lucide-react"

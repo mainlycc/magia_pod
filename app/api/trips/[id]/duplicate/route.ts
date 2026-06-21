@@ -50,7 +50,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     is_active: false,
   });
   if (error) return NextResponse.json({ error: "duplicate_failed" }, { status: 500 });
-  return NextResponse.redirect(new URL(`/admin/trips`, process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"));
+  return NextResponse.redirect(new URL(`/trip-dashboard`, process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"));
 }
 
 

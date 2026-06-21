@@ -417,6 +417,45 @@ export async function cleanupTestData() {
 }
 
 /**
+ * Odczytuje zapisany HTML szablonu umowy z bazy (źródło prawdy dla reserve/PDF).
+ */
+export async function getAgreementTemplateHtml(
+  tripId: string,
+  registrationType: "individual" | "company" = "individual",
+): Promise<string | null> {
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("trip_agreement_templates")
+    .select("template_html")
+    .eq("trip_id", tripId)
+    .eq("registration_type", registrationType)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch agreement template: ${error.message}`);
+  }
+
+  return data?.template_html ?? null;
+}
+
+/** Minimalna konfiguracja formularza rezerwacji do testów E2E umowy */
+export const MINIMAL_RESERVE_FORM_CONFIG = {
+  require_pesel: false,
+  form_show_additional_services: false,
+  form_required_contact_fields: {
+    pesel: false,
+    email: true,
+    phone: true,
+    address: false,
+  },
+  form_required_participant_fields: {
+    gender: false,
+    phone: false,
+    document: false,
+  },
+} as const;
+
+/**
  * Helper do izolacji testów - tworzy unikalne dane dla każdego testu
  */
 export function generateUniqueTestData() {

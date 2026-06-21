@@ -92,11 +92,10 @@ export async function updateSession(request: NextRequest) {
     return redirectResponse;
   }
 
-  // RBAC: admin and coordinator areas
-  const requiresAdmin = path.startsWith("/admin");
+  // RBAC: coordinator area
   const requiresCoordinator = path.startsWith("/coord");
 
-  if (user && (requiresAdmin || requiresCoordinator)) {
+  if (user && requiresCoordinator) {
     // Fetch profile to check role
     const { data: profileRes } = await fetch(`${request.nextUrl.origin}/api/profile`, {
       headers: { cookie: request.headers.get("cookie") ?? "" },
@@ -104,16 +103,6 @@ export async function updateSession(request: NextRequest) {
 
     const role = profileRes?.role as string | undefined;
 
-    if (requiresAdmin && role !== "admin") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/auth/login";
-      const redirectResponse = NextResponse.redirect(url);
-      // Copy cookies from supabaseResponse to maintain session
-      supabaseResponse.cookies.getAll().forEach((cookie) => {
-        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
-      });
-      return redirectResponse;
-    }
     if (requiresCoordinator && !(role === "coordinator" || role === "admin")) {
       const url = request.nextUrl.clone();
       url.pathname = "/auth/login";

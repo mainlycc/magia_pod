@@ -90,11 +90,11 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Rodzaj, typ pokoju:</td>
-    <td></td>
+    <td>{{room_type}}</td>
   </tr>
   <tr>
     <td>Ilość, rodzaj posiłków:</td>
-    <td></td>
+    <td>{{meals_info}}</td>
   </tr>
   <tr>
     <td>Rodzaj kategoria środka transportu:</td>
@@ -110,7 +110,7 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Transfery:</td>
-    <td></td>
+    <td>{{transfer_info}}</td>
   </tr>
 </table>
 

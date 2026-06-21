@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { attachmentSizeFromBase64, logDevEmail } from "./dev-email-log";
 
 export type TransactionalEmailPayload = {
   to: string;
@@ -6,6 +7,8 @@ export type TransactionalEmailPayload = {
   html?: string;
   text?: string;
   attachment?: { filename: string; base64: string } | null;
+  /** Etykieta w logach dev (terminal) */
+  logContext?: string;
 };
 
 function resolveResendFrom(): { from: string } | { error: string } {
@@ -72,6 +75,16 @@ export async function sendTransactionalEmail(
     html = "<div></div>";
   }
 
+  const logContext = body.logContext ?? "transactional-email";
+  const devAttachments = body.attachment
+    ? [
+        {
+          filename: body.attachment.filename,
+          sizeBytes: attachmentSizeFromBase64(body.attachment.base64),
+        },
+      ]
+    : [];
+
   const { error } = await resend.emails.send({
     from: resolved.from,
     to: body.to,
@@ -82,8 +95,24 @@ export async function sendTransactionalEmail(
   });
 
   if (error) {
+    logDevEmail({
+      context: logContext,
+      to: body.to,
+      subject: body.subject,
+      attachments: devAttachments,
+      ok: false,
+      error: error.message || "Resend send failed",
+    });
     return { ok: false, error: error.message || "Resend send failed" };
   }
+
+  logDevEmail({
+    context: logContext,
+    to: body.to,
+    subject: body.subject,
+    attachments: devAttachments,
+    ok: true,
+  });
 
   return { ok: true };
 }

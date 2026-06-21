@@ -723,6 +723,7 @@ async function persistPdfAndSendEmail(
           filename: `${safeInvoiceNumber}.pdf`,
           base64: pdfBase64,
         },
+        logContext: "invoice-advance",
       });
 
       if (sendResult.ok) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const COMPANY_SECTION_HTML = `
 <h2>Dane firmy</h2>
@@ -87,8 +88,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: "trip_not_available" }, { status: 403 });
     }
 
-    // Pobierz szablony umów dla wycieczki
-    const { data: templates, error } = await supabase
+    // Szablony: odczyt service role — publiczna strona rezerwacji nie ma sesji authenticated,
+    // a RLS na trip_agreement_templates wymaga zalogowania przy createClient().
+    const admin = createAdminClient();
+    const { data: templates, error } = await admin
       .from("trip_agreement_templates")
       .select("registration_type, template_html")
       .eq("trip_id", trip.id);

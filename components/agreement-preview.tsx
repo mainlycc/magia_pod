@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Eye, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { templateToHtml, type AgreementTemplate } from "@/lib/agreement-template-parser";
-import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agreement-placeholder-replacer";
+import { replaceTripPlaceholders, replaceBookingPlaceholders, removeCompanySectionFromAgreementHtml } from "@/lib/agreement-placeholder-replacer";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 
 interface AgreementPreviewProps {
@@ -21,6 +21,8 @@ interface AgreementPreviewProps {
     address?: boolean;
   } | null;
   requirePeselFallback?: boolean | null;
+  /** Ukryj sekcję „Dane firmy” (np. gdy formularz tylko dla osoby fizycznej). */
+  hideCompanySection?: boolean;
   formData?: {
     contact?: {
       first_name?: string;
@@ -72,8 +74,12 @@ export function AgreementPreview({
   formData,
   requiredContactFields,
   requirePeselFallback,
+  hideCompanySection,
 }: AgreementPreviewProps) {
-  const html = templateToHtml(template);
+  let html = templateToHtml(template);
+  if (hideCompanySection) {
+    html = removeCompanySectionFromAgreementHtml(html);
+  }
   let htmlWithData = replaceTripPlaceholders(html, tripFullData, tripContentData, { insuranceScope });
 
   if (formData) {
@@ -322,29 +328,26 @@ export function AgreementPreview({
         <style dangerouslySetInnerHTML={{ __html: `
           @media screen {
             .agreement-scroll {
-              overflow-x: auto;
-              overflow-y: hidden;
+              overflow-x: hidden;
               max-width: 100%;
-            }
-            .agreement-scroll-inner {
-              min-width: 100%;
-              display: flex;
-              justify-content: center;
             }
             .agreement-container {
               display: flex;
               flex-direction: column;
               gap: 1rem;
-              width: max-content;
+              width: 100%;
+              max-width: 210mm;
+              margin: 0 auto;
             }
             .agreement-page {
-              width: 210mm;
+              width: 100%;
               min-height: 297mm;
               padding: 20mm;
               margin: 0 auto 1rem;
               background: white;
               box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
               border: 1px solid #e5e7eb;
+              box-sizing: border-box;
               page-break-after: always;
               break-after: page;
             }
@@ -377,6 +380,8 @@ export function AgreementPreview({
             font-family: system-ui, -apple-system, sans-serif;
             line-height: 1.6;
             color: #1f2937;
+            overflow-wrap: break-word;
+            word-break: break-word;
           }
           .agreement-content h1 {
             font-size: 1.875rem;
@@ -428,17 +433,15 @@ export function AgreementPreview({
           }
         ` }} />
         <div className="agreement-scroll">
-          <div className="agreement-scroll-inner">
-            <div className="agreement-container">
-              {pages.map((pageHtml, index) => (
-                <div key={index} className="agreement-page">
-                  <div
-                    className="agreement-content"
-                    dangerouslySetInnerHTML={{ __html: pageHtml }}
-                  />
-                </div>
-              ))}
-            </div>
+          <div className="agreement-container">
+            {pages.map((pageHtml, index) => (
+              <div key={index} className="agreement-page">
+                <div
+                  className="agreement-content"
+                  dangerouslySetInnerHTML={{ __html: pageHtml }}
+                />
+              </div>
+            ))}
           </div>
         </div>
         {!formData && (

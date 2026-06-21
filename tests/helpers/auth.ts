@@ -37,7 +37,7 @@ export async function loginUser(page: Page, email?: string, password?: string) {
   }
   
   // Poczekaj na przekierowanie (login czasem idzie wolniej przy RLS / SSR)
-  await page.waitForURL(/\/(trip-dashboard|admin|coord)/, { timeout: 30000 });
+  await page.waitForURL(/\/(trip-dashboard|coord)/, { timeout: 60000 });
   
   const currentUrl = page.url();
   console.log(`[TEST] Zalogowano pomyślnie, przekierowano do: ${currentUrl}`);
@@ -65,39 +65,35 @@ export async function logoutUser(page: Page) {
 export async function isUserLoggedIn(page: Page): Promise<boolean> {
   // Sprawdź czy jesteśmy na stronie wymagającej logowania
   const url = page.url();
-  return url.includes('/trip-dashboard') || url.includes('/admin') || url.includes('/coord');
+  return url.includes('/trip-dashboard') || url.includes('/coord');
 }
 
 /**
  * Sprawdź czy użytkownik jest zalogowany jako admin
- * Przechodzi do głównego panelu admina (/admin) i sprawdza czy ma dostęp
+ * Przechodzi do trip-dashboard i sprawdza czy ma dostęp
  */
 export async function verifyAdminAccess(page: Page): Promise<boolean> {
   try {
-    console.log('[TEST] Sprawdzanie dostępu do panelu admina...');
+    console.log('[TEST] Sprawdzanie dostępu do trip-dashboard...');
     
-    // Przejdź do głównego panelu admina (nie /admin/trips, bo to stary dashboard)
     try {
-      await page.goto('/admin', { 
+      await page.goto('/trip-dashboard', { 
         waitUntil: 'domcontentloaded',
         timeout: 15000
       });
-      console.log('[TEST] Przeszedłem do /admin');
+      console.log('[TEST] Przeszedłem do /trip-dashboard');
     } catch (error: any) {
-      // Jeśli strona się nie ładuje, sprawdźmy URL
       const currentUrl = page.url();
       console.log(`[TEST] Timeout podczas ładowania strony. Aktualny URL: ${currentUrl}`);
       
-      // Jeśli jesteśmy na stronie logowania, to znaczy że brak uprawnień
       if (currentUrl.includes('/auth/login')) {
-        console.log('[TEST] ❌ Brak dostępu - przekierowano do logowania (użytkownik nie jest adminem)');
+        console.log('[TEST] ❌ Brak dostępu - przekierowano do logowania');
         return false;
       }
       
       return false;
     }
     
-    // Sprawdź czy nie zostaliśmy przekierowani do logowania
     const currentUrl = page.url();
     console.log(`[TEST] Aktualny URL po załadowaniu: ${currentUrl}`);
     
@@ -106,53 +102,32 @@ export async function verifyAdminAccess(page: Page): Promise<boolean> {
       return false;
     }
     
-    // Sprawdź czy jesteśmy na stronie admina
-    if (!currentUrl.includes('/admin')) {
+    if (!currentUrl.includes('/trip-dashboard')) {
       console.log(`[TEST] ❌ Nieoczekiwany URL: ${currentUrl}`);
       return false;
     }
     
-    // Poczekaj chwilę na załadowanie zawartości
     await page.waitForTimeout(1000);
     
-    // Sprawdź czy jest komunikat o braku uprawnień
-    const hasError = await page.getByText(/brak uprawnień|unauthorized|access denied|musisz być zalogowany jako administrator/i)
+    const hasError = await page.getByText(/brak uprawnień|unauthorized|access denied/i)
       .isVisible({ timeout: 2000 })
       .catch(() => false);
     
     if (hasError) {
-      const errorText = await page.getByText(/brak uprawnień|unauthorized|access denied|musisz być zalogowany jako administrator/i)
+      const errorText = await page.getByText(/brak uprawnień|unauthorized|access denied/i)
         .first()
         .textContent()
         .catch(() => '');
-      console.log(`[TEST] ❌ Brak uprawnień administratora: ${errorText}`);
+      console.log(`[TEST] ❌ Brak uprawnień: ${errorText}`);
       return false;
     }
     
-    // Sprawdź czy strona admina się załadowała - szukaj elementów dashboardu
-    // Dashboard pokazuje statystyki, więc szukamy tekstów związanych z rezerwacjami lub wycieczkami
-    const hasAdminContent = await page.getByText(/rezerwacje|wycieczki|sprzedaż|obłożenie/i)
+    const hasDashboardContent = await page.getByText(/rezerwacje|wycieczki|dashboard|koordynatorzy/i)
       .isVisible({ timeout: 5000 })
       .catch(() => false);
     
-    if (hasAdminContent) {
-      console.log('[TEST] ✅ Dostęp do panelu admina potwierdzony (dashboard widoczny)');
-      return true;
-    }
-    
-    // Sprawdź czy jest tabela (ostatnie rezerwacje)
-    const hasTable = await page.getByRole('table').isVisible({ timeout: 3000 }).catch(() => false);
-    if (hasTable) {
-      console.log('[TEST] ✅ Dostęp do panelu admina potwierdzony (tabela widoczna)');
-      return true;
-    }
-    
-    // Sprawdź czy są karty ze statystykami
-    const hasCards = await page.getByText(/rezerwacje dziś|łącznie rezerwacji|sprzedaż/i)
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
-    if (hasCards) {
-      console.log('[TEST] ✅ Dostęp do panelu admina potwierdzony (karty statystyk widoczne)');
+    if (hasDashboardContent) {
+      console.log('[TEST] ✅ Dostęp do trip-dashboard potwierdzony');
       return true;
     }
     
@@ -160,7 +135,7 @@ export async function verifyAdminAccess(page: Page): Promise<boolean> {
     return false;
   } catch (error: any) {
     const currentUrl = page.url();
-    console.error(`[TEST] ❌ Błąd podczas sprawdzania dostępu admina. URL: ${currentUrl}`, error.message);
+    console.error(`[TEST] ❌ Błąd podczas sprawdzania dostępu. URL: ${currentUrl}`, error.message);
     return false;
   }
 }

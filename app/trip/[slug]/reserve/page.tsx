@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BookingForm } from "@/components/booking-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,8 @@ type TripForReserve = {
 
 export default function ReservePage({ params }: { params: Promise<{ slug: string }> | { slug: string } }) {
   const { slug } = use(params instanceof Promise ? params : Promise.resolve(params));
+  const searchParams = useSearchParams();
+  const agreementPreviewMode = searchParams.get("podglad") === "1";
 
   const [trip, setTrip] = useState<TripForReserve | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,7 +123,7 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
               {seatsLeft === 1 ? "miejsce" : "miejsc"}.
             </span>
           </div>
-          <BookingForm slug={slug} />
+          <BookingForm slug={slug} startAtAgreementPreview={agreementPreviewMode} />
         </>
       )}
     </div>

@@ -649,19 +649,39 @@ export async function POST(request: NextRequest) {
         console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
       }
 
-      // Pobierz umowę PDF jeśli istnieje
+      // Pobierz umowę PDF jeśli istnieje.
+      // Na produkcji booking.agreement_pdf_url może być puste, mimo że agreements.pdf_url jest ustawione,
+      // więc bierzemy pdf_url z agreements jako źródło prawdy (fallback).
       let attachment: { filename: string; base64: string } | undefined;
-      if (booking.agreement_pdf_url) {
+      let pdfPath: string | null = (booking.agreement_pdf_url as string | null) ?? null;
+
+      if (!pdfPath) {
+        try {
+          const { data: agreementRow } = await supabase
+            .from("agreements")
+            .select("pdf_url")
+            .eq("booking_id", booking.id)
+            .order("updated_at", { ascending: false, nullsFirst: false })
+            .order("generated_at", { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+          pdfPath = (agreementRow?.pdf_url as string | null) ?? null;
+        } catch (e) {
+          console.warn("[Paynow Webhook] Failed to resolve agreement pdf_url:", e);
+        }
+      }
+
+      if (pdfPath) {
         try {
           const { data: pdfData, error: pdfError } = await supabase.storage
             .from("agreements")
-            .download(booking.agreement_pdf_url);
+            .download(pdfPath);
           
           if (!pdfError && pdfData) {
             const arrayBuffer = await pdfData.arrayBuffer();
             const base64 = Buffer.from(arrayBuffer).toString("base64");
             attachment = {
-              filename: booking.agreement_pdf_url,
+              filename: pdfPath,
               base64: base64,
             };
           }
@@ -711,6 +731,7 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           to: booking.contact_email,
           subject: `Płatność potwierdzona dla umowy ${publicAgreementNumber || "—"}`,
+          logContext: "payment-confirmed",
           html: `
             <!DOCTYPE html>
             <html lang="pl">

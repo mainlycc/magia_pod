@@ -83,11 +83,9 @@ test.describe('Autentykacja - Resetowanie hasła', () => {
 });
 
 test.describe('Przekierowania dla niezalogowanych użytkowników', () => {
-  test('niezalogowany użytkownik nie powinien mieć dostępu do panelu admina', async ({ page }) => {
-    await page.goto('/admin');
-    
-    // Powinien zostać przekierowany do logowania lub strony głównej
-    await page.waitForURL(/\/(auth\/login|$)/);
+  test('stara ścieżka /admin nie powinna być dostępna', async ({ page }) => {
+    const response = await page.goto('/admin');
+    expect(response?.status()).toBe(404);
   });
 
   test('niezalogowany użytkownik nie powinien mieć dostępu do trip-dashboard', async ({ page }) => {

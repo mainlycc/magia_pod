@@ -1,5 +1,16 @@
 # Testy Playwright dla Magia Podróżowania
 
+## Testy manualne (pełna checklista)
+
+Kompletny przewodnik testów ręcznych (admin, klient, koordynator, płatności, umowy):  
+[`../TESTY_MANUALNE.md`](../TESTY_MANUALNE.md)
+
+Weryfikacja środowiska przed testami manualnymi:
+
+```bash
+pnpm test:manual:env
+```
+
 ## Struktura testów
 
 ### 📁 Pliki testowe

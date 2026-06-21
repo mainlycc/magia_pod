@@ -149,6 +149,7 @@ export async function GET(request: NextRequest) {
             body: JSON.stringify({
               to: booking.contact_email,
               subject: `Przypomnienie o płatności reszty kwoty - Rezerwacja ${booking.booking_ref}`,
+              logContext: "payment-reminder",
               html: emailHtml,
               text: `Przypominamy o konieczności dokonania płatności reszty kwoty za rezerwację ${booking.booking_ref}.\n\nKwota do zapłacenia: ${(amountCents / 100).toFixed(2)} PLN\n\nLink do płatności: ${paymentLink}`,
             }),

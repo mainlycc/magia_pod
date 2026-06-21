@@ -20,7 +20,7 @@ import {
   getPaymentStatusBadgeClass,
   getPaymentStatusLabel,
   type PaymentStatusValue,
-} from "@/app/admin/trips/[id]/bookings/payment-status";
+} from "@/lib/payment-status";
 import { calculatePaymentBalance } from "@/lib/utils/payment-calculator";
 import { formatPostalAddressLine } from "@/lib/format-postal-address";
 import { toast } from "sonner";

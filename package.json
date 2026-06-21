@@ -15,7 +15,8 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:chromium": "playwright test --project=chromium",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:manual:env": "node scripts/check-manual-test-env.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

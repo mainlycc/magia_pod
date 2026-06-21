@@ -9,6 +9,7 @@ import { persistAgreementSeq } from "@/lib/agreements/ensure-agreement";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 import { createPaynowPayment } from "@/lib/paynow";
 import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
+import { attachmentSizeFromBase64, logDevEmail } from "@/lib/email/dev-email-log";
 import { getTripDocumentationEmailAttachments } from "@/lib/documents/email-attachments";
 import { getInsuranceOwuEmailAttachments } from "@/lib/insurance-local/owu-email-attachments";
 import { syncParticipantInsurancesForBooking } from "@/lib/insurance-local/sync-participant-insurances";
@@ -605,6 +606,16 @@ export async function POST(req: Request) {
         attachment = { filename, base64 };
         agreementPdfUrl = filename;
 
+        // Utrzymuj spójność: zapisz też pdf w bookings.agreement_pdf_url
+        try {
+          await adminSupabase
+            .from("bookings")
+            .update({ agreement_pdf_url: filename })
+            .eq("id", booking.id);
+        } catch (bookingPdfUpdateErr) {
+          console.warn("Failed to update bookings.agreement_pdf_url:", bookingPdfUpdateErr);
+        }
+
         // Uzupełnij rekord umowy o wygenerowany PDF
         try {
           const persistResult = await persistAgreementSeq(
@@ -633,6 +644,17 @@ export async function POST(req: Request) {
         attachment = { filename: "umowa.pdf", base64: buf.toString("base64") };
         agreementPdfUrl = "example-agreement.pdf";
         console.warn("Using fallback agreement PDF attachment (example-agreement.pdf)");
+
+        // Utrzymuj spójność: zapisz też fallback do bookings.agreement_pdf_url
+        try {
+          await adminSupabase
+            .from("bookings")
+            .update({ agreement_pdf_url: "example-agreement.pdf" })
+            .eq("id", booking.id);
+        } catch (bookingPdfUpdateErr) {
+          console.warn("Failed to update bookings.agreement_pdf_url (fallback):", bookingPdfUpdateErr);
+        }
+
         try {
           const persistResult = await persistAgreementSeq(
             adminSupabase,
@@ -772,18 +794,39 @@ export async function POST(req: Request) {
               ]
             : undefined;
 
+        const emailSubject = `Potwierdzenie rezerwacji / umowa ${publicAgreementNumber}`;
+        const devAttachmentList = (attachments ?? []).map((a) => ({
+          filename: a.filename,
+          sizeBytes: attachmentSizeFromBase64(a.content),
+        }));
+
         const { error: emailError } = await resend.emails.send({
           from: `${senderName} <${emailAddress}>`,
           to: payload.contact_email,
-          subject: `Potwierdzenie rezerwacji / umowa ${publicAgreementNumber}`,
+          subject: emailSubject,
           html: emailHtml,
           text: textContent,
           attachments,
         });
 
         if (emailError) {
+          logDevEmail({
+            context: "booking-confirmation",
+            to: payload.contact_email,
+            subject: emailSubject,
+            attachments: devAttachmentList,
+            ok: false,
+            error: emailError.message,
+          });
           console.error("Resend error sending booking confirmation:", emailError);
         } else {
+          logDevEmail({
+            context: "booking-confirmation",
+            to: payload.contact_email,
+            subject: emailSubject,
+            attachments: devAttachmentList,
+            ok: true,
+          });
           console.log("✅ Booking confirmation email sent to:", {
             to: payload.contact_email,
             booking_ref: booking.booking_ref,
@@ -858,9 +901,10 @@ export async function POST(req: Request) {
     // Tworzenie płatności Paynow tylko gdy with_payment=true
     if (firstPaymentAmountCents > 0 && payload.with_payment) {
       try {
-        // Utwórz URL powrotu - jeśli mamy access_token, przekieruj do strony rezerwacji, w przeciwnym razie do strony powrotu
+        // Utwórz URL powrotu - na localhost webhook Paynow zwykle nie działa,
+        // więc po powrocie wymuszamy check-status przez parametr fromPaynow=1.
         const returnUrl = accessToken
-          ? `${baseUrl}/booking/${accessToken}`
+          ? `${baseUrl}/booking/${accessToken}?fromPaynow=1`
           : `${baseUrl}/payments/return?booking_ref=${booking.booking_ref}`;
 
         console.log(`[Bookings POST] Creating Paynow payment with returnUrl: ${returnUrl}`);

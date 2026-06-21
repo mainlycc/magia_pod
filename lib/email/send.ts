@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { generateInvitationEmail } from "./templates/invitation-email";
+import { logDevEmail } from "./dev-email-log";
 
 // Zawsze używamy domeny mail.mainly.pl (zweryfikowanej w Resend)
 // Jeśli RESEND_FROM jest ustawione, używamy lokalnej części (przed @), w przeciwnym razie "noreply"
@@ -58,17 +59,36 @@ export async function sendInvitationEmail({
     const resend = new Resend(process.env.RESEND_API_KEY);
     const html = generateInvitationEmail("Koordynatorze", invitationLink, expiryDays);
 
+    const subject =
+      "Zaproszenie do systemu zarządzania wycieczkami - Aktywuj swoje konto";
+
     const { data, error } = await resend.emails.send({
       from: getFromEmail(),
       to: [to],
-      subject: "Zaproszenie do systemu zarządzania wycieczkami - Aktywuj swoje konto",
+      subject,
       html,
     });
 
     if (error) {
+      logDevEmail({
+        context: "coordinator-invitation",
+        to,
+        subject,
+        attachments: [],
+        ok: false,
+        error: error.message,
+      });
       console.error("Resend error:", error);
       return { success: false, error: error.message };
     }
+
+    logDevEmail({
+      context: "coordinator-invitation",
+      to,
+      subject,
+      attachments: [],
+      ok: true,
+    });
 
     console.log("Email sent successfully:", data);
     return { success: true, messageId: data?.id };

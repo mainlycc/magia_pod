@@ -13,7 +13,7 @@ import {
   getPaymentStatusBadgeClass,
   getPaymentStatusLabel,
   type PaymentStatusValue,
-} from "@/app/admin/trips/[id]/bookings/payment-status"
+} from "@/lib/payment-status"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"

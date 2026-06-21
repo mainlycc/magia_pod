@@ -152,7 +152,7 @@ export async function createInvitation(email: string): Promise<CreateInvitationR
     console.log("Invitation email sent successfully to:", email, "Message ID:", emailResult.messageId);
   }
 
-  revalidatePath("/admin/coordinators/invite");
+  revalidatePath("/trip-dashboard/zaproszenia-koordynatorow");
   return { success: true, invitation: invitation as CoordinatorInvitation };
 }
 
@@ -281,7 +281,7 @@ export async function registerWithInvitation(
   }
 
   // Odśwież cache dla strony zaproszeń (aby admin zobaczył zmieniony status)
-  revalidatePath("/admin/coordinators/invite");
+  revalidatePath("/trip-dashboard/zaproszenia-koordynatorow");
 
   return { success: true };
 }
@@ -359,7 +359,7 @@ export async function resendInvitations(ids: string[]): Promise<{ success: boole
     });
   }
 
-  revalidatePath("/admin/coordinators/invite");
+  revalidatePath("/trip-dashboard/zaproszenia-koordynatorow");
   return { success: true };
 }
 
@@ -388,7 +388,7 @@ export async function deleteInvitations(ids: string[]): Promise<{ success: boole
     return { success: false, error: "Nie udało się usunąć zaproszeń" };
   }
 
-  revalidatePath("/admin/coordinators/invite");
+  revalidatePath("/trip-dashboard/zaproszenia-koordynatorow");
   return { success: true };
 }
 
@@ -421,7 +421,7 @@ export async function cancelInvitation(id: string): Promise<{ success: boolean; 
     return { success: false, error: "Nie udało się anulować zaproszenia" };
   }
 
-  revalidatePath("/admin/coordinators/invite");
+  revalidatePath("/trip-dashboard/zaproszenia-koordynatorow");
   return { success: true };
 }
 

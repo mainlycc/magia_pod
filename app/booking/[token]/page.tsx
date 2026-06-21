@@ -129,11 +129,13 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
       const paymentStatusFromUrl = (searchParams.get("paymentStatus") || "").trim().toUpperCase();
       const paymentIdFromUrl = searchParams.get("paymentId") || undefined;
+      const fromPaynowFlag = (searchParams.get("fromPaynow") || "").trim() === "1";
       const returningFromPaynow =
         paymentStatusFromUrl === "CONFIRMED" ||
         paymentStatusFromUrl === "PAID" ||
         paymentStatusFromUrl === "PENDING" ||
-        Boolean(paymentIdFromUrl);
+        Boolean(paymentIdFromUrl) ||
+        fromPaynowFlag;
 
       if (!returningFromPaynow) return;
 

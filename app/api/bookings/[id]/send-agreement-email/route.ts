@@ -173,6 +173,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       html,
       text,
       attachment: { filename: attachmentFilename, base64 },
+      logContext: "agreement-updated",
     });
 
     if (!sendResult.ok) {

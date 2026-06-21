@@ -312,6 +312,16 @@ export async function ensureAgreementForBooking(
     };
   }
 
+  // Utrzymuj spójność: zapisz też pdf w bookings.agreement_pdf_url
+  try {
+    await supabaseAdmin
+      .from("bookings")
+      .update({ agreement_pdf_url: filename })
+      .eq("id", bookingId);
+  } catch (bookingPdfUpdateErr) {
+    console.warn("Failed to update bookings.agreement_pdf_url:", bookingPdfUpdateErr);
+  }
+
   return {
     ok: true,
     agreement_seq: agreementNumber,

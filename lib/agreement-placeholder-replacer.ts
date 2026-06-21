@@ -133,8 +133,19 @@ export function replaceTripPlaceholders(
     result = result.replace(/\{\{additional_services\}\}/g, additionalServicesText);
   }
 
-  // Uwaga: {{room_type}}, {{meals_info}}, {{transfer_info}} są teraz traktowane jako pola ręczne
-  // uzupełniane bezpośrednio w szablonie (czerwone w edytorze), więc nie backfillujemy ich automatycznie.
+  // Pola umowy z zakładki Umowa (agreement_* w trips)
+  result = result.replace(
+    /\{\{room_type\}\}/g,
+    tripContentData?.agreement_room_type?.trim() || "-",
+  );
+  result = result.replace(
+    /\{\{meals_info\}\}/g,
+    tripContentData?.agreement_meals_info?.trim() || "-",
+  );
+  result = result.replace(
+    /\{\{transfer_info\}\}/g,
+    tripContentData?.agreement_transfer_info?.trim() || "-",
+  );
 
   const insuranceScope = options?.insuranceScope?.trim();
   if (insuranceScope) {
@@ -200,6 +211,26 @@ function removeTableRowsContainingPlaceholder(html: string, placeholderName: str
     "gi",
   );
   return html.replace(re, "");
+}
+
+export function removeCompanySectionFromAgreementHtml(html: string): string {
+  let result = html;
+
+  // Usuń nagłówek „Dane firmy” wraz z tabelą zawierającą placeholdery firmy
+  result = result.replace(
+    /<h2[^>]*>\s*Dane\s+firmy\s*<\/h2>\s*<table\b[^>]*>(?:(?!<\/table>)[\s\S])*?\{\{company_name\}\}(?:(?!<\/table>)[\s\S])*?<\/table>/gi,
+    "",
+  );
+
+  // Fallback: pojedyncze wiersze (szablony bez nagłówka h2)
+  result = removeTableRowsContainingPlaceholder(result, "company_name");
+  result = removeTableRowsContainingPlaceholder(result, "company_nip");
+  result = removeTableRowsContainingPlaceholder(result, "company_address");
+
+  // Osierocony nagłówek bez tabeli
+  result = result.replace(/<h2[^>]*>\s*Dane\s+firmy\s*<\/h2>/gi, "");
+
+  return result;
 }
 
 function applyContactFieldVisibilityToAgreementHtml(
@@ -298,6 +329,10 @@ export function replaceBookingPlaceholders(
   if (!formData) return html;
 
   let result = applyContactFieldVisibilityToAgreementHtml(html, options);
+
+  if (!formData.company) {
+    result = removeCompanySectionFromAgreementHtml(result);
+  }
 
   // Dane zgłaszającego
   const effectiveContactFirstName =
