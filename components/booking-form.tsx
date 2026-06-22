@@ -924,7 +924,8 @@ const formatValidationErrors = (errors: any): string => {
 export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState<"reserve" | "pay" | "company" | null>(null);
+  const isSubmitting = submittingAction !== null;
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
@@ -1422,7 +1423,9 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
     console.log("onSubmit applicant_type:", values.applicant_type);
     console.log("onSubmit applicantType state:", applicantType);
     setError(null);
-    setIsSubmitting(true);
+    setSubmittingAction(
+      withPayment ? "pay" : applicantType === "company" ? "company" : "reserve",
+    );
     try {
       const base = {
         slug: slug,
@@ -1810,7 +1813,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
     } catch (err) {
       setError(err instanceof Error ? err.message : "Błąd rezerwacji");
     } finally {
-      setIsSubmitting(false);
+      setSubmittingAction(null);
     }
   };
 
@@ -4420,7 +4423,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           )();
                         }}
                       >
-                        {isSubmitting ? "Wysyłanie..." : "ZAREZERWUJ"}
+                        {submittingAction === "company" ? "Wysyłanie..." : "ZAREZERWUJ"}
                       </Button>
                     ) : (
                       /* Dla osoby fizycznej: dwa przyciski */
@@ -4458,7 +4461,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                             )();
                           }}
                         >
-                          {isSubmitting ? "Wysyłanie..." : "Rezerwuj"}
+                          {submittingAction === "reserve" ? "Wysyłanie..." : "Rezerwuj"}
                         </Button>
                         <Button 
                           type="button"
@@ -4492,7 +4495,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                             )();
                           }}
                         >
-                          {isSubmitting ? "Wysyłanie..." : "Rezerwuj i Zapłać"}
+                          {submittingAction === "pay" ? "Wysyłanie..." : "Rezerwuj i Zapłać"}
                         </Button>
                       </div>
                     )}
