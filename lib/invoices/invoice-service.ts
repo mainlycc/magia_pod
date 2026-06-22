@@ -258,12 +258,55 @@ export async function processPaymentInvoice(
     // ─── 1. Sprawdź czy faktura dla tej wpłaty już istnieje ───
     const { data: existingInvoice } = await supabase
       .from("invoices")
-      .select("id, invoice_number, fakturownia_invoice_id")
+      .select("id, invoice_number, fakturownia_invoice_id, status, invoice_provider_error")
       .eq("payment_history_id", paymentHistoryId)
       .maybeSingle();
 
     if (existingInvoice) {
       console.log("[InvoiceService] Invoice already exists for payment_history_id:", paymentHistoryId);
+
+      // Ponów wysyłkę PDF/maila jeśli faktura wystawiona, ale nie dotarła do klienta
+      const needsEmailRetry =
+        existingInvoice.status !== "wysłana" &&
+        existingInvoice.fakturownia_invoice_id &&
+        !String(existingInvoice.invoice_provider_error || "").startsWith("Brak konfiguracji");
+
+      if (needsEmailRetry) {
+        const fakturowniaConfig = getFakturowniaConfig();
+        if (validateFakturowniaConfig(fakturowniaConfig)) {
+          const { data: bookingForRetry } = await supabase
+            .from("bookings")
+            .select(
+              "id, booking_ref, trip_id, contact_email, invoice_type, invoice_name, invoice_nip, invoice_address, contact_first_name, contact_last_name, address, company_name, company_nip, company_address, paid_amount_cents, fakturownia_order_id",
+            )
+            .eq("id", bookingId)
+            .single();
+
+          if (bookingForRetry) {
+            const providerId = parseInt(existingInvoice.fakturownia_invoice_id!, 10);
+            if (Number.isFinite(providerId)) {
+              console.log("[InvoiceService] Retrying PDF/email for existing invoice:", existingInvoice.id);
+              const bgTask = fetchPdfAndSendEmail(
+                fakturowniaConfig,
+                supabase,
+                existingInvoice.id,
+                providerId,
+                undefined,
+                bookingForRetry as BookingData,
+                existingInvoice.invoice_number,
+              );
+              if (scheduleAfterResponse) {
+                scheduleAfterResponse(bgTask);
+              } else {
+                bgTask.catch((err) => {
+                  console.error("[InvoiceService] Invoice email retry failed:", err);
+                });
+              }
+            }
+          }
+        }
+      }
+
       return {
         success: true,
         invoiceId: existingInvoice.id,

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
+import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
 
 export type EnsureAgreementResult =
   | {
@@ -18,12 +19,8 @@ export type EnsureAgreementResult =
 
 export function resolvePdfBaseUrl(origin: string): string {
   const isDev = process.env.NODE_ENV === "development";
-  if (isDev) return origin;
-  return (
-    process.env.NEXT_PUBLIC_BASE_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    origin
-  );
+  if (isDev) return origin.replace(/\/$/, "");
+  return resolvePublicBaseUrl(origin);
 }
 
 /** Zapisuje lub uzupełnia rekord agreements z numerem kolejnym — niezależnie od PDF. */
@@ -275,28 +272,35 @@ export async function ensureAgreementForBooking(
   const { base64, filename } = pdfResult;
   const generatedAt = new Date().toISOString();
 
-  if (pdfResult.warning) {
-    try {
-      const buf = Buffer.from(base64, "base64");
-      const { error: upErr } = await supabaseAdmin.storage
-        .from("agreements")
-        .upload(filename, buf, { contentType: "application/pdf", upsert: true });
-      if (upErr) {
-        return {
-          ok: false,
-          error: "Failed to save agreement PDF",
-          details: upErr.message || String(upErr),
-          status: 500,
-        };
-      }
-    } catch (e) {
+  // Zawsze zapisuj PDF w Storage — /api/pdf może zwrócić base64 bez udanego uploadu (warning).
+  try {
+    const buf = Buffer.from(base64, "base64");
+    if (buf.byteLength < 5_000) {
       return {
         ok: false,
-        error: "Failed to save agreement PDF",
-        details: e instanceof Error ? e.message : String(e),
+        error: "Wygenerowany PDF jest zbyt mały (prawdopodobnie uszkodzony)",
+        details: `Rozmiar: ${buf.byteLength} bajtów`,
         status: 500,
       };
     }
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("agreements")
+      .upload(filename, buf, { contentType: "application/pdf", upsert: true });
+    if (upErr) {
+      return {
+        ok: false,
+        error: "Failed to save agreement PDF",
+        details: upErr.message || String(upErr),
+        status: 500,
+      };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: "Failed to save agreement PDF",
+      details: e instanceof Error ? e.message : String(e),
+      status: 500,
+    };
   }
 
   const persistPdf = await persistAgreementSeq(supabaseAdmin, bookingId, agreementNumber, {

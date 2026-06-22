@@ -564,7 +564,9 @@ export async function POST(req: Request) {
 
     try {
       // W development zawsze używaj origin (localhost), w produkcji baseUrl
-      const pdfUrl = process.env.NODE_ENV === "development" ? origin : baseUrl;
+      const { resolvePublicBaseUrl } = await import("@/lib/url/resolve-public-base-url");
+      const pdfUrl =
+        process.env.NODE_ENV === "development" ? origin.replace(/\/$/, "") : resolvePublicBaseUrl(origin);
       const pdfRes = await fetch(`${pdfUrl}/api/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

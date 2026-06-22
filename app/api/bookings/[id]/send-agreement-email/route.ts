@@ -6,6 +6,7 @@ import {
   generateAgreementUpdatedEmailHtml,
   generateAgreementUpdatedEmailText,
 } from "@/lib/email/templates/agreement-updated";
+import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -44,16 +45,9 @@ async function checkCoordinator(
   return profile.allowed_trip_ids.includes(tripId);
 }
 
-function resolvePublicBaseUrl(request: NextRequest): string {
+function resolvePublicBaseUrlFromRequest(request: NextRequest): string {
   const { origin } = new URL(request.url);
-  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? null;
-  if (!baseUrl && process.env.VERCEL_URL) {
-    baseUrl = `https://${process.env.VERCEL_URL}`;
-  }
-  if (!baseUrl) {
-    baseUrl = origin;
-  }
-  return baseUrl.replace(/\/$/, "");
+  return resolvePublicBaseUrl(origin);
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -145,7 +139,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
     const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-    const baseUrl = resolvePublicBaseUrl(request);
+    const baseUrl = resolvePublicBaseUrlFromRequest(request);
     const token = booking.access_token as string | null | undefined;
     const bookingLink = token ? `${baseUrl}/booking/${token}` : null;
 
