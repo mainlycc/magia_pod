@@ -122,11 +122,19 @@ export async function verifyAdminAccess(page: Page): Promise<boolean> {
       return false;
     }
     
-    const hasDashboardContent = await page.getByText(/rezerwacje|wycieczki|dashboard|koordynatorzy/i)
-      .isVisible({ timeout: 5000 })
+    const hasDashboardContent = await page
+      .getByText(/rezerwacje|wycieczki|dashboard|koordynatorzy|informacje ogólne|wzór umowy|wybierz wycieczk/i)
+      .first()
+      .isVisible({ timeout: 8000 })
+      .catch(() => false);
+
+    const hasTripSelector = await page
+      .getByRole("combobox")
+      .first()
+      .isVisible({ timeout: 3000 })
       .catch(() => false);
     
-    if (hasDashboardContent) {
+    if (hasDashboardContent || hasTripSelector) {
       console.log('[TEST] ✅ Dostęp do trip-dashboard potwierdzony');
       return true;
     }

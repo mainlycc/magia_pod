@@ -16,7 +16,12 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:chromium": "playwright test --project=chromium",
     "test:e2e:report": "playwright show-report",
-    "test:manual:env": "node scripts/check-manual-test-env.mjs"
+    "test:manual:env": "node scripts/check-manual-test-env.mjs",
+    "test:e2e:production:env": "node scripts/check-production-test-env.mjs",
+    "test:e2e:production": "playwright test -c playwright.production.config.ts",
+    "test:e2e:production:flow": "playwright test tests/production/flow-client-booking.spec.ts -c playwright.production.config.ts",
+    "test:e2e:production:agreement": "playwright test tests/production/flow-agreement-personalization.spec.ts -c playwright.production.config.ts",
+    "test:e2e:production:report": "playwright show-report playwright-report-production"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

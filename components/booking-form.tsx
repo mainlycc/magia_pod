@@ -946,6 +946,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
   }>({});
   const [agreementTemplateIndividual, setAgreementTemplateIndividual] = useState<AgreementTemplate | null>(null);
   const [agreementTemplateCompany, setAgreementTemplateCompany] = useState<AgreementTemplate | null>(null);
+  const [agreementTemplateLoadFailed, setAgreementTemplateLoadFailed] = useState(false);
   const [tripFullData, setTripFullData] = useState<TripFullData | null>(null);
   const [tripContentData, setTripContentData] = useState<TripContentData | null>(null);
   
@@ -1143,21 +1144,30 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
           // Pobierz szablony umów
           try {
-            const templatesRes = await fetch(`/api/trips/by-slug/${slug}/agreement-templates`);
+            const templatesRes = await fetch(`/api/trips/by-slug/${slug}/agreement-templates`, {
+              cache: "no-store",
+            });
             if (templatesRes.ok) {
+              setAgreementTemplateLoadFailed(false);
               const templates = await templatesRes.json();
               const htmlIndividual = templates.individual || DEFAULT_TEMPLATE;
               const htmlCompany = templates.company || DEFAULT_TEMPLATE;
               setAgreementTemplateIndividual(parseHtmlToTemplate(htmlIndividual));
               setAgreementTemplateCompany(parseHtmlToTemplate(htmlCompany));
             } else {
-              // Użyj domyślnego szablonu jeśli nie ma zapisanego
+              const errorBody = await templatesRes.text().catch(() => "");
+              console.error(
+                "Agreement templates API failed:",
+                templatesRes.status,
+                errorBody,
+              );
+              setAgreementTemplateLoadFailed(true);
               setAgreementTemplateIndividual(parseHtmlToTemplate(DEFAULT_TEMPLATE));
               setAgreementTemplateCompany(parseHtmlToTemplate(DEFAULT_TEMPLATE));
             }
           } catch (err) {
             console.error("Error loading agreement template:", err);
-            // Użyj domyślnego szablonu w przypadku błędu
+            setAgreementTemplateLoadFailed(true);
             setAgreementTemplateIndividual(parseHtmlToTemplate(DEFAULT_TEMPLATE));
             setAgreementTemplateCompany(parseHtmlToTemplate(DEFAULT_TEMPLATE));
           }
@@ -4322,6 +4332,15 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                         Po przesłaniu zgłoszenia wygenerujemy wzór umowy w formacie PDF i wyślemy go na podany e-mail.
                       </p>
                     </div>
+                    {agreementTemplateLoadFailed && (
+                      <Alert variant="destructive">
+                        <AlertTitle>Nie udało się wczytać szablonu umowy</AlertTitle>
+                        <AlertDescription>
+                          Wyświetlany jest domyślny wzór umowy. Zmiany zapisane w panelu mogą nie być widoczne —
+                          odśwież stronę lub skontaktuj się z organizatorem wycieczki.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                     {agreementTemplate && (() => {
                       const previewParticipants = buildParticipantsWithSelectedServices(
                         form.getValues() as any,

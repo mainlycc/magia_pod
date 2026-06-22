@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+export const dynamic = "force-dynamic";
 
 const COMPANY_SECTION_HTML = `
 <h2>Dane firmy</h2>
@@ -55,20 +56,21 @@ function injectCompanySection(html: string): string {
 export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
-    const supabase = await createClient();
+    // Service role: publiczna rezerwacja nie ma sesji, a RLS na trips ogranicza anon.
+    const admin = createAdminClient();
 
     // Najpierw znajdź wycieczkę po slug
-    let { data: trip, error: tripError } = await supabase
+    let { data: trip, error: tripError } = await admin
       .from("trips")
-      .select("id, is_active, is_public")
+      .select("id, is_active")
       .eq("slug", slug)
       .maybeSingle();
 
     // Jeśli nie znaleziono, spróbuj public_slug
     if (!trip && !tripError) {
-      const { data: tripByPublicSlug, error: errorByPublicSlug } = await supabase
+      const { data: tripByPublicSlug, error: errorByPublicSlug } = await admin
         .from("trips")
-        .select("id, is_active, is_public")
+        .select("id, is_active")
         .eq("public_slug", slug)
         .maybeSingle();
       
@@ -83,14 +85,11 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: "trip_not_found" }, { status: 404 });
     }
 
-    // Sprawdź czy wycieczka jest aktywna i publiczna
-    if (!trip.is_active || !trip.is_public) {
+    // Wystarczy aktywna wycieczka — lista /trip i /reserve nie filtrują po is_public.
+    if (!trip.is_active) {
       return NextResponse.json({ error: "trip_not_available" }, { status: 403 });
     }
 
-    // Szablony: odczyt service role — publiczna strona rezerwacji nie ma sesji authenticated,
-    // a RLS na trip_agreement_templates wymaga zalogowania przy createClient().
-    const admin = createAdminClient();
     const { data: templates, error } = await admin
       .from("trip_agreement_templates")
       .select("registration_type, template_html")
