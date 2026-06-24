@@ -25,6 +25,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       id,
       null,
       tripRow?.form_extra_insurances,
+      { includeAvailableExtras: true },
     );
 
     return NextResponse.json({ scope });

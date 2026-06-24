@@ -2902,6 +2902,11 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
                                                       <div className="text-sm font-medium">{diet.title}</div>
+                                                      {diet.description && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                          {diet.description}
+                                                        </p>
+                                                      )}
                                                       {diet.price_cents !== null && diet.price_cents > 0 && (
                                                         <div className="text-xs text-muted-foreground">
                                                           +{((diet.price_cents || 0) / 100).toFixed(2)} PLN
@@ -3005,6 +3010,11 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
                                                       <div className="text-sm font-medium">{insurance.title}</div>
+                                                      {insurance.description && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                          {insurance.description}
+                                                        </p>
+                                                      )}
                                                       {!variants &&
                                                         insurance.price_cents !== null &&
                                                         insurance.price_cents !== undefined &&
@@ -3109,6 +3119,11 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
                                                       <div className="text-sm font-medium">{attraction.title}</div>
+                                                      {attraction.description && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                          {attraction.description}
+                                                        </p>
+                                                      )}
                                                       {attraction.price_cents !== null && attraction.price_cents > 0 && (
                                                         <div className="text-xs text-muted-foreground">
                                                           +{((attraction.price_cents || 0) / 100).toFixed(2)}{" "}

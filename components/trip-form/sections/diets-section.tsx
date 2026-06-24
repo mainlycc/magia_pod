@@ -42,7 +42,7 @@ export function DietsSection({
               Klient wybiera jedną z listy. Domyślnie diety są darmowe.
             </p>
             {diets.filter(d => d.enabled !== false).length === 0 && (
-              <p className="text-[10px] text-amber-600 mt-1 font-medium">
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
                 ⚠️ Ta sekcja nie wyświetla się w formularzu, ponieważ nie ma żadnej włączonej diety.
               </p>
             )}
@@ -71,7 +71,7 @@ export function DietsSection({
             return (
               <div
                 key={item.id || index}
-                className={`border rounded-md ${isEnabled ? 'bg-green-50/50 border-green-200' : 'bg-gray-50/50 border-gray-200'}`}
+                className={`border rounded-md ${isEnabled ? 'bg-green-50/50 border-green-200 dark:bg-green-950/30 dark:border-green-900' : 'bg-gray-50/50 border-gray-200 dark:bg-muted/30 dark:border-border'}`}
               >
                 <div className="flex items-center gap-2 p-3">
                   <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
@@ -127,7 +127,7 @@ export function DietsSection({
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="border-t bg-white p-3 space-y-3">
+                  <div className="border-t bg-background p-3 space-y-3">
                     <div className="grid gap-1">
                       <Label className="text-xs">Tytuł</Label>
                       <Input

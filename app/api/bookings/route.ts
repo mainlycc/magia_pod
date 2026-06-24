@@ -13,6 +13,11 @@ import { attachmentSizeFromBase64, logDevEmail } from "@/lib/email/dev-email-log
 import { getTripDocumentationEmailAttachments } from "@/lib/documents/email-attachments";
 import { getInsuranceOwuEmailAttachments } from "@/lib/insurance-local/owu-email-attachments";
 import { syncParticipantInsurancesForBooking } from "@/lib/insurance-local/sync-participant-insurances";
+import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
+import {
+  calculateBookingTotalCents,
+  calculateInstallmentAmounts,
+} from "@/lib/utils/payment-calculator";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -515,21 +520,8 @@ export async function POST(req: Request) {
       console.error("⚠️ participant_insurances sync failed after booking:", syncErr);
     }
 
-    // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
-    // W przeciwnym razie Paynow przekieruje na localhost zamiast produkcyjnego URL
     const { origin } = new URL(req.url);
-    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL;
-    
-    // Jeśli nie ma NEXT_PUBLIC_BASE_URL, sprawdź VERCEL_URL (dla Vercel deployment)
-    if (!baseUrl && process.env.VERCEL_URL) {
-      baseUrl = `https://${process.env.VERCEL_URL}`;
-    }
-    
-    // Fallback na origin tylko w development (localhost)
-    if (!baseUrl) {
-      baseUrl = origin;
-      console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
-    }
+    const baseUrl = resolvePublicBaseUrl(origin);
 
     const tripInfo = {
       title: trip.title as string,
@@ -564,9 +556,7 @@ export async function POST(req: Request) {
 
     try {
       // W development zawsze używaj origin (localhost), w produkcji baseUrl
-      const { resolvePublicBaseUrl } = await import("@/lib/url/resolve-public-base-url");
-      const pdfUrl =
-        process.env.NODE_ENV === "development" ? origin.replace(/\/$/, "") : resolvePublicBaseUrl(origin);
+      const pdfUrl = resolvePublicBaseUrl(origin);
       const pdfRes = await fetch(`${pdfUrl}/api/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -846,42 +836,22 @@ export async function POST(req: Request) {
     // Utworzenie płatności Paynow v3
     let redirectUrl: string | null = null;
     const unitPrice = trip.price_cents ?? 0;
-    const totalAmountCents = unitPrice * seatsRequested;
-    
-    // Oblicz kwoty rat na podstawie harmonogramu lub starych ustawień
-    const paymentSchedule = trip.payment_schedule && Array.isArray(trip.payment_schedule) && trip.payment_schedule.length > 0
-      ? trip.payment_schedule
-      : null;
-    
-    let firstPaymentAmountCents = totalAmountCents;
-    let secondPaymentAmountCents = 0;
-    let firstInstallmentPercent = 100; // procent pierwszej raty (do logowania)
-    
-    if (paymentSchedule && paymentSchedule.length > 0) {
-      // Nowy system: użyj harmonogramu
-      const firstInstallment = paymentSchedule[0];
-      firstInstallmentPercent = firstInstallment.percent;
-      firstPaymentAmountCents = Math.round((totalAmountCents * firstInstallment.percent) / 100);
-      
-      if (paymentSchedule.length > 1) {
-        const secondInstallment = paymentSchedule[1];
-        secondPaymentAmountCents = Math.round((totalAmountCents * secondInstallment.percent) / 100);
-      } else {
-        // Tylko jedna rata - reszta to 0
-        secondPaymentAmountCents = 0;
-      }
-    } else {
-      // Stary system: użyj payment_split_first_percent
-      const paymentSplitEnabled = trip.payment_split_enabled ?? true;
-      firstInstallmentPercent = trip.payment_split_first_percent ?? 30;
-      
-      if (paymentSplitEnabled) {
-        // Oblicz zaliczkę (np. 30% z pełnej kwoty)
-        firstPaymentAmountCents = Math.round((totalAmountCents * firstInstallmentPercent) / 100);
-        // Reszta to pozostała kwota
-        secondPaymentAmountCents = totalAmountCents - firstPaymentAmountCents;
-      }
-    }
+    const totalAmountCents = calculateBookingTotalCents(
+      unitPrice,
+      seatsRequested,
+      payload.participants,
+    );
+
+    const paymentConfig = {
+      payment_split_enabled: trip.payment_split_enabled,
+      payment_split_first_percent: trip.payment_split_first_percent,
+      payment_schedule: trip.payment_schedule,
+    };
+    const {
+      firstPaymentCents: firstPaymentAmountCents,
+      secondPaymentCents: secondPaymentAmountCents,
+      firstPercent: firstInstallmentPercent,
+    } = calculateInstallmentAmounts(totalAmountCents, paymentConfig);
     
     // Zapisz kwoty w booking
     try {

@@ -7,6 +7,8 @@ import { Eye, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { templateToHtml, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import { replaceTripPlaceholders, replaceBookingPlaceholders, removeCompanySectionFromAgreementHtml } from "@/lib/agreement-placeholder-replacer";
+import { getFirstInstallmentPercent } from "@/lib/utils/payment-calculator";
+import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 
 interface AgreementPreviewProps {
@@ -83,16 +85,24 @@ export function AgreementPreview({
   let htmlWithData = replaceTripPlaceholders(html, tripFullData, tripContentData, { insuranceScope });
 
   if (formData) {
+    const addonTotalCents =
+      formData.participants && formData.participants.length > 0
+        ? sumAdditionalServicesCents(formData.participants)
+        : 0;
     htmlWithData = replaceBookingPlaceholders(
       htmlWithData,
       formData,
       tripFullData?.price_cents || null,
       tripFullData?.start_date || null,
-      null,
+      addonTotalCents,
       {
         requiredContactFields,
         requirePeselFallback,
         insuranceScope,
+        firstInstallmentPercent: tripFullData
+          ? getFirstInstallmentPercent(tripFullData)
+          : 30,
+        paymentSchedule: tripFullData?.payment_schedule ?? null,
       },
     );
   } else if (insuranceScope) {
@@ -181,6 +191,15 @@ export function AgreementPreview({
       margin: 0.5rem 0;
       line-height: 1.6;
       font-family: Arial, "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
+    }
+    pre, code {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      font-family: Arial, "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
+    }
+    pre {
+      margin: 1rem 0;
     }
     div {
       font-family: Arial, "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
@@ -348,6 +367,7 @@ export function AgreementPreview({
               box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
               border: 1px solid #e5e7eb;
               box-sizing: border-box;
+              overflow-x: hidden;
               page-break-after: always;
               break-after: page;
             }
@@ -380,8 +400,22 @@ export function AgreementPreview({
             font-family: system-ui, -apple-system, sans-serif;
             line-height: 1.6;
             color: #1f2937;
-            overflow-wrap: break-word;
+            max-width: 100%;
+            overflow-wrap: anywhere;
             word-break: break-word;
+          }
+          .agreement-content * {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+          .agreement-content strong,
+          .agreement-content b {
+            font-weight: 600;
+          }
+          .agreement-content em,
+          .agreement-content i {
+            font-style: italic;
           }
           .agreement-content h1 {
             font-size: 1.875rem;
@@ -419,13 +453,31 @@ export function AgreementPreview({
             margin: 1rem 0;
             line-height: 1.6;
           }
-          .agreement-content ul {
+          .agreement-content ul,
+          .agreement-content ol {
             margin: 1rem 0;
             padding-left: 1.5rem;
+            list-style-position: outside;
+          }
+          .agreement-content ul {
+            list-style-type: disc;
+          }
+          .agreement-content ol {
+            list-style-type: decimal;
           }
           .agreement-content li {
             margin: 0.5rem 0;
             line-height: 1.6;
+          }
+          .agreement-content pre,
+          .agreement-content code {
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+          }
+          .agreement-content pre {
+            margin: 1rem 0;
+            font-family: inherit;
           }
           .agreement-content div[style*="page-break"] {
             page-break-before: always;

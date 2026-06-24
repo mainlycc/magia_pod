@@ -74,7 +74,9 @@ export async function POST(req: Request) {
       htmlWithData,
       body.formData,
       body.tripFullData?.price_cents || null,
-      body.tripFullData?.start_date || null
+      body.tripFullData?.start_date || null,
+      null,
+      { paymentSchedule: body.tripFullData?.payment_schedule ?? null }
     );
 
     // Dodaj style CSS dla lepszego wyglądu PDF

@@ -3,6 +3,11 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createPaynowPayment } from "@/lib/paynow";
+import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
+import {
+  calculateBookingTotalCents,
+  calculateInstallmentAmounts,
+} from "@/lib/utils/payment-calculator";
 
 const initPaymentSchema = z.object({
   booking_id: z.string().uuid().optional(),
@@ -75,10 +80,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Pobierz liczbę uczestników
+    // Pobierz uczestników (z usługami dodatkowymi do wyliczenia kwoty)
     const { data: participants, error: participantsError } = await supabase
       .from("participants")
-      .select("id")
+      .select("id, selected_services")
       .eq("booking_id", booking.id);
 
     if (participantsError) {
@@ -90,7 +95,11 @@ export async function POST(request: NextRequest) {
 
     const participantsCount = participants?.length ?? 1;
     const unitPrice = trip.price_cents ?? 0;
-    const totalAmountCents = unitPrice * participantsCount;
+    const totalAmountCents = calculateBookingTotalCents(
+      unitPrice,
+      participantsCount,
+      participants ?? [],
+    );
 
     if (totalAmountCents <= 0) {
       return NextResponse.json(
@@ -107,115 +116,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Sprawdź czy wycieczka ma włączony podział płatności
-    // Użyj harmonogramu płatności jeśli dostępny, w przeciwnym razie użyj starego systemu
-    const paymentSchedule = trip.payment_schedule && Array.isArray(trip.payment_schedule) && trip.payment_schedule.length > 0
-      ? trip.payment_schedule
-      : null;
-    
+    const paymentConfig = {
+      payment_split_enabled: trip.payment_split_enabled,
+      payment_split_first_percent: trip.payment_split_first_percent,
+      payment_split_second_percent: trip.payment_split_second_percent,
+      payment_schedule: trip.payment_schedule,
+    };
+    const {
+      firstPaymentCents,
+      secondPaymentCents,
+      firstPercent,
+    } = calculateInstallmentAmounts(totalAmountCents, paymentConfig);
+
+    const paymentSchedule =
+      trip.payment_schedule && Array.isArray(trip.payment_schedule) && trip.payment_schedule.length > 0
+        ? trip.payment_schedule
+        : null;
     const paymentSplitEnabled = trip.payment_split_enabled ?? true;
+    const hasSplitPayments = Boolean(paymentSchedule) || paymentSplitEnabled;
+
     let paymentAmountCents = totalAmountCents;
     let isFirstPayment = true;
     let paymentDescription = `Rezerwacja ${booking.booking_ref} - ${trip.title}`;
 
-    if (paymentSchedule && paymentSchedule.length > 0) {
-      // Nowy system: użyj harmonogramu
-      const firstInstallment = paymentSchedule[0];
-      const secondInstallment = paymentSchedule.length > 1 ? paymentSchedule[1] : null;
-      
-      // Sprawdź status płatności
+    if (hasSplitPayments) {
       const firstPaymentStatus = booking.first_payment_status ?? "unpaid";
       const secondPaymentStatus = booking.second_payment_status ?? "unpaid";
-
-      // Jeśli pierwsza rata nie została zapłacona, płacimy pierwszą ratę
-      if (firstPaymentStatus === "unpaid") {
-        isFirstPayment = true;
-        paymentAmountCents = Math.round((totalAmountCents * firstInstallment.percent) / 100);
-        paymentDescription = `Rata ${firstInstallment.installment_number} (${firstInstallment.percent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
-      } 
-      // Jeśli pierwsza rata została zapłacona, ale druga nie (jeśli istnieje), płacimy drugą ratę
-      else if (firstPaymentStatus === "paid" && secondInstallment && secondPaymentStatus === "unpaid") {
-        isFirstPayment = false;
-        paymentAmountCents = Math.round((totalAmountCents * secondInstallment.percent) / 100);
-        paymentDescription = `Rata ${secondInstallment.installment_number} (${secondInstallment.percent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
-      }
-      // Jeśli obie płatności zostały zapłacone (lub wszystkie raty), zwróć błąd
-      else if (firstPaymentStatus === "paid" && (!secondInstallment || secondPaymentStatus === "paid")) {
-        return NextResponse.json(
-          { error: "payment_already_completed" },
-          { status: 400 }
-        );
-      }
-
-      // Zapisz kwoty w booking jeśli jeszcze nie są zapisane (dla kompatybilności wstecznej)
-      const adminClient = createAdminClient();
-      const updateData: {
-        first_payment_amount_cents?: number;
-        second_payment_amount_cents?: number;
-      } = {};
-
-      if (booking.first_payment_amount_cents === null || booking.first_payment_amount_cents === undefined) {
-        updateData.first_payment_amount_cents = Math.round((totalAmountCents * firstInstallment.percent) / 100);
-      }
-      if (secondInstallment && (booking.second_payment_amount_cents === null || booking.second_payment_amount_cents === undefined)) {
-        updateData.second_payment_amount_cents = Math.round((totalAmountCents * secondInstallment.percent) / 100);
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        await adminClient
-          .from("bookings")
-          .update(updateData)
-          .eq("id", booking.id);
-      }
-    } else if (paymentSplitEnabled) {
-      // Stary system: użyj payment_split_first_percent i payment_split_second_percent
-      const firstPercent = trip.payment_split_first_percent ?? 30;
+      const secondInstallment = paymentSchedule && paymentSchedule.length > 1 ? paymentSchedule[1] : null;
       const secondPercent = trip.payment_split_second_percent ?? 70;
-      
-      // Sprawdź status płatności
-      const firstPaymentStatus = booking.first_payment_status ?? "unpaid";
-      const secondPaymentStatus = booking.second_payment_status ?? "unpaid";
 
-      // Jeśli zaliczka nie została zapłacona, płacimy zaliczkę
       if (firstPaymentStatus === "unpaid") {
         isFirstPayment = true;
-        paymentAmountCents = Math.round((totalAmountCents * firstPercent) / 100);
-        paymentDescription = `Zaliczka (${firstPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
-      } 
-      // Jeśli zaliczka została zapłacona, ale reszta nie, płacimy resztę
-      else if (firstPaymentStatus === "paid" && secondPaymentStatus === "unpaid") {
+        paymentAmountCents = firstPaymentCents;
+        paymentDescription = paymentSchedule
+          ? `Rata ${paymentSchedule[0].installment_number} (${firstPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`
+          : `Zaliczka (${firstPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+      } else if (firstPaymentStatus === "paid" && secondPaymentStatus === "unpaid" && secondPaymentCents > 0) {
         isFirstPayment = false;
-        paymentAmountCents = Math.round((totalAmountCents * secondPercent) / 100);
-        paymentDescription = `Reszta (${secondPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
-      }
-      // Jeśli obie płatności zostały zapłacone, zwróć błąd
-      else if (firstPaymentStatus === "paid" && secondPaymentStatus === "paid") {
+        paymentAmountCents = secondPaymentCents;
+        paymentDescription = paymentSchedule && secondInstallment
+          ? `Rata ${secondInstallment.installment_number} (${secondInstallment.percent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`
+          : `Reszta (${secondPercent}%) - Rezerwacja ${booking.booking_ref} - ${trip.title}`;
+      } else if (firstPaymentStatus === "paid" && (secondPaymentStatus === "paid" || secondPaymentCents === 0)) {
         return NextResponse.json(
           { error: "payment_already_completed" },
           { status: 400 }
         );
       }
 
-      // Zapisz kwoty w booking jeśli jeszcze nie są zapisane
       const adminClient = createAdminClient();
-      const updateData: {
-        first_payment_amount_cents?: number;
-        second_payment_amount_cents?: number;
-      } = {};
-
-      if (booking.first_payment_amount_cents === null || booking.first_payment_amount_cents === undefined) {
-        updateData.first_payment_amount_cents = Math.round((totalAmountCents * firstPercent) / 100);
-      }
-      if (booking.second_payment_amount_cents === null || booking.second_payment_amount_cents === undefined) {
-        updateData.second_payment_amount_cents = Math.round((totalAmountCents * secondPercent) / 100);
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        await adminClient
-          .from("bookings")
-          .update(updateData)
-          .eq("id", booking.id);
-      }
+      await adminClient
+        .from("bookings")
+        .update({
+          first_payment_amount_cents: firstPaymentCents,
+          second_payment_amount_cents: secondPaymentCents,
+        })
+        .eq("id", booking.id);
     }
 
     // Pobierz access_token jeśli istnieje
@@ -231,27 +187,11 @@ export async function POST(request: NextRequest) {
       // Ignoruj błąd - kolumna access_token może nie istnieć
     }
 
-    // Pobierz baseUrl - w produkcji MUSI być ustawiony NEXT_PUBLIC_BASE_URL
-    // W przeciwnym razie Paynow przekieruje na localhost zamiast produkcyjnego URL
     const { origin } = new URL(request.url);
-    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-    
-    // Jeśli nie ma NEXT_PUBLIC_BASE_URL, sprawdź VERCEL_URL (dla Vercel deployment)
-    if (!baseUrl && process.env.VERCEL_URL) {
-      baseUrl = `https://${process.env.VERCEL_URL}`;
-    }
-    
-    // Fallback na origin tylko w development (localhost)
-    if (!baseUrl) {
-      baseUrl = origin;
-      console.warn("NEXT_PUBLIC_BASE_URL nie jest ustawione - używany jest origin z requestu. To może powodować problemy w produkcji!");
-    }
+    const baseUrl = resolvePublicBaseUrl(origin);
 
-    // Utwórz URL powrotu
-    // Paynow może przekierować z payment_id w parametrach URL, ale na wszelki wypadek
-    // będziemy polegać na payment_history do znalezienia payment_id
     const returnUrl = accessToken
-      ? `${baseUrl}/booking/${accessToken}`
+      ? `${baseUrl}/booking/${accessToken}?fromPaynow=1`
       : `${baseUrl}/payments/return?booking_ref=${booking.booking_ref}`;
 
     // Utwórz płatność Paynow v3

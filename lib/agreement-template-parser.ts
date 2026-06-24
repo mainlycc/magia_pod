@@ -21,6 +21,38 @@ export interface AgreementTemplate {
   sections: AgreementSection[];
 }
 
+function isAwaitingContentSection(section: AgreementSection | null): boolean {
+  if (!section) return false;
+  if (section.type === "title") return true;
+  return section.type === "paragraph" && !!section.title && !section.content?.trim();
+}
+
+/**
+ * Bloki, które muszą pozostać osobnymi sekcjami i nie mogą być scalane
+ * z sąsiednimi akapitami (page-break / dane organizatora / podpis / załącznik
+ * „imprezy samolotowe"). Bez tego nowy akapit dodany obok takiego bloku
+ * zostaje wchłonięty i znika z edytora jako osobna, edytowalna sekcja.
+ */
+function isStandaloneBlockHtml(html: string | undefined | null): boolean {
+  const content = (html ?? "").toLowerCase();
+  if (!content) return false;
+  return (
+    content.includes("page-break-before") ||
+    content.includes("organizator imprezy turystycznej") ||
+    content.includes("imprezy samolotowe") ||
+    content.includes("podpis klienta")
+  );
+}
+
+function normalizeSectionType(section: AgreementSection): AgreementSection {
+  if (section.type !== "title") return section;
+  return {
+    ...section,
+    type: "paragraph",
+    content: section.content ?? "",
+  };
+}
+
 /**
  * Parsuje HTML do struktury danych
  */
@@ -55,12 +87,13 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
       // Nagłówek H2 - nowa sekcja
       else if (element.tagName === 'H2') {
         if (currentSection) {
-          sections.push(currentSection);
+          sections.push(normalizeSectionType(currentSection));
         }
         currentSection = {
           id: `section-${order++}`,
           title: element.textContent || '',
-          type: 'title',
+          type: 'paragraph',
+          content: '',
           order: sections.length,
         };
       }
@@ -73,7 +106,7 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
           currentSection.fields.length > 0
         ) {
           // Druga tabela bez H2 między nimi (np. domyślny szablon) — osobna sekcja
-          sections.push(currentSection);
+          sections.push(normalizeSectionType(currentSection));
           currentSection = {
             id: `section-${order++}`,
             title: '',
@@ -81,9 +114,9 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
             fields: [],
             order: sections.length,
           };
-        } else if (currentSection && currentSection.type === 'title') {
-          currentSection.type = 'table';
-          currentSection.fields = [];
+        } else if (isAwaitingContentSection(currentSection)) {
+          currentSection!.type = 'table';
+          currentSection!.fields = [];
         } else if (!currentSection) {
           currentSection = {
             id: `section-${order++}`,
@@ -93,7 +126,7 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
             order: sections.length,
           };
         } else if (currentSection.type !== 'table') {
-          sections.push(currentSection);
+          sections.push(normalizeSectionType(currentSection));
           currentSection = {
             id: `section-${order++}`,
             title: '',
@@ -133,9 +166,8 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
         
         // Sprawdź czy zawiera paragrafy organizatora lub jest drugą stroną
         if (innerHTML.includes('ORGANIZATOR IMPREZY TURYSTYCZNEJ') || innerHTML.includes('IMPREZY SAMOLOTOWE') || outerHTML.includes('page-break-before')) {
-          // Zapisz poprzednią sekcję jeśli istnieje
-          if (currentSection && currentSection.type !== 'title') {
-            sections.push(currentSection);
+          if (currentSection) {
+            sections.push(normalizeSectionType(currentSection));
           }
           currentSection = {
             id: `section-${order++}`,
@@ -149,12 +181,12 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
           const hasNestedElements = element.querySelector('*') !== null;
           const hasStyle = !!element.getAttribute('style');
           const content = (hasNestedElements || hasStyle) ? outerHTML : (element.textContent || '');
-          if (currentSection && currentSection.type === 'title') {
-            currentSection.type = 'paragraph';
-            currentSection.content = content;
+          if (isAwaitingContentSection(currentSection)) {
+            currentSection!.type = 'paragraph';
+            currentSection!.content = content;
           } else {
-            if (currentSection && currentSection.type !== 'title') {
-              sections.push(currentSection);
+            if (currentSection) {
+              sections.push(normalizeSectionType(currentSection));
             }
             currentSection = {
               id: `section-${order++}`,
@@ -168,17 +200,24 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
       }
       // Paragraf
       else if (element.tagName === 'P') {
-        // Zachowaj pełny HTML paragrafu (np. text-align z Tiptap)
         const content = element.outerHTML;
-        
-        // Jeśli mamy sekcję z tytułem bez typu, zamień na paragraf
-        if (currentSection && currentSection.type === 'title') {
-          currentSection.type = 'paragraph';
-          currentSection.content = content;
+
+        if (isAwaitingContentSection(currentSection)) {
+          currentSection!.type = 'paragraph';
+          currentSection!.content = content;
+        } else if (
+          currentSection?.type === 'paragraph' &&
+          currentSection.content?.trim() &&
+          !isStandaloneBlockHtml(currentSection.content) &&
+          !isStandaloneBlockHtml(content)
+        ) {
+          // Kolejne akapity (np. z TipTap) trzymaj w jednej sekcji — także bez tytułu H2.
+          // Nie scalaj jednak z blokami systemowymi (page-break, podpis, organizator,
+          // załącznik), aby nowo dodany akapit pozostał osobną, edytowalną sekcją.
+          currentSection.content = `${currentSection.content}\n${content}`;
         } else {
-          // Zapisz poprzednią sekcję jeśli istnieje
-          if (currentSection && currentSection.type !== 'title') {
-            sections.push(currentSection);
+          if (currentSection) {
+            sections.push(normalizeSectionType(currentSection));
           }
           currentSection = {
             id: `section-${order++}`,
@@ -191,17 +230,14 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
       }
       // Lista
       else if (element.tagName === 'UL' || element.tagName === 'OL') {
-        // Zachowaj pełny HTML listy (np. formatowanie / wyrównanie z Tiptap w <p> wewnątrz <li>)
         const content = element.outerHTML;
-        
-        // Jeśli mamy sekcję z tytułem bez typu, zamień na listę
-        if (currentSection && currentSection.type === 'title') {
-          currentSection.type = 'list';
-          currentSection.content = content;
+
+        if (isAwaitingContentSection(currentSection)) {
+          currentSection!.type = 'list';
+          currentSection!.content = content;
         } else {
-          // Zapisz poprzednią sekcję jeśli istnieje
-          if (currentSection && currentSection.type !== 'title') {
-            sections.push(currentSection);
+          if (currentSection) {
+            sections.push(normalizeSectionType(currentSection));
           }
           currentSection = {
             id: `section-${order++}`,
@@ -212,12 +248,41 @@ export function parseHtmlToTemplate(html: string): AgreementTemplate {
           };
         }
       }
+      // Każdy inny element (np. PRE/CODE, BLOCKQUOTE, H3–H6, HR z edytora TipTap).
+      // Bez tego treść taka jak blok kodu była po cichu pomijana i znikała po
+      // ponownym wczytaniu szablonu.
+      else if (element.tagName !== 'H1') {
+        const content = element.outerHTML;
+
+        if (isAwaitingContentSection(currentSection)) {
+          currentSection!.type = 'paragraph';
+          currentSection!.content = content;
+        } else if (
+          currentSection?.type === 'paragraph' &&
+          currentSection.content?.trim() &&
+          !isStandaloneBlockHtml(currentSection.content) &&
+          !isStandaloneBlockHtml(content)
+        ) {
+          currentSection.content = `${currentSection.content}\n${content}`;
+        } else {
+          if (currentSection) {
+            sections.push(normalizeSectionType(currentSection));
+          }
+          currentSection = {
+            id: `section-${order++}`,
+            title: '',
+            type: 'paragraph',
+            content,
+            order: sections.length,
+          };
+        }
+      }
     }
   });
   
   // Dodaj ostatnią sekcję
   if (currentSection) {
-    sections.push(currentSection);
+    sections.push(normalizeSectionType(currentSection));
   }
   
   return {
@@ -235,33 +300,11 @@ export function templateToHtml(template: AgreementTemplate): string {
   // Sortuj sekcje według order przed renderowaniem (zachowaj kolejność po drag & drop)
   const sortedSections = [...template.sections].sort((a, b) => a.order - b.order);
 
-  // Tylko blok organizatora (pierwsza sekcja) idzie przed H1 — nie każdy paragraf
-  const firstSection = sortedSections[0];
-  const isOrganizerBlock =
-    firstSection?.type === "paragraph" &&
-    firstSection.content &&
-    (firstSection.content.includes("ORGANIZATOR IMPREZY TURYSTYCZNEJ") ||
-      firstSection.content.includes("<div"));
-
-  if (isOrganizerBlock && firstSection.content) {
-    // Jeśli zawiera HTML (DIV z paragrafami), użyj go bezpośrednio
-    const organizerContent = firstSection.content;
-    if (organizerContent.includes('<div') || organizerContent.includes('<p')) {
-      // To jest HTML - użyj go bezpośrednio
-      html += organizerContent + '\n\n';
-    } else if (organizerContent.includes('ORGANIZATOR IMPREZY TURYSTYCZNEJ')) {
-      // Zwykły tekst - użyj domyślnego formatowania
-      html += `<p style="font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">${escapeHtml(organizerContent)}</p>\n\n`;
-    } else {
-      html += `<p>${escapeHtml(organizerContent)}</p>\n\n`;
-    }
-  }
-  
+  // Tytuł umowy jest zawsze pierwszy — nic nie może być nad nim (spójne z edytorem).
   html += `<h1>${escapeHtml(template.title)}</h1>\n\n`;
   
-  // Renderuj sekcje (pomijając pierwszą jeśli była paragrafem organizatora)
-  const startIndex = isOrganizerBlock ? 1 : 0;
-  sortedSections.slice(startIndex).forEach((section) => {
+  // Renderuj wszystkie sekcje w kolejności (blok organizatora trafia pod tytuł).
+  sortedSections.forEach((section) => {
     // Wyświetl tytuł sekcji jeśli istnieje
     if (section.title) {
       html += `<h2>${escapeHtml(section.title)}</h2>\n`;
@@ -280,7 +323,7 @@ export function templateToHtml(template: AgreementTemplate): string {
         html += `  <tr>\n    <td>${labelHtml}</td>\n    <td>${valueHtml}</td>\n  </tr>\n`;
       });
       html += '</table>\n\n';
-    } else if (section.type === 'paragraph' && section.content) {
+    } else if ((section.type === 'paragraph' || section.type === 'title') && section.content) {
       // Jeśli zawartość to HTML (zawiera tagi HTML), użyj bezpośrednio
       // Sprawdź czy zawiera jakiekolwiek tagi HTML (np. z edytora Tiptap)
       if (contentLooksLikeHtml(section.content)) {

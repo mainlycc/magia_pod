@@ -8,6 +8,12 @@ import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agree
 import type { TripContentData, TripFullData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
 import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import {
+  calculateInstallmentAmounts,
+  formatDepositAmountZloty,
+  getFirstInstallmentPercent,
+  type PaymentScheduleEntry,
+} from "@/lib/utils/payment-calculator";
 import { embedNotoSansIntoHtml } from "@/lib/pdf/embed-noto-fonts-into-html";
 import { buildInsuranceScope } from "@/lib/agreement-insurance-scope";
 
@@ -22,7 +28,17 @@ export type PdfPayload = {
   booking_ref: string;
   reservation_number?: string | null; // 6-cyfrowy numer rezerwacji z wycieczki
   agreement_number?: number | null; // Numer kolejny umowy (1, 2, 3...)
-  trip: { title: string; start_date?: string | null; end_date?: string | null; price_cents?: number | null; location?: string | null };
+  trip: {
+    title: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    price_cents?: number | null;
+    location?: string | null;
+    payment_split_enabled?: boolean | null;
+    payment_split_first_percent?: number | null;
+    payment_split_second_percent?: number | null;
+    payment_schedule?: PaymentScheduleEntry[] | null;
+  };
   trip_id?: string; // ID wycieczki do pobrania szablonu
   applicant_type?: "individual" | "company"; // Typ rejestracji
   contact_email: string;
@@ -137,7 +153,9 @@ function replacePlaceholders(template: string, data: PdfPayload): string {
   const addonsCents = sumAdditionalServicesCents(data.participants);
   const totalCents = data.trip.price_cents ? baseCents + addonsCents : 0;
   const totalPrice = data.trip.price_cents ? (totalCents / 100).toFixed(2) : "-";
-  const depositAmount = data.trip.price_cents ? ((totalCents * 0.3) / 100).toFixed(2) : "-";
+  const depositAmount = data.trip.price_cents
+    ? formatDepositAmountZloty(totalCents, getFirstInstallmentPercent(data.trip))
+    : "-";
   
   const contactFullName = [data.contact_first_name, data.contact_last_name]
     .filter(Boolean)
@@ -525,8 +543,18 @@ export function generatePdf(data: PdfPayload, customTemplate?: string | null): B
   doc.text("3. Platnosc za Impreze Turystyczna odbywa sie w nastepujacych ratach:", 20, y);
   y += 6;
 
-  const depositAmount = totalPrice !== "-" ? ((totalCents * 0.3) / 100).toFixed(2) : "-";
-  const finalAmount = totalPrice !== "-" ? ((totalCents * 0.7) / 100).toFixed(2) : "-";
+  const installmentAmounts =
+    totalPrice !== "-"
+      ? calculateInstallmentAmounts(totalCents, data.trip)
+      : null;
+  const depositAmount =
+    installmentAmounts !== null
+      ? (installmentAmounts.firstPaymentCents / 100).toFixed(2)
+      : "-";
+  const finalAmount =
+    installmentAmounts !== null
+      ? (installmentAmounts.secondPaymentCents / 100).toFixed(2)
+      : "-";
   
   doc.text(`o Rata I (zaliczka): ${depositAmount} PLN platna w terminie 7 dni od daty podpisania Umowy.`, 25, y);
   y += 6;
@@ -888,6 +916,8 @@ export async function POST(req: Request) {
               : null,
           requirePeselFallback: typeof tripRow?.require_pesel === "boolean" ? tripRow.require_pesel : null,
           insuranceScope,
+          firstInstallmentPercent: getFirstInstallmentPercent(tripFullData),
+          paymentSchedule: tripFullData.payment_schedule,
         },
       );
       const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);

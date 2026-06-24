@@ -86,3 +86,48 @@ describe("replaceTripPlaceholders — pola umowy", () => {
     expect(out).not.toContain("Stare świadczenia");
   });
 });
+
+describe("replaceTripPlaceholders — terminy płatności", () => {
+  const html =
+    "Zaliczka do {{trip_deposit_deadline}} | Całość do {{trip_final_payment_deadline}}";
+
+  it("bierze daty z harmonogramu (1. rata = zaliczka, ostatnia = całość)", () => {
+    const out = replaceTripPlaceholders(
+      html,
+      {
+        ...tripFullData,
+        start_date: "2026-08-11",
+        payment_schedule: [
+          { installment_number: 1, percent: 30, due_date: "2026-07-01" },
+          { installment_number: 2, percent: 70, due_date: "2026-07-28" },
+        ],
+      },
+      tripContentData,
+    );
+
+    expect(out).toContain("01.07.2026");
+    expect(out).toContain("28.07.2026");
+  });
+
+  it("gdy brak harmonogramu, nie pokazuje dwa razy tej samej daty", () => {
+    const out = replaceTripPlaceholders(
+      html,
+      {
+        ...tripFullData,
+        start_date: "2026-08-11",
+        payment_schedule: null,
+      },
+      tripContentData,
+    );
+
+    const deposit = out.match(/Zaliczka do (\S+)/)?.[1];
+    const final = out.match(/Całość do (\S+)/)?.[1];
+
+    expect(deposit).toBeTruthy();
+    expect(final).toBeTruthy();
+    // Najważniejsze: terminy zaliczki i całości nie mogą być identyczne.
+    expect(deposit).not.toEqual(final);
+    // Termin całości to 14 dni przed wyjazdem.
+    expect(final).toBe("28.07.2026");
+  });
+});

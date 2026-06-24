@@ -93,6 +93,65 @@ describe("agreement-template-parser round-trip", () => {
     expect(withoutField).not.toContain(marker);
   });
 
+  it("round-trip: paragraf z tytułem H2 i treścią jest zachowany", () => {
+    const marker = "TRESC-PARAGRAFU-TEST";
+    const html = `<h1>UMOWA</h1>
+<h2>Nagłówek sekcji</h2>
+<p>${marker}</p>`;
+
+    const parsed = parseHtmlToTemplate(html);
+    const section = parsed.sections.find((s) => s.title === "Nagłówek sekcji");
+
+    expect(section?.type).toBe("paragraph");
+    expect(section?.content).toContain(marker);
+
+    const roundTripped = templateToHtml(parsed);
+    expect(roundTripped).toContain("Nagłówek sekcji");
+    expect(roundTripped).toContain(marker);
+
+    const reparsed = parseHtmlToTemplate(roundTripped);
+    const sectionAgain = reparsed.sections.find((s) => s.title === "Nagłówek sekcji");
+    expect(sectionAgain?.content).toContain(marker);
+  });
+
+  it("round-trip: sam tytuł H2 bez treści daje edytowalny paragraf", () => {
+    const html = `<h1>UMOWA</h1>
+<h2>Tylko tytuł</h2>`;
+
+    const parsed = parseHtmlToTemplate(html);
+    const section = parsed.sections.find((s) => s.title === "Tylko tytuł");
+
+    expect(section?.type).toBe("paragraph");
+    expect(section?.content ?? "").toBe("");
+  });
+
+  it("round-trip: wiele akapitów pod jednym H2 zostaje w jednej sekcji", () => {
+    const html = `<h1>UMOWA</h1>
+<h2>Warunki</h2>
+<p>Akapit pierwszy.</p>
+<p>Akapit drugi.</p>`;
+
+    const parsed = parseHtmlToTemplate(html);
+    const sectionsWithTitle = parsed.sections.filter((s) => s.title === "Warunki");
+
+    expect(sectionsWithTitle).toHaveLength(1);
+    expect(sectionsWithTitle[0]?.content).toContain("Akapit pierwszy");
+    expect(sectionsWithTitle[0]?.content).toContain("Akapit drugi");
+  });
+
+  it("round-trip: wiele akapitów bez H2 zostaje w jednej sekcji", () => {
+    const html = `<h1>UMOWA</h1>
+<p>Akapit pierwszy.</p>
+<p>Akapit drugi.</p>`;
+
+    const parsed = parseHtmlToTemplate(html);
+    const paragraphSections = parsed.sections.filter((s) => s.type === "paragraph");
+
+    expect(paragraphSections).toHaveLength(1);
+    expect(paragraphSections[0]?.content).toContain("Akapit pierwszy");
+    expect(paragraphSections[0]?.content).toContain("Akapit drugi");
+  });
+
   it("round-trip: dodany paragraf jest zachowany", () => {
     const parsed = parseHtmlToTemplate(DEFAULT_AGREEMENT_TEMPLATE_HTML);
     const marker = "PARAGRAF-TEST-MARKER";
@@ -110,5 +169,48 @@ describe("agreement-template-parser round-trip", () => {
     const reparsed = parseHtmlToTemplate(html);
     const para = reparsed.sections.find((s) => (s.content || "").includes(marker));
     expect(para?.type).toBe("paragraph");
+  });
+
+  it("round-trip: nowy paragraf bez tytułu obok bloku page-break nie jest wchłaniany", () => {
+    // Odwzorowanie zachowania UI: 'Dodaj paragraf' tworzy sekcję z pustym tytułem.
+    const parsed = parseHtmlToTemplate(DEFAULT_AGREEMENT_TEMPLATE_HTML);
+    const marker = "NOWY-AKAPIT-BEZ-TYTULU";
+    parsed.sections.push({
+      id: "section-new-para",
+      title: "",
+      type: "paragraph",
+      order: parsed.sections.length,
+      content: `<p>${marker}</p>`,
+    });
+
+    const html = templateToHtml(parsed);
+    expect(html).toContain(marker);
+
+    const reparsed = parseHtmlToTemplate(html);
+    const para = reparsed.sections.find((s) => (s.content || "").includes(marker));
+
+    // Musi pozostać osobną, edytowalną sekcją (nie scaloną z page-break / załącznikiem).
+    expect(para).toBeDefined();
+    expect(para?.type).toBe("paragraph");
+    expect((para?.content || "").includes("page-break-before")).toBe(false);
+    expect((para?.content || "").toLowerCase().includes("imprezy samolotowe")).toBe(false);
+  });
+
+  it("round-trip: akapit przed podpisem nie scala się z blokiem podpisu", () => {
+    const html = `<h1>UMOWA</h1>
+<p>Moja dodatkowa klauzula.</p>
+<p>................................<br/>Podpis Klienta</p>`;
+
+    const parsed = parseHtmlToTemplate(html);
+    const klauzula = parsed.sections.find((s) =>
+      (s.content || "").includes("Moja dodatkowa klauzula"),
+    );
+    const podpis = parsed.sections.find((s) =>
+      (s.content || "").toLowerCase().includes("podpis klienta"),
+    );
+
+    expect(klauzula).toBeDefined();
+    expect(podpis).toBeDefined();
+    expect(klauzula?.id).not.toBe(podpis?.id);
   });
 });

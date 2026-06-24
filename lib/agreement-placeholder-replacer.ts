@@ -6,6 +6,12 @@ import {
   formatSelectedServicesPerParticipant,
   type ServiceCatalogs,
 } from "./resolve-participant-service-titles";
+import {
+  formatDepositAmountZloty,
+  getDefaultPaymentDueDates,
+  getFirstInstallmentPercent,
+} from "@/lib/utils/payment-calculator";
+import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 
 type RequiredContactFields = {
   pesel?: boolean;
@@ -51,6 +57,46 @@ function calculateNights(startDate: string | null, endDate: string | null): numb
   } catch {
     return 0;
   }
+}
+
+/**
+ * Wylicza terminy zapłaty zaliczki (pierwsza rata) i całości (ostatnia rata)
+ * na podstawie harmonogramu płatności. Jeśli harmonogramu brak — fallback do
+ * domyślnych terminów spójnych z zakładką „Informacje” (zaliczka: dziś + 7 dni,
+ * dopłata: 14 dni przed wyjazdem), aby na umowie nie pojawiała się dwa razy
+ * ta sama data.
+ */
+function resolvePaymentDeadlines(
+  paymentSchedule:
+    | Array<{ installment_number?: number; due_date?: string | null }>
+    | null
+    | undefined,
+  startDate: string | null,
+): { depositDeadline: string; finalPaymentDeadline: string } {
+  const withDates = (paymentSchedule ?? [])
+    .filter((item) => item && item.due_date)
+    .slice()
+    .sort(
+      (a, b) => (a.installment_number ?? 0) - (b.installment_number ?? 0),
+    );
+
+  if (withDates.length > 0) {
+    const first = withDates[0];
+    const last = withDates[withDates.length - 1];
+
+    return {
+      depositDeadline: formatDate(first.due_date ?? null),
+      finalPaymentDeadline: formatDate(last.due_date ?? null),
+    };
+  }
+
+  // Brak harmonogramu — użyj tych samych domyślnych terminów co edytor
+  // harmonogramu, żeby umowa zgadzała się z informacjami o wycieczce.
+  const { depositDueDate, finalDueDate } = getDefaultPaymentDueDates(startDate);
+  return {
+    depositDeadline: formatDate(depositDueDate),
+    finalPaymentDeadline: formatDate(finalDueDate),
+  };
 }
 
 /**
@@ -102,23 +148,14 @@ export function replaceTripPlaceholders(
     result = result.replace(/\{\{trip_duration\}\}/g, tripContentData.duration_text);
   }
 
-  // Oblicz terminy płatności (14 dni przed wyjazdem)
-  if (tripFullData.start_date) {
-    try {
-      const startDate = new Date(tripFullData.start_date);
-      const depositDeadline = new Date(startDate.getTime() - 14 * 24 * 60 * 60 * 1000);
-      const finalPaymentDeadline = new Date(startDate.getTime() - 14 * 24 * 60 * 60 * 1000);
-      
-      result = result.replace(/\{\{trip_deposit_deadline\}\}/g, formatDate(depositDeadline.toISOString()));
-      result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, formatDate(finalPaymentDeadline.toISOString()));
-    } catch {
-      result = result.replace(/\{\{trip_deposit_deadline\}\}/g, "-");
-      result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, "-");
-    }
-  } else {
-    result = result.replace(/\{\{trip_deposit_deadline\}\}/g, "-");
-    result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, "-");
-  }
+  // Terminy płatności: zaliczka = termin pierwszej raty, całość = termin ostatniej raty.
+  // Fallback (gdy brak harmonogramu): 14 dni przed wyjazdem.
+  const { depositDeadline, finalPaymentDeadline } = resolvePaymentDeadlines(
+    tripFullData.payment_schedule,
+    tripFullData.start_date,
+  );
+  result = result.replace(/\{\{trip_deposit_deadline\}\}/g, depositDeadline);
+  result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, finalPaymentDeadline);
 
   // Liczba noclegów
   const nights = calculateNights(tripFullData.start_date, tripFullData.end_date);
@@ -165,9 +202,10 @@ export function replaceTripPlaceholders(
   // Cena całkowita (dla przykładu - 1 osoba, bo nie mamy danych o liczbie uczestników)
   result = result.replace(/\{\{trip_total_price\}\}/g, price);
 
-  // Kwota zaliczki (30% ceny)
+  // Kwota zaliczki (podgląd bez danych rezerwacji — 1 osoba, bez dopłat)
   if (tripFullData.price_cents) {
-    const depositAmount = ((tripFullData.price_cents * 0.3) / 100).toFixed(2);
+    const firstPercent = getFirstInstallmentPercent(tripFullData);
+    const depositAmount = formatDepositAmountZloty(tripFullData.price_cents, firstPercent);
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
   } else {
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, "-");
@@ -324,6 +362,12 @@ export function replaceBookingPlaceholders(
     requirePeselFallback?: boolean | null;
     /** Tekst zakresu ubezpieczenia dla {{insurance_scope}} */
     insuranceScope?: string | null;
+    /** Procent pierwszej raty / zaliczki (domyślnie 30). */
+    firstInstallmentPercent?: number | null;
+    /** Harmonogram płatności wycieczki — do wyliczenia terminów rat. */
+    paymentSchedule?:
+      | Array<{ installment_number?: number; due_date?: string | null }>
+      | null;
   },
 ): string {
   if (!formData) return html;
@@ -436,31 +480,32 @@ export function replaceBookingPlaceholders(
 
   // Cena całkowita i zaliczka (baza × liczba osób + dopłaty za usługi dodatkowe)
   if (tripPrice && participantsCount > 0) {
-    const addon =
-      typeof addonTotalCents === "number" &&
-      Number.isFinite(addonTotalCents) &&
-      addonTotalCents > 0
-        ? Math.round(addonTotalCents)
+    const addonFromParticipants =
+      participantRows.length > 0
+        ? sumAdditionalServicesCents(participantRows)
         : 0;
+    const addon =
+      typeof addonTotalCents === "number" && Number.isFinite(addonTotalCents)
+        ? Math.round(addonTotalCents)
+        : addonFromParticipants;
     const totalCents = tripPrice * participantsCount + addon;
     const totalPrice = (totalCents / 100).toFixed(2);
-    const depositAmount = ((totalCents * 0.3) / 100).toFixed(2);
+    const firstPercent = options?.firstInstallmentPercent ?? 30;
+    const depositAmount = formatDepositAmountZloty(totalCents, firstPercent);
     result = result.replace(/\{\{trip_total_price\}\}/g, totalPrice);
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
   }
 
-  // Terminy płatności (14 dni przed wyjazdem)
-  if (tripStartDate) {
-    try {
-      const startDate = new Date(tripStartDate);
-      const depositDeadline = new Date(startDate.getTime() - 14 * 24 * 60 * 60 * 1000);
-      const finalPaymentDeadline = new Date(startDate.getTime() - 14 * 24 * 60 * 60 * 1000);
-      
-      result = result.replace(/\{\{trip_deposit_deadline\}\}/g, formatDate(depositDeadline.toISOString()));
-      result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, formatDate(finalPaymentDeadline.toISOString()));
-    } catch {
-      // Ignore errors
-    }
+  // Terminy płatności: zaliczka = termin pierwszej raty, całość = termin ostatniej raty.
+  // Uwaga: w głównym przepływie placeholdery są zwykle już podstawione w
+  // replaceTripPlaceholders; tutaj obsługujemy przypadek wywołania standalone.
+  if (tripStartDate || (options?.paymentSchedule?.length ?? 0) > 0) {
+    const { depositDeadline, finalPaymentDeadline } = resolvePaymentDeadlines(
+      options?.paymentSchedule,
+      tripStartDate ?? null,
+    );
+    result = result.replace(/\{\{trip_deposit_deadline\}\}/g, depositDeadline);
+    result = result.replace(/\{\{trip_final_payment_deadline\}\}/g, finalPaymentDeadline);
   }
 
   return result;

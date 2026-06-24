@@ -146,9 +146,6 @@ const PLACEHOLDERS = [
       { name: "{{trip_deposit_deadline}}", description: "Termin zapłaty zaliczki" },
       { name: "{{trip_final_payment_deadline}}", description: "Termin zapłaty całości" },
       { name: "{{insurance_scope}}", description: "Zakres ubezpieczenia (z modułu Ubezpieczenia)" },
-      { name: "{{room_type}}", description: "Rodzaj, typ pokoju (pole w szablonie umowy)" },
-      { name: "{{meals_info}}", description: "Ilość, rodzaj posiłków (pole w szablonie umowy)" },
-      { name: "{{transfer_info}}", description: "Transfery (pole w szablonie umowy)" },
     ],
   },
   {
@@ -156,6 +153,9 @@ const PLACEHOLDERS = [
     items: [
       { name: "{{nights_count}}", description: "Liczba noclegów (tekst)" },
       { name: "{{accommodation_location}}", description: "Lokalizacja, rodzaj, kategoria obiektu" },
+      { name: "{{room_type}}", description: "Rodzaj, typ pokoju" },
+      { name: "{{meals_info}}", description: "Ilość, rodzaj posiłków" },
+      { name: "{{transfer_info}}", description: "Transfery" },
       { name: "{{transport_type}}", description: "Rodzaj kategoria środka transportu" },
       { name: "{{flight_info}}", description: "Przelot liniami (szczegóły)" },
       { name: "{{baggage_info}}", description: "Bagaż (wymiary, waga)" },
@@ -186,7 +186,9 @@ async function loadTemplatesFromApi(tripId: string): Promise<{
     individual: ensureTripInfoTableFields(
       parseHtmlToTemplate(templates.individual || DEFAULT_TEMPLATE),
     ),
-    company: ensureTripInfoTableFields(parseHtmlToTemplate(templates.company || DEFAULT_TEMPLATE)),
+    company: ensureTripInfoTableFields(
+      parseHtmlToTemplate(templates.company || DEFAULT_TEMPLATE),
+    ),
   };
 }
 
@@ -255,11 +257,8 @@ export default function AgreementPage() {
 
   const previewContentData = tripContentData;
 
-  const handleSave = async (type: "individual" | "company") => {
+  const handleSave = async (type: "individual" | "company", template: AgreementTemplate) => {
     if (!selectedTrip?.id) return;
-
-    const template = type === "individual" ? templateIndividual : templateCompany;
-    if (!template) return;
 
     try {
       setSaving(true);
@@ -278,13 +277,10 @@ export default function AgreementPage() {
         toast.success(
           `Szablon umowy dla ${type === "individual" ? "osób fizycznych" : "firm"} został zapisany`,
         );
-        const reloaded = await loadTemplatesFromApi(selectedTrip.id);
-        if (reloaded) {
-          if (type === "individual") {
-            setTemplateIndividual(reloaded.individual);
-          } else {
-            setTemplateCompany(reloaded.company);
-          }
+        if (type === "individual") {
+          setTemplateIndividual(template);
+        } else {
+          setTemplateCompany(template);
         }
       } else if (res.status === 403) {
         toast.error("Brak uprawnień do zapisu szablonu umowy");
@@ -417,7 +413,7 @@ export default function AgreementPage() {
                 <AgreementEditor
                   template={templateIndividual}
                   onChange={(template) => handleTemplateChange("individual", template)}
-                  onSave={() => handleSave("individual")}
+                  onSave={(template) => handleSave("individual", template)}
                   saving={saving}
                 />
               </TabsContent>
@@ -425,7 +421,7 @@ export default function AgreementPage() {
                 <AgreementEditor
                   template={templateCompany}
                   onChange={(template) => handleTemplateChange("company", template)}
-                  onSave={() => handleSave("company")}
+                  onSave={(template) => handleSave("company", template)}
                   saving={saving}
                 />
               </TabsContent>
@@ -434,14 +430,14 @@ export default function AgreementPage() {
             <AgreementEditor
               template={templateIndividual}
               onChange={(template) => handleTemplateChange("individual", template)}
-              onSave={() => handleSave("individual")}
+              onSave={(template) => handleSave("individual", template)}
               saving={saving}
             />
           ) : (
             <AgreementEditor
               template={templateCompany}
               onChange={(template) => handleTemplateChange("company", template)}
-              onSave={() => handleSave("company")}
+              onSave={(template) => handleSave("company", template)}
               saving={saving}
             />
           )}

@@ -1,8 +1,14 @@
 /**
  * Normalizuje publiczny URL aplikacji (bez końcowego slasha).
- * Używany przy wewnętrznych fetch do /api/* na Vercel.
+ * W development zawsze origin z requestu — inaczej Paynow wraca na produkcję zamiast localhost.
  */
 export function resolvePublicBaseUrl(origin?: string): string {
+  const isDev = process.env.NODE_ENV === "development";
+
+  if (isDev && origin) {
+    return origin.replace(/\/$/, "");
+  }
+
   let baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??

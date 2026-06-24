@@ -32,6 +32,7 @@ import {
   transportModeToApi,
 } from "@/lib/trip-transport"
 import { DatePicker } from "@/components/ui/date-picker"
+import { getDefaultPaymentDueDates } from "@/lib/utils/payment-calculator"
 
 type Coordinator = {
   id: string
@@ -42,7 +43,7 @@ const generateId = () =>
   `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 export default function TripGeneralInfoPage() {
-  const { selectedTrip, tripFullData, isLoadingTripData, invalidateTripCache } = useTrip()
+  const { selectedTrip, tripFullData, tripContentData, isLoadingTripData, invalidateTripCache } = useTrip()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -57,6 +58,9 @@ export default function TripGeneralInfoPage() {
   const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
   const [airportCodes, setAirportCodes] = useState("")
   const [tripCategory, setTripCategory] = useState<string>(TRIP_CATEGORY_NONE)
+  const [roomType, setRoomType] = useState("")
+  const [mealsInfo, setMealsInfo] = useState("")
+  const [transferInfo, setTransferInfo] = useState("")
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([])
@@ -115,6 +119,11 @@ export default function TripGeneralInfoPage() {
             : TRIP_CATEGORY_NONE
         )
       }
+      if (tripContentData) {
+        setRoomType(tripContentData.agreement_room_type || "")
+        setMealsInfo(tripContentData.agreement_meals_info || "")
+        setTransferInfo(tripContentData.agreement_transfer_info || "")
+      }
       setPaymentReminderEnabled(
         typeof trip.payment_reminder_enabled === "boolean"
           ? trip.payment_reminder_enabled
@@ -129,21 +138,13 @@ export default function TripGeneralInfoPage() {
       if (trip.payment_schedule && Array.isArray(trip.payment_schedule)) {
         setPaymentSchedule(trip.payment_schedule)
       } else {
-        // Fallback: utwórz harmonogram z starych danych lub domyślny
+        // Fallback: utwórz harmonogram z starych danych lub domyślny.
+        // Te same domyślne terminy są używane przy generowaniu umowy,
+        // żeby dane się nie rozjeżdżały.
         const firstPercent = trip.payment_split_first_percent ?? 30
         const secondPercent = trip.payment_split_second_percent ?? 70
-        const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split("T")[0]
-        const defaultDate2 = trip.start_date
-          ? new Date(
-              new Date(trip.start_date).getTime() - 14 * 24 * 60 * 60 * 1000
-            )
-              .toISOString()
-              .split("T")[0]
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-              .toISOString()
-              .split("T")[0]
+        const { depositDueDate: defaultDate1, finalDueDate: defaultDate2 } =
+          getDefaultPaymentDueDates(trip.start_date ?? null)
         setPaymentSchedule([
           {
             installment_number: 1,
@@ -190,7 +191,7 @@ export default function TripGeneralInfoPage() {
     }
 
     void loadCoordinators()
-  }, [selectedTrip, tripFullData, isLoadingTripData])
+  }, [selectedTrip, tripFullData, tripContentData, isLoadingTripData])
 
   const handleSave = async () => {
     if (!selectedTrip) return
@@ -245,6 +246,22 @@ export default function TripGeneralInfoPage() {
 
       if (!res.ok) {
         toast.error("Nie udało się zapisać zmian")
+        return
+      }
+
+      // Pola umowy (room_type / meals_info) zapisywane są w osobnym endpoincie content
+      const contentRes = await fetch(`/api/trips/${selectedTrip.id}/content`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agreement_room_type: roomType.trim() ? roomType.trim() : null,
+          agreement_meals_info: mealsInfo.trim() ? mealsInfo.trim() : null,
+          agreement_transfer_info: transferInfo.trim() ? transferInfo.trim() : null,
+        }),
+      })
+
+      if (!contentRes.ok) {
+        toast.error("Nie udało się zapisać danych do umowy")
         return
       }
 
@@ -430,6 +447,36 @@ export default function TripGeneralInfoPage() {
                     value={airportCodes}
                     onChange={(e) => setAirportCodes(e.target.value)}
                     placeholder="np. WAW, KRK"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Rodzaj, typ pokoju</Label>
+                  <Input
+                    value={roomType}
+                    onChange={(e) => setRoomType(e.target.value)}
+                    placeholder="np. Pokój 2-osobowy"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Ilość, rodzaj posiłków</Label>
+                  <Input
+                    value={mealsInfo}
+                    onChange={(e) => setMealsInfo(e.target.value)}
+                    placeholder="np. Śniadania i obiadokolacje (HB)"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Transfery</Label>
+                  <Input
+                    value={transferInfo}
+                    onChange={(e) => setTransferInfo(e.target.value)}
+                    placeholder="np. Transfer lotnisko-hotel"
                     className="h-8 text-xs"
                   />
                 </div>

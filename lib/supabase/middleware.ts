@@ -67,6 +67,9 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/api/documents/file/") ||
     // webhook Paynow musi być dostępny bez logowania
     path.startsWith("/api/payments/paynow/webhook") ||
+    // powrót z Paynow → sync statusu + faktura (klient bez konta)
+    path.startsWith("/api/payments/paynow/check-status") ||
+    path.startsWith("/api/payments/paynow/init") ||
     path.startsWith("/auth") ||
     path.startsWith("/login");
 

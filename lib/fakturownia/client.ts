@@ -586,16 +586,159 @@ export function buildInvoicePdfUrl(
   return `${baseUrl}/invoices/${invoiceId}.pdf?api_token=${encodeURIComponent(config.apiToken)}`;
 }
 
+/** URL podglądu HTML faktury (z api_token) — do renderowania PDF przez headless browser. */
+export function buildInvoiceHtmlViewUrl(
+  config: FakturowniaConfig,
+  invoiceId: number | string,
+): string {
+  const baseUrl = getBaseUrl(config);
+  return `${baseUrl}/invoices/${invoiceId}?api_token=${encodeURIComponent(config.apiToken)}`;
+}
+
+/**
+ * Pobiera PDF faktury przez render strony podglądu w headless browser.
+ * Działa dla faktur zaliczkowych, gdy bezpośredni endpoint .pdf zwraca HTTP 422.
+ */
+export async function downloadInvoicePdfViaBrowser(
+  config: FakturowniaConfig,
+  invoiceId: number | string,
+): Promise<Buffer> {
+  const viewUrl = buildInvoiceHtmlViewUrl(config, invoiceId);
+  const isDev = process.env.NODE_ENV === "development";
+  const forceNoChromium = process.env.PDF_FORCE_NO_CHROMIUM === "1";
+
+  if (isDev && !forceNoChromium) {
+    // eslint-disable-next-line no-eval
+    let playwrightModule: any = await eval('import("playwright")').catch(() => null);
+    if (!playwrightModule) {
+      // eslint-disable-next-line no-eval
+      playwrightModule = await eval('import("@playwright/test")').catch(() => null);
+    }
+    if (playwrightModule?.chromium) {
+      const browser = await playwrightModule.chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        await page.goto(viewUrl, { waitUntil: "networkidle", timeout: 60000 });
+        await page.waitForTimeout(2000);
+        const pdfBuffer = await page.pdf({
+          format: "A4",
+          printBackground: true,
+          margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
+        });
+        const buf = Buffer.from(pdfBuffer);
+        if (buf.length < 1000 || buf.subarray(0, 4).toString() !== "%PDF") {
+          throw new Error("Browser render did not produce a valid PDF");
+        }
+        console.log("[Fakturownia Client] PDF via Playwright, size:", buf.length);
+        return buf;
+      } finally {
+        await browser.close();
+      }
+    }
+  }
+
+  if (!forceNoChromium) {
+    // eslint-disable-next-line no-eval
+    const puppeteerModule = await eval('import("puppeteer-core")').catch(() => null);
+    // eslint-disable-next-line no-eval
+    const chromiumModule = await eval('import("@sparticuz/chromium")').catch(() => null);
+    if (puppeteerModule && chromiumModule) {
+      const chromium = chromiumModule.default;
+      if (typeof chromium.setGraphicsMode === "function") {
+        chromium.setGraphicsMode(false);
+      }
+      const browser = await puppeteerModule.default.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless ?? true,
+      });
+      try {
+        const page = await browser.newPage();
+        await page.goto(viewUrl, { waitUntil: "networkidle0", timeout: 60000 });
+        await page.waitForTimeout(2000);
+        const pdfBuffer = await page.pdf({
+          format: "A4",
+          printBackground: true,
+          margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
+        });
+        const buf = Buffer.from(pdfBuffer);
+        if (buf.length < 1000 || buf.subarray(0, 4).toString() !== "%PDF") {
+          throw new Error("Browser render did not produce a valid PDF");
+        }
+        console.log("[Fakturownia Client] PDF via puppeteer/chromium, size:", buf.length);
+        return buf;
+      } finally {
+        await browser.close();
+      }
+    }
+  }
+
+  throw new Error("Brak headless browser do renderowania PDF faktury");
+}
+
 /**
  * Downloads a PDF from a URL and returns it as a Buffer.
  */
 export async function downloadPdf(pdfUrl: string): Promise<Buffer> {
-  const response = await fetch(pdfUrl);
+  const response = await fetch(pdfUrl, { redirect: "follow" });
   if (!response.ok) {
     throw new Error(`Failed to download PDF: HTTP ${response.status}`);
   }
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  const buf = Buffer.from(arrayBuffer);
+  if (buf.length < 4 || buf.subarray(0, 4).toString() !== "%PDF") {
+    const contentType = response.headers.get("content-type") ?? "unknown";
+    throw new Error(`Response is not a PDF (content-type: ${contentType})`);
+  }
+  return buf;
+}
+
+/**
+ * Wysyła fakturę e-mailem bezpośrednio z Fakturowni (PDF w załączniku).
+ * Fallback gdy API nie zwraca PDF (np. niektóre faktury zaliczkowe / KSeF → HTTP 422).
+ */
+export async function sendInvoiceByEmail(
+  config: FakturowniaConfig,
+  invoiceId: number | string,
+  emailTo: string,
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const baseUrl = getBaseUrl(config);
+    const params = new URLSearchParams({
+      api_token: config.apiToken,
+      email_to: emailTo,
+      email_pdf: "true",
+    });
+
+    const response = await fetch(
+      `${baseUrl}/invoices/${invoiceId}/send_by_email.json?${params.toString()}`,
+      { method: "POST", headers: { Accept: "application/json" } },
+    );
+
+    const responseData = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: serializeError(responseData) || `HTTP ${response.status}`,
+      };
+    }
+
+    if (responseData?.status === "ok") {
+      return { success: true, message: responseData.message };
+    }
+
+    return {
+      success: false,
+      error: serializeError(responseData) || "Unexpected send_by_email response",
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Nieznany błąd",
+    };
+  }
 }
 
 // ===================== CLIENTS =====================

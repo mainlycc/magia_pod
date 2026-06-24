@@ -88,12 +88,17 @@ function resolveInsuranceTitle(
 /**
  * Składa tekst zakresu ubezpieczenia dla placeholdera {{insurance_scope}}.
  * Bez uczestników zwraca ubezpieczenie typ 1 przypisane do wycieczki.
+ *
+ * `options.includeAvailableExtras` — tryb podglądu umowy (brak konkretnych
+ * uczestników): dokleja listę dostępnych ubezpieczeń dodatkowych (typ 2 i 3)
+ * z nazwą i zakresem, aby `{{insurance_scope}}` nie był ograniczony do typu 1.
  */
 export async function buildInsuranceScope(
   supabase: SupabaseClient,
   tripId: string,
   participants?: InsuranceScopeParticipant[] | null,
   formExtraInsurances?: unknown,
+  options?: { includeAvailableExtras?: boolean },
 ): Promise<string> {
   const { data: tripVariants, error } = await supabase
     .from("trip_insurance_variants")
@@ -154,6 +159,20 @@ export async function buildInsuranceScope(
 
   if (extraLines.length > 0) {
     sections.push("Dodatkowe ubezpieczenia:", ...extraLines);
+  }
+
+  // Tryb podglądu (brak konkretnych uczestników): pokaż dostępne ubezpieczenia
+  // dodatkowe (typ 2 i 3) z nazwą i zakresem, aby placeholder nie był pusty.
+  if (options?.includeAvailableExtras && participantRows.length === 0) {
+    const availableLines: string[] = [];
+    for (const row of enabledRows) {
+      const variant = normalizeVariant(row.insurance_variants);
+      if (!variant || variant.type === 1) continue;
+      availableLines.push(`- ${formatVariantLine(variant)}`);
+    }
+    if (availableLines.length > 0) {
+      sections.push("Dostępne ubezpieczenia dodatkowe:", ...availableLines);
+    }
   }
 
   if (sections.length === 0) {

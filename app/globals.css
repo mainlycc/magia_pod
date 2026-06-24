@@ -122,6 +122,19 @@ input[type="password"]::-ms-clear {
 .ProseMirror {
   outline: none;
   min-height: 300px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ProseMirror table {
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
 }
 
 .ProseMirror p {

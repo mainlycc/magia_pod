@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { GripVertical, Plus, Trash2, Save, Loader2 } from "lucide-react";
-import { TripContentEditor } from "@/components/trip-content-editor";
+import { TripContentEditor, type TripContentEditorHandle } from "@/components/trip-content-editor";
 import {
   DndContext,
   closestCenter,
@@ -25,11 +25,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AgreementTemplate, AgreementSection, AgreementField } from "@/lib/agreement-template-parser";
+import { resolveRichTextContent } from "@/lib/agreements/rich-text-html";
 
 interface AgreementEditorProps {
   template: AgreementTemplate;
   onChange: (template: AgreementTemplate) => void;
-  onSave: () => void;
+  onSave: (template: AgreementTemplate) => void;
   saving?: boolean;
 }
 
@@ -201,16 +202,25 @@ function isSystemSection(section: AgreementSection): boolean {
   return false;
 }
 
+function isRichTextSection(section: AgreementSection): boolean {
+  return section.type === "paragraph" || section.type === "list" || section.type === "title";
+}
+
 function SortableSection({
   section,
   onUpdate,
   onDelete,
+  onRegisterEditor,
 }: {
   section: AgreementSection;
   onUpdate: (section: AgreementSection) => void;
   onDelete: () => void;
+  onRegisterEditor: (sectionId: string, handle: TripContentEditorHandle | null) => void;
 }) {
   const isSystem = isSystemSection(section);
+  const sectionRef = useRef(section);
+  sectionRef.current = section;
+  const editorRef = useRef<TripContentEditorHandle | null>(null);
   const {
     attributes,
     listeners,
@@ -291,8 +301,18 @@ function SortableSection({
   };
 
   const handleContentChange = (content: string) => {
-    onUpdate({ ...section, content });
+    const base = sectionRef.current;
+    const nextType = base.type === "title" ? "paragraph" : base.type;
+    onUpdate({ ...base, type: nextType, content });
   };
+
+  const editorCallbackRef = useCallback(
+    (handle: TripContentEditorHandle | null) => {
+      editorRef.current = handle;
+      onRegisterEditor(section.id, handle);
+    },
+    [onRegisterEditor, section.id],
+  );
 
   return (
     <Card ref={setNodeRef} style={style} className={`mb-4 ${isSystem ? 'bg-muted/30' : ''}`}>
@@ -371,17 +391,19 @@ function SortableSection({
           </DndContext>
         )}
         
-        {section.type === 'paragraph' && (
+        {(section.type === "paragraph" || section.type === "title") && (
           <TripContentEditor
-            content={section.content || ''}
+            ref={editorCallbackRef}
+            content={section.content || ""}
             onChange={handleContentChange}
             label="Treść paragrafu"
           />
         )}
-        
-        {section.type === 'list' && (
+
+        {section.type === "list" && (
           <TripContentEditor
-            content={section.content || ''}
+            ref={editorCallbackRef}
+            content={section.content || ""}
             onChange={handleContentChange}
             label="Elementy listy"
           />
@@ -398,9 +420,45 @@ export function AgreementEditor({
   saving = false,
 }: AgreementEditorProps) {
   const [localTemplate, setLocalTemplate] = useState<AgreementTemplate>(template);
+  const localTemplateRef = useRef(localTemplate);
+  const editorRefs = useRef<Map<string, TripContentEditorHandle>>(new Map());
 
+  localTemplateRef.current = localTemplate;
+
+  const registerEditor = useCallback((sectionId: string, handle: TripContentEditorHandle | null) => {
+    if (handle) {
+      editorRefs.current.set(sectionId, handle);
+    } else {
+      editorRefs.current.delete(sectionId);
+    }
+  }, []);
+
+  const buildTemplateForSave = useCallback((): AgreementTemplate => {
+    const sections = localTemplateRef.current.sections.map((section) => {
+      if (!isRichTextSection(section)) return section;
+
+      const editorHandle = editorRefs.current.get(section.id);
+      const editorHtml = editorHandle?.getHtml();
+      const content = resolveRichTextContent(section.content, editorHtml);
+
+      return {
+        ...section,
+        type: section.type === "title" ? "paragraph" : section.type,
+        content,
+      };
+    });
+
+    const nextTemplate = { ...localTemplateRef.current, sections };
+    localTemplateRef.current = nextTemplate;
+    setLocalTemplate(nextTemplate);
+    onChange(nextTemplate);
+    return nextTemplate;
+  }, [onChange]);
+
+  // Wczytaj szablon z zewnątrz (pierwsze ładowanie / zapis) — nie przy każdym znaku w edytorze.
   useEffect(() => {
     setLocalTemplate(template);
+    localTemplateRef.current = template;
   }, [template]);
 
   const sensors = useSensors(
@@ -418,84 +476,117 @@ export function AgreementEditor({
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = localTemplate.sections.findIndex(
-        (section) => section.id === active.id
-      );
-      const newIndex = localTemplate.sections.findIndex(
-        (section) => section.id === over.id
-      );
+      setLocalTemplate((prev) => {
+        const oldIndex = prev.sections.findIndex((section) => section.id === active.id);
+        const newIndex = prev.sections.findIndex((section) => section.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return prev;
 
-      const newSections = arrayMove(localTemplate.sections, oldIndex, newIndex);
-      const reorderedSections = newSections.map((section, index) => ({
-        ...section,
-        order: index,
-      }));
+        const newSections = arrayMove(prev.sections, oldIndex, newIndex);
+        const reorderedSections = newSections.map((section, index) => ({
+          ...section,
+          order: index,
+        }));
 
-      const updatedTemplate = {
-        ...localTemplate,
-        sections: reorderedSections,
-      };
-
-      setLocalTemplate(updatedTemplate);
-      onChange(updatedTemplate);
+        const updatedTemplate = { ...prev, sections: reorderedSections };
+        localTemplateRef.current = updatedTemplate;
+        return updatedTemplate;
+      });
     }
   };
 
   const handleSectionUpdate = (updatedSection: AgreementSection) => {
-    const updatedSections = localTemplate.sections.map((section) =>
-      section.id === updatedSection.id ? updatedSection : section
-    );
-    const updatedTemplate = {
-      ...localTemplate,
-      sections: updatedSections,
-    };
-    setLocalTemplate(updatedTemplate);
-    onChange(updatedTemplate);
+    setLocalTemplate((prev) => {
+      const updatedTemplate = {
+        ...prev,
+        sections: prev.sections.map((section) =>
+          section.id === updatedSection.id ? updatedSection : section,
+        ),
+      };
+      localTemplateRef.current = updatedTemplate;
+      return updatedTemplate;
+    });
   };
 
   const handleAddSection = (type: 'table' | 'paragraph' | 'list') => {
-    const newSection: AgreementSection = {
-      id: `section-${Date.now()}`,
-      title: '',
-      type,
-      order: localTemplate.sections.length,
-      ...(type === 'table' ? { fields: [] } : { content: '' }),
-    };
+    setLocalTemplate((prev) => {
+      const newSection: AgreementSection = {
+        id: `section-${Date.now()}`,
+        title: '',
+        type,
+        order: prev.sections.length,
+        ...(type === 'table' ? { fields: [] } : { content: '' }),
+      };
 
-    const updatedTemplate = {
-      ...localTemplate,
-      sections: [...localTemplate.sections, newSection],
-    };
-    setLocalTemplate(updatedTemplate);
-    onChange(updatedTemplate);
+      // Wstaw nową sekcję przed końcowym blokiem sekcji systemowych
+      // (podpis klienta, dane organizatora, załącznik „imprezy samolotowe"),
+      // aby trafiła do głównej treści umowy, a nie na sam koniec ostatniej strony.
+      let insertAt = prev.sections.length;
+      for (let i = prev.sections.length - 1; i >= 0; i--) {
+        if (isSystemSection(prev.sections[i])) {
+          insertAt = i;
+        } else {
+          break;
+        }
+      }
+
+      const nextSections = [
+        ...prev.sections.slice(0, insertAt),
+        newSection,
+        ...prev.sections.slice(insertAt),
+      ].map((section, index) => ({ ...section, order: index }));
+
+      const updatedTemplate = {
+        ...prev,
+        sections: nextSections,
+      };
+      localTemplateRef.current = updatedTemplate;
+      return updatedTemplate;
+    });
   };
 
   const handleDeleteSection = (sectionId: string) => {
-    const sectionToDelete = localTemplate.sections.find(s => s.id === sectionId);
-    // Nie pozwól usuwać sekcji systemowych
+    const sectionToDelete = localTemplateRef.current.sections.find((s) => s.id === sectionId);
     if (sectionToDelete && isSystemSection(sectionToDelete)) {
       return;
     }
-    
-    const updatedSections = localTemplate.sections
-      .filter((section) => section.id !== sectionId)
-      .map((section, index) => ({ ...section, order: index }));
-    
-    const updatedTemplate = {
-      ...localTemplate,
-      sections: updatedSections,
-    };
-    setLocalTemplate(updatedTemplate);
-    onChange(updatedTemplate);
+
+    setLocalTemplate((prev) => {
+      const updatedTemplate = {
+        ...prev,
+        sections: prev.sections
+          .filter((section) => section.id !== sectionId)
+          .map((section, index) => ({ ...section, order: index })),
+      };
+      localTemplateRef.current = updatedTemplate;
+      return updatedTemplate;
+    });
   };
+
+  // Tytuł umowy jest zawsze przypięty jako pierwszy — nic nigdy nie może być nad nim.
+  const titleCard = (
+    <Card key="__agreement-title__" className="mb-4 bg-muted/30">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1">
+            <div className="h-4 w-4" />
+          </div>
+          <div className="font-semibold flex-1 text-muted-foreground text-sm">
+            Tytuł umowy (sekcja systemowa)
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold text-center text-foreground">
+          {localTemplate.title}
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-2xl font-bold flex-1">
-          {localTemplate.title}
-        </div>
-        <Button onClick={onSave} disabled={saving}>
+      <div className="flex items-center justify-end">
+        <Button onClick={() => onSave(buildTemplateForSave())} disabled={saving}>
           {saving ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -519,12 +610,14 @@ export function AgreementEditor({
           items={localTemplate.sections.filter(s => !isSystemSection(s)).map((s) => s.id)}
           strategy={verticalListSortingStrategy}
         >
+          {titleCard}
           {localTemplate.sections.map((section) => (
             <SortableSection
               key={section.id}
               section={section}
               onUpdate={handleSectionUpdate}
               onDelete={() => handleDeleteSection(section.id)}
+              onRegisterEditor={registerEditor}
             />
           ))}
         </SortableContext>

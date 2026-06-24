@@ -24,7 +24,9 @@ import {
   createOrder,
   createInvoice,
   buildInvoicePdfUrl,
+  buildInvoiceHtmlViewUrl,
   downloadPdf,
+  downloadInvoicePdfViaBrowser,
   extractOrderIdFromInvoiceJson,
   getInvoice,
   type FakturowniaConfig,
@@ -266,10 +268,14 @@ export async function processPaymentInvoice(
       console.log("[InvoiceService] Invoice already exists for payment_history_id:", paymentHistoryId);
 
       // Ponów wysyłkę PDF/maila jeśli faktura wystawiona, ale nie dotarła do klienta
+      const providerErr = String(existingInvoice.invoice_provider_error || "");
+      const markedSentViaUnreliableFallback =
+        existingInvoice.status === "wysłana" &&
+        (providerErr.includes("send_by_email") || providerErr.includes("PDF API niedostępne"));
       const needsEmailRetry =
-        existingInvoice.status !== "wysłana" &&
+        (existingInvoice.status !== "wysłana" || markedSentViaUnreliableFallback) &&
         existingInvoice.fakturownia_invoice_id &&
-        !String(existingInvoice.invoice_provider_error || "").startsWith("Brak konfiguracji");
+        !providerErr.startsWith("Brak konfiguracji");
 
       if (needsEmailRetry) {
         const fakturowniaConfig = getFakturowniaConfig();
@@ -295,7 +301,10 @@ export async function processPaymentInvoice(
                 bookingForRetry as BookingData,
                 existingInvoice.invoice_number,
               );
-              if (scheduleAfterResponse) {
+              const isDev = process.env.NODE_ENV === "development";
+              if (isDev) {
+                await bgTask;
+              } else if (scheduleAfterResponse) {
                 scheduleAfterResponse(bgTask);
               } else {
                 bgTask.catch((err) => {
@@ -590,7 +599,7 @@ export async function processPaymentInvoice(
       fakturowniaInvoiceId: fakturowniaResponse.invoiceId,
     });
 
-    // ─── 12. Pobierz PDF i wyślij email (asynchronicznie; na Vercel użyj scheduleAfterResponse + waitUntil) ───
+    // ─── 12. Pobierz PDF i wyślij email ───
     if (fakturowniaResponse.success && fakturowniaResponse.invoiceId) {
       const bgTask = fetchPdfAndSendEmail(
         fakturowniaConfig,
@@ -601,7 +610,11 @@ export async function processPaymentInvoice(
         booking as BookingData,
         invoice.invoice_number
       );
-      if (scheduleAfterResponse) {
+      const isDev = process.env.NODE_ENV === "development";
+      if (isDev) {
+        // Na localhost czekamy na PDF + mail (inaczej dev server kończy request zanim Resend wyśle)
+        await bgTask;
+      } else if (scheduleAfterResponse) {
         scheduleAfterResponse(bgTask);
       } else {
         bgTask.catch((err) => {
@@ -674,6 +687,86 @@ async function fetchPdfAndSendEmail(
   }
 
   console.error("[InvoiceService] PDF download exhausted retries:", lastErr);
+
+  // Fallback 1: render podglądu HTML faktury w headless browser → PDF → Resend
+  try {
+    console.log("[InvoiceService] Trying browser PDF render for invoice", fakturowniaInvoiceId);
+    const pdfBuffer = await downloadInvoicePdfViaBrowser(config, fakturowniaInvoiceId);
+    const pdfUrl = buildInvoiceHtmlViewUrl(config, fakturowniaInvoiceId);
+    await persistPdfAndSendEmail(
+      supabase,
+      invoiceId,
+      pdfUrl,
+      pdfBuffer,
+      booking,
+      invoiceNumber,
+    );
+    return;
+  } catch (browserErr) {
+    console.warn("[InvoiceService] Browser PDF render failed:", browserErr);
+  }
+
+  // Fallback 2: mail przez Resend z linkiem do podglądu (Fakturownia send_by_email często nie dostarcza)
+  if (booking.contact_email) {
+    const refreshed = await getInvoice(config, fakturowniaInvoiceId);
+    const viewUrl = refreshed.viewUrl ?? buildInvoiceHtmlViewUrl(config, fakturowniaInvoiceId);
+    console.log("[InvoiceService] Fallback: Resend z linkiem do faktury →", booking.contact_email);
+
+    let publicAgreementNumber = "—";
+    try {
+      const { formatAgreementNumber } = await import("@/lib/agreements/format-agreement-number");
+      const { data: agreementRow } = await supabase
+        .from("agreements")
+        .select("agreement_seq")
+        .eq("booking_id", booking.id)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      const { data: bookingRow } = await supabase
+        .from("bookings")
+        .select("trip_id, trips:trips(reservation_number)")
+        .eq("id", booking.id)
+        .single();
+      const trip = Array.isArray((bookingRow as any)?.trips)
+        ? (bookingRow as any).trips[0]
+        : (bookingRow as any)?.trips;
+      publicAgreementNumber =
+        formatAgreementNumber({
+          reservationNumber: trip?.reservation_number ?? null,
+          agreementSeq: typeof agreementRow?.agreement_seq === "number" ? agreementRow.agreement_seq : null,
+        }).replace(/^#/, "") || "—";
+    } catch {
+      // keep default
+    }
+
+    const sendResult = await sendTransactionalEmail({
+      to: booking.contact_email,
+      subject: `Faktura zaliczkowa ${invoiceNumber} – Magia Podróżowania`,
+      html: buildInvoiceEmailHtml(invoiceNumber, publicAgreementNumber).replace(
+        "Faktura zaliczkowa została dołączona do tego emaila w formacie PDF.",
+        `Nie udało się dołączyć PDF automatycznie. Możesz obejrzeć i pobrać fakturę online: <a href="${viewUrl}">${viewUrl}</a>`,
+      ),
+      text: `Faktura zaliczkowa ${invoiceNumber} dla umowy ${publicAgreementNumber}.\n\nPodgląd faktury: ${viewUrl}\n\nMagia Podróżowania`,
+      logContext: "invoice-advance-link",
+    });
+
+    if (sendResult.ok) {
+      await supabase
+        .from("invoices")
+        .update({ status: "wysłana", invoice_provider_error: null, pdf_url: viewUrl })
+        .eq("id", invoiceId);
+      return;
+    }
+
+    await supabase
+      .from("invoices")
+      .update({
+        invoice_provider_error: "PDF i browser render failed; Resend link failed: " + sendResult.error,
+      })
+      .eq("id", invoiceId);
+    return;
+  }
+
   await supabase
     .from("invoices")
     .update({

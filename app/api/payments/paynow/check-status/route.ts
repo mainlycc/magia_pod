@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPaynowPaymentStatus } from "@/lib/paynow";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
@@ -22,12 +21,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const adminClient = createAdminClient();
 
-    // Znajdź rezerwację
+    // Znajdź rezerwację (admin — endpoint wywoływany bez logowania po powrocie z Paynow)
     let booking;
     if (booking_ref) {
-      const { data, error } = await supabase
+      const { data, error } = await adminClient
         .from("bookings")
         .select("id, booking_ref, payment_status, trip_id")
         .eq("booking_ref", booking_ref)
@@ -41,8 +40,7 @@ export async function POST(request: NextRequest) {
       }
       booking = data;
     } else {
-      // Jeśli mamy payment_id, musimy znaleźć rezerwację przez payment_history
-      const { data: paymentHistory } = await supabase
+      const { data: paymentHistory } = await adminClient
         .from("payment_history")
         .select("booking_id, notes")
         .like("notes", `%${payment_id}%`)
@@ -55,7 +53,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await adminClient
         .from("bookings")
         .select("id, booking_ref, payment_status, trip_id")
         .eq("id", paymentHistory.booking_id)
@@ -71,9 +69,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Znajdź paymentId z payment_history dla tej rezerwacji
-    // Szukamy wszystkich wpisów związanych z Paynow, nie tylko pierwszego
-    // Używamy admin clienta, aby ominąć RLS i mieć pewność, że znajdziemy wszystkie wpisy
-    const adminClient = createAdminClient();
     const { data: paymentHistory, error: paymentHistoryError } = await adminClient
       .from("payment_history")
       .select("notes, created_at, amount_cents")
