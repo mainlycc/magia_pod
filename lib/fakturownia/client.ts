@@ -25,7 +25,9 @@ export interface FakturowniaInvoiceItem {
   quantity: number;
   price_net: number;
   total_price_gross: number;
-  tax: string; // "np" (nie podlega VAT - procedura marży), "0", "5", "8", "23", "zw"
+  tax: string; // "np" (nie podlega), "disabled" (marża), "0", "5", "8", "23", "zw"
+  /** Stawka VAT od marży (dla pozycji marżowych `tax: "disabled"`), np. "23". */
+  vat_margin_tax?: string | number;
 }
 
 export interface FakturowniaInvoiceData {
@@ -46,9 +48,23 @@ export interface FakturowniaInvoiceData {
   buyer_country?: string;
   buyer_email?: string;
   buyer_phone?: string;
+  /** KSeF: czy nabywca jest firmą. Dla osób prywatnych ustaw `false` (NIP wtedy zbędny). */
+  buyer_company?: boolean;
+  /** KSeF: wymagane dla osób prywatnych (`buyer_company=false`). */
+  buyer_first_name?: string;
+  buyer_last_name?: string;
+  /** KSeF: rodzaj identyfikatora nabywcy: "" (PL NIP), "nip_ue", "other", "empty". */
+  buyer_tax_no_kind?: string;
   // Procedura marży (m.in. VAT marża / turystyka)
   margin_procedure?: boolean;
   margin_kind?: string;
+  /**
+   * KSeF: rodzaj procedury marży, jedna z 4 wartości dokumentacji, np.
+   * "procedura marży dla biur podróży".
+   */
+  procedure_vat_margin?: string;
+  /** KSeF: oznaczenia procedur, np. ["MR_T"] dla usług turystyki (art. 119). */
+  procedure_designations?: string[];
   /**
    * ID dokumentu „Zamówienie” (estimate) **w Fakturowni** — wymagane dla zaliczki (KSeF).
    * W API trafia jako **`invoice_id`** (powiązanie z zamówieniem), nie jako `oid`
@@ -178,6 +194,24 @@ function mergeSellerIntoPayload(
   if (country) payload.seller_country = country;
 }
 
+/**
+ * Pola KSeF nabywcy + procedury marży do payloadu faktury.
+ * Ustawiane tylko gdy obecne — nie nadpisujemy domyślnych wartości Fakturowni.
+ */
+function mergeKsefFieldsIntoPayload(
+  payload: Record<string, any>,
+  data: FakturowniaInvoiceData
+): void {
+  if (typeof data.buyer_company === "boolean") payload.buyer_company = data.buyer_company;
+  if (data.buyer_first_name) payload.buyer_first_name = data.buyer_first_name;
+  if (data.buyer_last_name) payload.buyer_last_name = data.buyer_last_name;
+  if (data.buyer_tax_no_kind) payload.buyer_tax_no_kind = data.buyer_tax_no_kind;
+  if (data.procedure_vat_margin) payload.procedure_vat_margin = data.procedure_vat_margin;
+  if (data.procedure_designations && data.procedure_designations.length > 0) {
+    payload.procedure_designations = data.procedure_designations;
+  }
+}
+
 /** Konfiguracja z env — użyteczna w route’ach API (jeden punkt wejścia). */
 export function buildFakturowniaConfigFromEnv(): FakturowniaConfig {
   return {
@@ -255,13 +289,17 @@ function mapPositionForApi(item: FakturowniaInvoiceItem): Record<string, string 
   }
   const netRounded = Math.round(net * 100) / 100;
   const grossRounded = Math.round(gross * 100) / 100;
-  return {
+  const mapped: Record<string, string | number> = {
     name: item.name,
     quantity: item.quantity,
     price_net: netRounded,
     total_price_gross: grossRounded,
     tax: item.tax,
   };
+  if (item.vat_margin_tax !== undefined && item.vat_margin_tax !== null && item.vat_margin_tax !== "") {
+    mapped.vat_margin_tax = item.vat_margin_tax;
+  }
+  return mapped;
 }
 
 // ===================== ORDERS =====================
@@ -413,10 +451,11 @@ export async function createInvoice(
       if (data.description) invoicePayload.description = data.description;
       if (data.internal_note) invoicePayload.internal_note = data.internal_note;
 
-      if (process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true") {
+      if (data.margin_procedure === true || process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true") {
         invoicePayload.margin_procedure = true;
       }
 
+      mergeKsefFieldsIntoPayload(invoicePayload, data);
       mergeSellerIntoPayload(invoicePayload, config);
 
       console.log("[Fakturownia Client] Creating advance invoice (KSeF copy_invoice_from):", {
@@ -445,7 +484,7 @@ export async function createInvoice(
         positions: data.positions.map((item) => mapPositionForApi(item)),
       };
 
-      if (process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true") {
+      if (data.margin_procedure === true || process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true") {
         invoicePayload.margin_procedure = true;
       }
 
@@ -471,6 +510,7 @@ export async function createInvoice(
       if (data.description) invoicePayload.description = data.description;
       if (data.internal_note) invoicePayload.internal_note = data.internal_note;
 
+      mergeKsefFieldsIntoPayload(invoicePayload, data);
       mergeSellerIntoPayload(invoicePayload, config);
 
       console.log("[Fakturownia Client] Creating invoice:", {
@@ -738,6 +778,80 @@ export async function sendInvoiceByEmail(
       success: false,
       error: error instanceof Error ? error.message : "Nieznany błąd",
     };
+  }
+}
+
+// ===================== KSeF =====================
+
+export interface KsefStatusResult {
+  success: boolean;
+  govStatus?: string | null;
+  govId?: string | null;
+  govErrorMessages?: string[] | null;
+  error?: string;
+}
+
+function parseKsefFields(raw: Record<string, any> | null | undefined): KsefStatusResult {
+  if (!raw) return { success: false, error: "Brak danych faktury" };
+  const errs = raw.gov_error_messages;
+  return {
+    success: true,
+    govStatus: (raw.gov_status as string) ?? null,
+    govId: (raw.gov_id as string) ?? null,
+    govErrorMessages: Array.isArray(errs) ? (errs as string[]) : errs ? [String(errs)] : null,
+  };
+}
+
+/**
+ * Wysyła istniejącą fakturę do KSeF (`send_to_ksef=yes`).
+ * Odpowiedź zawiera wstępny `gov_status` (np. "processing"/"send_error").
+ */
+export async function sendInvoiceToKsef(
+  config: FakturowniaConfig,
+  invoiceId: number | string
+): Promise<KsefStatusResult> {
+  try {
+    const baseUrl = getBaseUrl(config);
+    const params = new URLSearchParams({
+      send_to_ksef: "yes",
+      api_token: config.apiToken,
+    });
+    const response = await fetch(`${baseUrl}/invoices/${invoiceId}.json?${params.toString()}`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const responseData = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${serializeError(responseData)}` };
+    }
+    return parseKsefFields(responseData);
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Nieznany błąd" };
+  }
+}
+
+/**
+ * Odczytuje status KSeF faktury (`gov_status`, `gov_id`, `gov_error_messages`).
+ */
+export async function getInvoiceKsefStatus(
+  config: FakturowniaConfig,
+  invoiceId: number | string
+): Promise<KsefStatusResult> {
+  try {
+    const baseUrl = getBaseUrl(config);
+    const params = new URLSearchParams({ api_token: config.apiToken });
+    params.append("fields[invoice]", "gov_status,gov_id,gov_error_messages");
+    const response = await fetch(`${baseUrl}/invoices/${invoiceId}.json?${params.toString()}`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const responseData = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+    return parseKsefFields(responseData);
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Nieznany błąd" };
   }
 }
 

@@ -29,8 +29,11 @@ import {
   downloadInvoicePdfViaBrowser,
   extractOrderIdFromInvoiceJson,
   getInvoice,
+  sendInvoiceToKsef,
+  getInvoiceKsefStatus,
   type FakturowniaConfig,
   type FakturowniaInvoiceData,
+  type FakturowniaInvoiceItem,
 } from "@/lib/fakturownia/client";
 import { sendTransactionalEmail } from "@/lib/email/send-transactional";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -98,6 +101,77 @@ function validateFakturowniaConfig(config: FakturowniaConfig): boolean {
   return !!(config.apiToken && config.subdomain);
 }
 
+interface MarginSettings {
+  /** Tryb VAT marża (KSeF) włączony przez VAT_MARGIN_MODE. */
+  vatMarginMode: boolean;
+  /** Stawka pozycji: "disabled" (mechanizm marży) lub "np" (nie podlega). */
+  positionTax: string;
+  /** Stawka VAT od marży (env VAT_MARGIN_TAX) — tylko w trybie VAT marża. */
+  vatMarginTax?: string;
+  /** Pola dokumentu dot. marży do wstrzyknięcia w fakturę. */
+  invoiceFields: {
+    margin_procedure?: boolean;
+    procedure_vat_margin?: string;
+    procedure_designations?: string[];
+  };
+}
+
+/**
+ * Ustawienia procedury marży (biuro podróży, art. 119) sterowane flagami env.
+ *
+ * - `VAT_MARGIN_MODE=true` → pełny tryb KSeF marży: pozycje `tax: "disabled"`,
+ *   `vat_margin_tax` (env `VAT_MARGIN_TAX`, domyślnie "23"),
+ *   `procedure_vat_margin` + `procedure_designations: ["MR_T"]` + `margin_procedure`.
+ * - `FAKTUROWNIA_MARGIN_PROCEDURE=true` (legacy) → tylko `margin_procedure: true`.
+ *
+ * Domyślnie wyłączone (pozycje `tax: "np"`).
+ */
+function getMarginSettings(): MarginSettings {
+  const vatMarginMode = process.env.VAT_MARGIN_MODE === "true";
+  const legacyMargin = process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true";
+
+  if (vatMarginMode) {
+    const vatMarginTax = (process.env.VAT_MARGIN_TAX || "23").trim();
+    return {
+      vatMarginMode: true,
+      positionTax: "disabled",
+      vatMarginTax,
+      invoiceFields: {
+        margin_procedure: true,
+        procedure_vat_margin: "procedura marży dla biur podróży",
+        procedure_designations: ["MR_T"],
+      },
+    };
+  }
+
+  return {
+    vatMarginMode: false,
+    positionTax: "np",
+    invoiceFields: legacyMargin ? { margin_procedure: true } : {},
+  };
+}
+
+/**
+ * Buduje pozycję „wycieczka" dla zamówienia/faktury, z uwzględnieniem trybu marży
+ * (tax "disabled" + vat_margin_tax, gdy VAT_MARGIN_MODE).
+ */
+function buildTripPosition(
+  name: string,
+  quantity: number,
+  totalGrossZloty: number
+): FakturowniaInvoiceItem {
+  const m = getMarginSettings();
+  const position: FakturowniaInvoiceItem = {
+    name,
+    quantity,
+    price_net: totalGrossZloty / quantity,
+    total_price_gross: totalGrossZloty,
+    tax: m.positionTax,
+  };
+  if (m.vatMarginTax) position.vat_margin_tax = m.vatMarginTax;
+  return position;
+}
+
 // ===================== HELPERS =====================
 
 function prepareBuyerName(booking: BookingData): string {
@@ -126,6 +200,52 @@ function prepareBuyerNip(booking: BookingData): string | undefined {
     default:
       return undefined;
   }
+}
+
+interface BuyerIdentity {
+  buyerCompany: boolean;
+  taxNo?: string;
+  taxNoKind?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+/**
+ * Tożsamość nabywcy pod KSeF:
+ * - firma → buyer_company=true + NIP (lub tax_no_kind="empty" gdy brak NIP),
+ * - osoba prywatna → buyer_company=false + imię/nazwisko (NIP zbędny).
+ *
+ * Bez tego KSeF zwraca „NIP - nie może być puste" (Fakturownia domyślnie ustawia
+ * buyer_company=true), co blokuje nadanie numeru KSeF, a tym samym pobranie PDF.
+ */
+function prepareBuyerIdentity(booking: BookingData): BuyerIdentity {
+  const invoiceType = booking.invoice_type || "contact";
+
+  const splitName = (full: string): { firstName?: string; lastName?: string } => {
+    const parts = full.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return {};
+    if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
+    return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
+  };
+
+  if (invoiceType === "company") {
+    const nip = booking.company_nip || undefined;
+    return { buyerCompany: true, taxNo: nip, taxNoKind: nip ? undefined : "empty" };
+  }
+
+  if (invoiceType === "custom") {
+    const nip = booking.invoice_nip || undefined;
+    if (nip) return { buyerCompany: true, taxNo: nip };
+    return { buyerCompany: false, ...splitName(booking.invoice_name || "") };
+  }
+
+  // contact (osoba prywatna)
+  const firstName = booking.contact_first_name || undefined;
+  const lastName = booking.contact_last_name || undefined;
+  if (firstName || lastName) {
+    return { buyerCompany: false, firstName, lastName };
+  }
+  return { buyerCompany: false, ...splitName(booking.contact_email || "") };
 }
 
 function prepareBuyerAddress(booking: BookingData): {
@@ -216,15 +336,7 @@ async function recoverMissingFakturowniaOrderId(
     currency: "PLN",
     lang: "pl",
     description: `Zamówienie – ${trip.title} (${booking.booking_ref})`,
-    positions: [
-      {
-        name: trip.title,
-        quantity: participantsCount,
-        price_net: totalPriceZloty / participantsCount,
-        total_price_gross: totalPriceZloty,
-        tax: "np",
-      },
-    ],
+    positions: [buildTripPosition(trip.title, participantsCount, totalPriceZloty)],
   });
 
   if (!orderResponse.success || !orderResponse.orderId) {
@@ -406,9 +518,13 @@ export async function processPaymentInvoice(
 
     // ─── 7. Przygotuj dane nabywcy ───
     const buyerName = prepareBuyerName(booking as BookingData);
-    const buyerNip = prepareBuyerNip(booking as BookingData);
+    const buyerIdentity = prepareBuyerIdentity(booking as BookingData);
     const buyerAddress = prepareBuyerAddress(booking as BookingData);
     const today = new Date().toISOString().split("T")[0];
+
+    // Procedura marży (biuro podróży, art. 119) — pozycje + oznaczenia KSeF.
+    const marginSettings = getMarginSettings();
+    const marginFields = marginSettings.invoiceFields;
 
     const paymentAmountZloty = amountCents / 100;
     const totalPriceCents = (trip.price_cents || 0) * participantsCount;
@@ -423,7 +539,7 @@ export async function processPaymentInvoice(
 
       const orderResponse = await createOrder(fakturowniaConfig, {
         buyer_name: buyerName,
-        buyer_tax_no: buyerNip,
+        buyer_tax_no: buyerIdentity.taxNo,
         buyer_street: buyerAddress.street,
         buyer_city: buyerAddress.city,
         buyer_post_code: buyerAddress.post_code,
@@ -431,15 +547,7 @@ export async function processPaymentInvoice(
         currency: "PLN",
         lang: "pl",
         description: `Zamówienie – ${trip.title} (${booking.booking_ref})`,
-        positions: [
-          {
-            name: trip.title,
-            quantity: participantsCount,
-            price_net: totalPriceZloty / participantsCount,
-            total_price_gross: totalPriceZloty,
-            tax: "np",
-          },
-        ],
+        positions: [buildTripPosition(trip.title, participantsCount, totalPriceZloty)],
       });
 
       if (!orderResponse.success || !orderResponse.orderId) {
@@ -525,11 +633,16 @@ export async function processPaymentInvoice(
       currency: "PLN",
       lang: "pl",
       buyer_name: buyerName,
-      buyer_tax_no: buyerNip,
+      buyer_tax_no: buyerIdentity.taxNo,
+      buyer_company: buyerIdentity.buyerCompany,
+      buyer_first_name: buyerIdentity.firstName,
+      buyer_last_name: buyerIdentity.lastName,
+      buyer_tax_no_kind: buyerIdentity.taxNoKind,
       buyer_street: buyerAddress.street,
       buyer_city: buyerAddress.city,
       buyer_post_code: buyerAddress.post_code,
       buyer_email: booking.contact_email || undefined,
+      ...marginFields,
       oid: fakturowniaOrderId,
       external_order_ref: booking.booking_ref || undefined,
       advance_creation_mode: "amount",
@@ -644,6 +757,61 @@ const PDF_INITIAL_DELAY_MS = 3000;
 const PDF_RETRY_DELAY_MS = 4000;
 const PDF_MAX_ATTEMPTS = 6;
 
+// KSeF: na koncie z blokadą PDF/druku przed nadaniem numeru KSeF, fakturę trzeba
+// najpierw wysłać do KSeF (gov_status="ok"), inaczej endpoint .pdf zwraca HTTP 422.
+const KSEF_POLL_DELAY_MS = 4000;
+const KSEF_POLL_MAX_ATTEMPTS = 8;
+
+/**
+ * Czy automatyczna wysyłka do KSeF jest włączona.
+ *
+ * UWAGA: To produkcyjny KSeF — wysyłki są realnymi zgłoszeniami fiskalnymi.
+ * Dlatego domyślnie WYŁĄCZONE i tylko w środowisku produkcyjnym; włączenie wymaga
+ * jawnego `FAKTUROWNIA_KSEF_AUTOSEND=true`.
+ */
+function isKsefAutoSendEnabled(): boolean {
+  return (
+    process.env.FAKTUROWNIA_KSEF_AUTOSEND === "true" &&
+    process.env.NODE_ENV === "production"
+  );
+}
+
+/**
+ * Wysyła fakturę do KSeF i czeka aż `gov_status` = "ok" (lub timeout).
+ * Zwraca true, gdy faktura ma numer KSeF (PDF będzie wtedy dostępny przez API).
+ */
+async function ensureInvoiceSentToKsef(
+  config: FakturowniaConfig,
+  fakturowniaInvoiceId: number
+): Promise<boolean> {
+  const initial = await sendInvoiceToKsef(config, fakturowniaInvoiceId);
+  if (!initial.success) {
+    console.warn("[InvoiceService] KSeF send request failed:", initial.error);
+    return false;
+  }
+  if (initial.govStatus === "ok" && initial.govId) return true;
+  if (initial.govStatus === "send_error" || initial.govStatus === "server_error") {
+    console.error("[InvoiceService] KSeF send_error:", initial.govErrorMessages);
+    return false;
+  }
+
+  for (let attempt = 0; attempt < KSEF_POLL_MAX_ATTEMPTS; attempt++) {
+    await delay(KSEF_POLL_DELAY_MS);
+    const status = await getInvoiceKsefStatus(config, fakturowniaInvoiceId);
+    if (!status.success) continue;
+    if (status.govStatus === "ok" && status.govId) {
+      console.log("[InvoiceService] KSeF accepted, gov_id:", status.govId);
+      return true;
+    }
+    if (status.govStatus === "send_error" || status.govStatus === "server_error") {
+      console.error("[InvoiceService] KSeF rejected invoice:", status.govErrorMessages);
+      return false;
+    }
+  }
+  console.warn("[InvoiceService] KSeF still processing after polling; PDF may be unavailable yet");
+  return false;
+}
+
 async function fetchPdfAndSendEmail(
   config: FakturowniaConfig,
   supabase: ReturnType<typeof createAdminClient>,
@@ -653,6 +821,14 @@ async function fetchPdfAndSendEmail(
   booking: BookingData,
   invoiceNumber: string
 ): Promise<void> {
+  // KSeF: na koncie z blokadą PDF przed numerem KSeF wyślij fakturę do KSeF,
+  // inaczej endpoint .pdf zwróci 422 (faktura zaliczkowa marża, gov_status=null).
+  if (isKsefAutoSendEnabled()) {
+    console.log("[InvoiceService] KSeF auto-send enabled — sending invoice", fakturowniaInvoiceId);
+    const sent = await ensureInvoiceSentToKsef(config, fakturowniaInvoiceId);
+    console.log("[InvoiceService] KSeF send result:", sent ? "ok (gov_id assigned)" : "not assigned");
+  }
+
   console.log(
     `[InvoiceService] Waiting ${PDF_INITIAL_DELAY_MS}ms before PDF fetch (Fakturownia generation)...`
   );
