@@ -248,30 +248,35 @@ export async function generatePdfFromHtml(html: string, filename: string = "umow
   // Spróbuj użyć puppeteer-core z @sparticuz/chromium (dla produkcji/Vercel)
   if (!forceNoChromium) {
     try {
-    // Dynamiczny import z użyciem eval aby uniknąć sprawdzania przez TypeScript podczas kompilacji
-    // eslint-disable-next-line no-eval
-    const puppeteerModule = await eval('import("puppeteer-core")').catch(() => null);
-    // eslint-disable-next-line no-eval
-    const chromiumModule = await eval('import("@sparticuz/chromium")').catch(() => null);
+    // Używamy statycznie analizowalnych dynamicznych importów (bez eval),
+    // dzięki czemu Vercel/@vercel/nft poprawnie dołączy te pakiety (wraz z binarką
+    // Chromium) do bundla funkcji serverless. W połączeniu z `serverExternalPackages`
+    // w next.config pakiety są ładowane natywnym require w runtime.
+    const puppeteerModule = await import("puppeteer-core").catch(() => null);
+    const chromiumModule = await import("@sparticuz/chromium").catch(() => null);
     
     if (puppeteerModule && chromiumModule) {
-      chromiumModule.default.setGraphicsMode(false);
-      
-      const browser = await puppeteerModule.default.launch({
-        args: chromiumModule.default.args,
-        defaultViewport: chromiumModule.default.defaultViewport,
-        executablePath: await chromiumModule.default.executablePath(),
-        headless: chromiumModule.default.headless,
+      const puppeteer = puppeteerModule.default;
+      const chromium = chromiumModule.default;
+
+      // Wyłącz WebGL (niepotrzebny do PDF) — w @sparticuz/chromium v148 to setter.
+      chromium.setGraphicsMode = false;
+
+      const browser = await puppeteer.launch({
+        args: puppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
+        defaultViewport: { width: 1280, height: 1024 },
+        executablePath: await chromium.executablePath(),
+        headless: "shell",
       });
 
       const page = await browser.newPage();
       // Ustaw kodowanie UTF-8 dla poprawnego wyświetlania polskich znaków
       await page.setContent(html, { 
-        waitUntil: "networkidle",
+        waitUntil: "load",
         timeout: 30000 
       });
-      // Czekaj na załadowanie fontów
-      await page.waitForTimeout(500);
+      // Czekaj na załadowanie fontów (puppeteer-core v24 nie ma page.waitForTimeout)
+      await new Promise((resolve) => setTimeout(resolve, 500));
       const pdfBuffer = await page.pdf({
         format: "A4",
         printBackground: true,

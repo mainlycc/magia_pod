@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // Pakiety do generowania PDF (Chromium) muszą być traktowane jako zewnętrzne
+  // i NIE bundlowane. Dzięki temu działają w runtime serverless na Vercel,
+  // a binarka Chromium z @sparticuz/chromium jest dołączana do funkcji.
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
+  // Wymuś dołączenie binarki Chromium (pliki .br w `bin/`) do bundla funkcji PDF.
+  // Tracer plików nie zawsze wykrywa te zasoby ładowane w runtime po ścieżce względnej.
+  outputFileTracingIncludes: {
+    "/api/pdf": ["./node_modules/.pnpm/@sparticuz+chromium*/**/bin/**"],
+    "/api/pdf/from-html": ["./node_modules/.pnpm/@sparticuz+chromium*/**/bin/**"],
+  },
   images: {
     remotePatterns: [
       {
@@ -24,11 +34,11 @@ const nextConfig: NextConfig = {
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Ignoruj opcjonalne zależności podczas builda
+      // `playwright` jest tylko devDependency i ładowany przez dynamiczny import
+      // wyłącznie w trybie dev — externalizujemy, by build produkcyjny go nie wymagał.
+      // (puppeteer-core i @sparticuz/chromium obsługuje `serverExternalPackages`.)
       config.externals = config.externals || [];
       config.externals.push({
-        "puppeteer-core": "commonjs puppeteer-core",
-        "@sparticuz/chromium": "commonjs @sparticuz/chromium",
         playwright: "commonjs playwright",
       });
     }

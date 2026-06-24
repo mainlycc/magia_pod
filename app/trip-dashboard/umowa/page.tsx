@@ -198,6 +198,7 @@ export default function AgreementPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [registrationMode, setRegistrationMode] = useState<"individual" | "company" | "both">("both");
+  const [activeTab, setActiveTab] = useState<"individual" | "company">("individual");
   const [templateIndividual, setTemplateIndividual] = useState<AgreementTemplate | null>(null);
   const [templateCompany, setTemplateCompany] = useState<AgreementTemplate | null>(null);
   const [insuranceScope, setInsuranceScope] = useState<string | null>(null);
@@ -357,7 +358,11 @@ export default function AgreementPage() {
         </Button>
       </div>
       {registrationMode === "both" ? (
-        <Tabs defaultValue="individual" className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as "individual" | "company")}
+          className="w-full"
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="individual">Podgląd - Osoba fizyczna</TabsTrigger>
             <TabsTrigger value="company">Podgląd - Firma</TabsTrigger>
@@ -404,7 +409,11 @@ export default function AgreementPage() {
         </CardHeader>
         <CardContent className="px-0 pb-0">
           {registrationMode === "both" ? (
-            <Tabs defaultValue="individual" className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as "individual" | "company")}
+              className="w-full"
+            >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="individual">Osoba fizyczna</TabsTrigger>
                 <TabsTrigger value="company">Firma</TabsTrigger>
