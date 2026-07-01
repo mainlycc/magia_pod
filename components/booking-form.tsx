@@ -950,6 +950,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
   const [agreementTemplateLoadFailed, setAgreementTemplateLoadFailed] = useState(false);
   const [tripFullData, setTripFullData] = useState<TripFullData | null>(null);
   const [tripContentData, setTripContentData] = useState<TripContentData | null>(null);
+  const [insuranceScope, setInsuranceScope] = useState<string | null>(null);
   
   // Wybierz odpowiedni szablon w zależności od typu zgłaszającego
   const agreementTemplate = applicantType === "company" && agreementTemplateCompany 
@@ -1329,6 +1330,51 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
     setActiveStepIndex(summaryIndex);
     setMaxAvailableStep(summaryIndex);
   }, [startAtAgreementPreview, tripConfig, agreementTemplateIndividual, form]);
+
+  // Zakres ubezpieczenia dla placeholdera {{insurance_scope}} w podglądzie umowy.
+  // Wyliczany server-side (jak w przepływie e-mail/PDF), bo klient nie ma dostępu
+  // do `trip_insurance_variants`. Odświeżamy przy zmianie wybranych ubezpieczeń.
+  const watchedParticipantServices = form.watch("participant_services");
+  const insuranceSelectionKey = useMemo(() => {
+    const insuranceEntries = (watchedParticipantServices || []).filter(
+      (service) => service?.type === "insurance",
+    );
+    return JSON.stringify(insuranceEntries);
+  }, [watchedParticipantServices]);
+
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const previewParticipants = buildParticipantsWithSelectedServices(
+          form.getValues() as any,
+          applicantType,
+          tripConfig?.seats_total,
+        );
+        const res = await fetch(`/api/trips/by-slug/${slug}/insurance-scope`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ participants: previewParticipants }),
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setInsuranceScope(typeof data?.scope === "string" ? data.scope : null);
+        }
+      } catch {
+        // Podgląd bez zakresu ubezpieczenia — nie blokujemy formularza.
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [slug, applicantType, tripConfig?.seats_total, insuranceSelectionKey, form]);
 
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
@@ -4371,6 +4417,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           template={agreementTemplate} 
                           tripFullData={tripFullData}
                           tripContentData={tripContentData}
+                          insuranceScope={insuranceScope}
                           requiredContactFields={tripConfig?.form_required_contact_fields ?? null}
                           requirePeselFallback={tripConfig?.require_pesel ?? null}
                           formData={{
