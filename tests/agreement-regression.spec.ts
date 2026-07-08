@@ -372,7 +372,7 @@ test.describe("Umowa — edytor panelu (wymaga TEST_USER_EMAIL + TEST_USER_PASSW
     expect(html!).not.toContain(marker);
   });
 
-  test("mandatory-fields-reinject (M4): edytor może przywrócić Transfery po reload", async ({
+  test("mandatory-fields-reinject (M4): usunięte Transfery nie wracają po reload edytora", async ({
     page,
   }) => {
     const trip = await createAgreementTestTrip();
@@ -385,7 +385,7 @@ test.describe("Umowa — edytor panelu (wymaga TEST_USER_EMAIL + TEST_USER_PASSW
     await page.reload({ waitUntil: "domcontentloaded" });
 
     const transferCount = await countLabelsMatching(agreementLabelInputs(page), /transfery/i);
-    expect(transferCount === 0 || transferCount === 1).toBeTruthy();
+    expect(transferCount).toBe(0);
   });
 
   test("pkt 5a + 11: insurance_scope i selected_services per uczestnik", async ({ page }) => {

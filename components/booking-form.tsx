@@ -53,6 +53,8 @@ import {
   getFieldsToValidate,
   type StepValidationContext,
 } from "@/components/booking-form/utils/booking-form-utils";
+import { calculateBookingTotalCents } from "@/lib/utils/payment-calculator";
+import { resolveAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
 
@@ -461,10 +463,6 @@ const createBookingFormSchema = (requiredFields?: {
       standard_form_consent: z.literal(true),
       electronic_services_consent: z.literal(true),
       rodo_info_consent: z.literal(true),
-      // Nowe zgody - sekcja "UBEZPIECZENIE"
-      insurance_terms_consent: z.literal(true),
-      insurance_data_consent: z.literal(true),
-      insurance_other_person_consent: z.literal(true),
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,
@@ -887,9 +885,6 @@ const formatValidationErrors = (errors: any): string => {
               standard_form_consent: "Zgoda na formularz standardowy",
               electronic_services_consent: "Zgoda na usługi elektroniczne",
               rodo_info_consent: "Zgoda RODO",
-              insurance_terms_consent: "Zgoda na warunki ubezpieczenia",
-              insurance_data_consent: "Zgoda na przetwarzanie danych ubezpieczenia",
-              insurance_other_person_consent: "Zgoda na ubezpieczenie innych osób"
             };
             return consentNames[consent] || consent;
           })
@@ -1235,9 +1230,6 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
         standard_form_consent: true,
         electronic_services_consent: true,
         rodo_info_consent: true,
-        insurance_terms_consent: true,
-        insurance_data_consent: true,
-        insurance_other_person_consent: true,
       } as any,
       invoice: {
         use_other_data: false,
@@ -3978,161 +3970,82 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                       <section className="space-y-3">
                         <h3 className="font-medium text-sm uppercase text-muted-foreground">Cena</h3>
                         <div className="grid gap-2 text-sm">
-                          {applicantType === "company" ? (
-                            <>
-                              {/* Dla firm: cena jednostkowa * liczba uczestników + usługi dodatkowe */}
-                              {(() => {
-                                const participantsCount = form.watch("participants_count") || tripConfig?.seats_total || 0;
-                                const allServices = form.watch("participant_services") || [];
-                                // Oblicz sumę usług dodatkowych (tylko PLN, inne waluty nie wliczają się do umowy)
-                                const additionalServicesTotal = allServices.reduce((sum: number, service: any) => {
-                                  if (service.currency && service.currency !== "PLN") return sum; // Waluty inne niż PLN nie wliczają się do umowy
-                                  if (service.price_cents !== null && service.price_cents > 0) {
-                                    return sum + (service.price_cents || 0);
-                                  }
-                                  return sum;
-                                }, 0);
-                                const basePrice = (tripPrice * participantsCount) + additionalServicesTotal;
-                                const depositAmount = (basePrice * paymentSplitFirstPercent) / 100;
-                                
-                                return (
-                                  <>
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-muted-foreground">Cena za osobę</span>
-                                      <span className="font-semibold">
-                                        {(tripPrice / 100).toLocaleString("pl-PL", {
-                                          minimumFractionDigits: 2,
-                                          maximumFractionDigits: 2,
-                                        })}{" "}
-                                        PLN
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-muted-foreground">
-                                        Liczba uczestników
-                                      </span>
-                                      <span className="font-semibold">
-                                        {participantsCount}
-                                      </span>
-                                    </div>
-                                    {additionalServicesTotal > 0 && (
-                                      <div className="flex items-center justify-between gap-4">
-                                        <span className="text-muted-foreground">
-                                          Usługi dodatkowe
-                                        </span>
-                                        <span className="font-semibold">
-                                          {(additionalServicesTotal / 100).toLocaleString("pl-PL", {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                          })}{" "}
-                                          PLN
-                                        </span>
-                                      </div>
-                                    )}
-                                    <Separator className="my-2" />
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-muted-foreground">Cena całkowita</span>
-                                      <span className="font-semibold text-lg">
-                                        {(basePrice / 100).toLocaleString("pl-PL", {
-                                          minimumFractionDigits: 2,
-                                          maximumFractionDigits: 2,
-                                        })}{" "}
-                                        PLN
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
-                                      <span className="font-semibold text-lg">
-                                        {(depositAmount / 100).toLocaleString("pl-PL", {
-                                          minimumFractionDigits: 2,
-                                          maximumFractionDigits: 2,
-                                        })}{" "}
-                                        PLN
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-2">
-                                      Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
-                                    </p>
-                                  </>
-                                );
-                              })()}
-                            </>
-                          ) : (
-                            <>
-                              {/* Dla osoby fizycznej: per-uczestnik + suma */}
-                              {(() => {
-                                const allServices = form.watch("participant_services") || [];
-                                const rows = participantsSummary.map((p, index) => {
-                                  const label = [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || `Uczestnik ${index + 1}`;
-                                  const additionalCents = allServices
-                                    .filter((s: any) => s.participant_index === index)
-                                    // Waluty inne niż PLN nie wliczają się do ceny umowy
-                                    .filter((s: any) => !s.currency || s.currency === "PLN")
-                                    .reduce((sum: number, s: any) => sum + (s.price_cents && s.price_cents > 0 ? (s.price_cents || 0) : 0), 0);
-                                  const totalCents = (tripPrice || 0) + additionalCents;
-                                  return { label, additionalCents, totalCents };
-                                });
+                          {(() => {
+                            const toPln = (cents: number) =>
+                              (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              });
 
-                                const sumCents = rows.reduce((s, r) => s + r.totalCents, 0);
-                                const depositCents = Math.round((sumCents * paymentSplitFirstPercent) / 100);
+                            const allServices = form.watch("participant_services") || [];
+                            const previewParticipants = buildParticipantsWithSelectedServices(
+                              form.getValues() as any,
+                              applicantType,
+                              tripConfig?.seats_total,
+                            );
 
-                                return (
-                                  <>
-                                    {rows.map((r, idx) => (
-                                      <div key={idx} className="space-y-1">
-                                        <div className="flex items-center justify-between gap-4">
-                                          <span className="text-muted-foreground">{r.label}</span>
-                                          <span className="font-semibold">
-                                            {(r.totalCents / 100).toLocaleString("pl-PL", {
-                                              minimumFractionDigits: 2,
-                                              maximumFractionDigits: 2,
-                                            })}{" "}
-                                            PLN
-                                          </span>
-                                        </div>
-                                        {r.additionalCents > 0 && (
-                                          <div className="flex items-center justify-between gap-4 text-xs">
-                                            <span className="text-muted-foreground">Usługi dodatkowe (PLN)</span>
-                                            <span className="text-muted-foreground">
-                                              +{(r.additionalCents / 100).toLocaleString("pl-PL", {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                              })}{" "}
-                                              PLN
-                                            </span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    ))}
-                                    <Separator className="my-2" />
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-muted-foreground">Suma</span>
-                                      <span className="font-semibold text-lg">
-                                        {(sumCents / 100).toLocaleString("pl-PL", {
-                                          minimumFractionDigits: 2,
-                                          maximumFractionDigits: 2,
-                                        })}{" "}
-                                        PLN
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-muted-foreground">Zaliczka ({paymentSplitFirstPercent}%)</span>
-                                      <span className="font-semibold text-lg">
-                                        {(depositCents / 100).toLocaleString("pl-PL", {
-                                          minimumFractionDigits: 2,
-                                          maximumFractionDigits: 2,
-                                        })}{" "}
-                                        PLN
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-2">
-                                      Kwota zaliczki do zapłacenia przy składaniu rezerwacji. Pozostała kwota będzie do zapłacenia przed wyjazdem.
-                                    </p>
-                                  </>
-                                );
-                              })()}
-                            </>
-                          )}
+                            const participantsCount =
+                              applicantType === "company"
+                                ? form.watch("participants_count") || tripConfig?.seats_total || 0
+                                : participantsSummary.length;
+
+                            const tripBaseCents = (tripPrice ?? 0) * Math.max(0, participantsCount || 0);
+                            const addonsCents = resolveAdditionalServicesCents(
+                              previewParticipants,
+                              allServices,
+                            );
+                            const totalCents = tripBaseCents + addonsCents;
+                            const depositCents = Math.round(
+                              (totalCents * paymentSplitFirstPercent) / 100,
+                            );
+
+                            return (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground">
+                                    Cena wycieczki
+                                  </span>
+                                  <span className="font-semibold tabular-nums">
+                                    {toPln(tripBaseCents)} PLN
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground">
+                                    Usługi dodatkowe
+                                  </span>
+                                  <span className="font-semibold tabular-nums">
+                                    {toPln(addonsCents)} PLN
+                                  </span>
+                                </div>
+
+                                <Separator className="my-2" />
+
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground font-medium">
+                                    Łączna cena
+                                  </span>
+                                  <span className="font-semibold text-lg tabular-nums">
+                                    {toPln(totalCents)} PLN
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-4 mt-2">
+                                  <span className="text-muted-foreground">
+                                    Zaliczka ({paymentSplitFirstPercent}%)
+                                  </span>
+                                  <span className="font-semibold text-lg tabular-nums">
+                                    {toPln(depositCents)} PLN
+                                  </span>
+                                </div>
+
+                                {addonsCents > 0 && (
+                                  <p className="text-xs text-muted-foreground mt-2">
+                                    * Cena końcowa zawiera wybrane usługi dodatkowe.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </section>
                       <Separator />
@@ -4306,84 +4219,6 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                         </div>
                       </div>
 
-                      <Separator />
-
-                      <div>
-                        <p className="text-sm font-medium mb-3">UBEZPIECZENIE</p>
-                        <div className="space-y-3 pl-4">
-                          <FormField
-                            control={control}
-                            name="consents.insurance_terms_consent"
-                            render={({ field }) => (
-                              <FormItem className="flex items-start gap-3">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value}
-                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                                  />
-                                </FormControl>
-                                <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
-                                    Zapoznałem się z treścią Ogólnych Warunków Ubezpieczenia, jakie obowiązywać będą po zawarciu przez Organizatora Imprezy Turystycznej umowy ubezpieczenia na rzecz uczestnika/uczestników wyjazdu
-                                  </FormLabel>
-                                  {documents.insurance_terms && (
-                                    <a
-                                      href={documents.insurance_terms.url || `/api/documents/file/${documents.insurance_terms.file_name}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-                                    >
-                                      <ExternalLink className="h-3 w-3" />
-                                      odnośnik
-                                    </a>
-                                  )}
-                                  <FormMessage />
-                                </div>
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={control}
-                            name="consents.insurance_data_consent"
-                            render={({ field }) => (
-                              <FormItem className="flex items-start gap-3">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value}
-                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                                  />
-                                </FormControl>
-                                <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
-                                    Wyrażam zgodę na przetwarzanie moich danych osobowych oraz danych osób objętych niniejszą umową w zakresie: imię, nazwisko, adres oraz datę urodzenia, przez wskazanego w umowie ubezpieczyciela jako administratora danych osobowych, w celu zawarcia i wykonania umowy ubezpieczenia na mój rachunek i rachunek ww. osób.
-                                  </FormLabel>
-                                  <FormMessage />
-                                </div>
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={control}
-                            name="consents.insurance_other_person_consent"
-                            render={({ field }) => (
-                              <FormItem className="flex items-start gap-3">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value}
-                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                                  />
-                                </FormControl>
-                                <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
-                                    W przypadku zawarcia umowy na rzecz innej osoby oświadczam, że doręczyłem tej osobie na piśmie lub za ich zgodą na innym trwałym nośniku Ogólne Warunki Ubezpieczenia
-                                  </FormLabel>
-                                  <FormMessage />
-                                </div>
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      </div>
                     </div>
                   </section>
 
@@ -4432,6 +4267,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                             company: applicantType === "company" ? form.watch("company") : undefined,
                             participants: previewParticipants,
                             participants_count: form.watch("participants_count"),
+                            participant_services: form.watch("participant_services"),
                             service_catalogs: {
                               form_diets: tripConfig?.diets,
                               form_extra_insurances: tripConfig?.extra_insurances,

@@ -351,7 +351,7 @@ describe("booking-form-utils", () => {
       const fields = getFieldsToValidate("summary", "individual");
 
       expect(fields).toContain("consents.agreement_consent");
-      expect(fields).toContain("consents.insurance_other_person_consent");
+      expect(fields).toContain("consents.rodo_info_consent");
     });
 
     it("powinien zwrócić pustą tablicę dla usług dodatkowych", () => {

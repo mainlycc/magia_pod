@@ -1,5 +1,6 @@
 import {
-  sumAdditionalServicesCents,
+  resolveAdditionalServicesCents,
+  type FormParticipantServiceLike,
   type ParticipantLike,
 } from "@/lib/sum-additional-services-cents";
 
@@ -25,12 +26,10 @@ export function calculateBookingTotalCents(
   unitPriceCents: number,
   participantsCount: number,
   participants?: readonly ParticipantLike[],
+  participantServices?: readonly FormParticipantServiceLike[],
 ): number {
   const base = Math.max(0, unitPriceCents || 0) * Math.max(0, participantsCount);
-  const addons =
-    participants && participants.length > 0
-      ? sumAdditionalServicesCents(participants)
-      : 0;
+  const addons = resolveAdditionalServicesCents(participants, participantServices);
   return base + addons;
 }
 

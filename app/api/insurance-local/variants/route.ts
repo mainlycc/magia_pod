@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
 
     const body = await request.json()
-    const { type, name, provider, description, is_default } = body
+    const { type, name, provider, description, coverage_scope, is_default } = body
 
     if (!type || !name || !provider) {
       return NextResponse.json({ error: "type, name, provider są wymagane" }, { status: 400 })
@@ -46,7 +46,14 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from("insurance_variants")
-      .insert({ type, name, provider, description: description || null, is_default: is_default || false })
+      .insert({
+        type,
+        name,
+        provider,
+        description: description || null,
+        coverage_scope: coverage_scope || null,
+        is_default: is_default || false,
+      })
       .select()
       .single()
 

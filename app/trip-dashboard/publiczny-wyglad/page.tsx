@@ -17,6 +17,8 @@ import { BookingPreviewCard } from "./components/booking-preview-card"
 import { IncludedInPriceCard } from "./components/included-in-price-card"
 import { AdditionalCostsCard } from "./components/additional-costs-card"
 import { AdditionalServiceCard } from "./components/additional-service-card"
+import { RichTextEditorProvider } from "@/components/trip-content-editor-context"
+import { PinnedSharedTripContentToolbar } from "@/components/trip-content-editor-toolbar"
 
 function PublicznyWygladContent() {
   const {
@@ -108,8 +110,10 @@ function PublicznyWygladContent() {
     : 0
 
   return (
-    <div className="space-y-6">
+    <RichTextEditorProvider>
+    <div className="space-y-4">
       {isCreateMode && <TripCreationProgress currentStep={2} />}
+      <PinnedSharedTripContentToolbar />
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:items-start">
         {/* Lewa kolumna – galeria + informacje o wyjeździe */}
         <div className="xl:col-span-4 flex flex-col gap-4">
@@ -319,6 +323,7 @@ function PublicznyWygladContent() {
         </Button>
       </div>
     </div>
+    </RichTextEditorProvider>
   )
 }
 

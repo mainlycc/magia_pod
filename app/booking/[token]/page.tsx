@@ -10,6 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
+import {
+  calculateBookingTotalCents,
+  getFirstInstallmentPercent,
+} from "@/lib/utils/payment-calculator";
+import {
+  resolveAdditionalServicesCents,
+  sumAdditionalServicesCentsUsingCatalogs,
+} from "@/lib/sum-additional-services-cents";
 
 /** Placeholdery tworzone przy zgłoszeniu firmy bez listy imion (booking-form). */
 function isPlaceholderCompanyParticipants(
@@ -42,6 +50,13 @@ type BookingData = {
       reservation_number: string | null;
       company_participants_info?: string | null;
       reservation_success_message?: string | null;
+      payment_split_enabled?: boolean | null;
+      payment_split_first_percent?: number | null;
+      payment_split_second_percent?: number | null;
+      payment_schedule?: Array<{ installment_number?: number; percent: number; due_date: string }> | null;
+      form_diets?: unknown;
+      form_extra_insurances?: unknown;
+      form_additional_attractions?: unknown;
     };
     participants: Array<{
       id: string;
@@ -50,6 +65,7 @@ type BookingData = {
       pesel: string;
       email: string | null;
       phone: string | null;
+      selected_services?: unknown;
     }>;
   };
 };
@@ -208,7 +224,29 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   }
 
   const { booking } = bookingData;
-  const totalPrice = (booking.trip.price_cents || 0) * booking.participants.length;
+  const participantsCount = booking.participants.length;
+  const tripUnitPriceCents = booking.trip.price_cents ?? 0;
+  const tripBaseCents = tripUnitPriceCents * participantsCount;
+
+  const addonsCentsFromCatalogs = sumAdditionalServicesCentsUsingCatalogs(booking.participants, {
+    form_diets: booking.trip.form_diets,
+    form_extra_insurances: booking.trip.form_extra_insurances,
+    form_additional_attractions: booking.trip.form_additional_attractions,
+  });
+  const addonsCents = resolveAdditionalServicesCents(
+    booking.participants,
+    undefined,
+    addonsCentsFromCatalogs,
+  );
+  const totalPrice = tripBaseCents + addonsCents;
+
+  const firstPercent = getFirstInstallmentPercent({
+    payment_split_enabled: booking.trip.payment_split_enabled ?? null,
+    payment_split_first_percent: booking.trip.payment_split_first_percent ?? null,
+    payment_split_second_percent: booking.trip.payment_split_second_percent ?? null,
+    payment_schedule: booking.trip.payment_schedule ?? null,
+  });
+  const depositCents = Math.round((totalPrice * firstPercent) / 100);
   const showDetailedParticipantList = !isPlaceholderCompanyParticipants(booking.participants);
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
@@ -317,7 +355,40 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
             </div>
             <div>
               <Label className="text-muted-foreground text-sm">Kwota do zapłaty</Label>
-              <p className="font-medium text-lg text-primary">{(totalPrice / 100).toFixed(2)} PLN</p>
+              <div className="space-y-2">
+                <div className="grid gap-1 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Cena wycieczki</span>
+                    <span className="font-semibold tabular-nums">
+                      {(tripBaseCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Usługi dodatkowe</span>
+                    <span className="font-semibold tabular-nums">
+                      {(addonsCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                    </span>
+                  </div>
+                  <Separator className="my-1" />
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground font-medium">Łączna cena</span>
+                    <span className="font-semibold text-lg text-primary tabular-nums">
+                      {(totalPrice / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Zaliczka ({firstPercent}%)</span>
+                    <span className="font-semibold tabular-nums">
+                      {(depositCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                    </span>
+                  </div>
+                </div>
+                {addonsCents > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    * Cena końcowa zawiera wybrane usługi dodatkowe.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

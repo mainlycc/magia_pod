@@ -11,7 +11,11 @@ import {
   getDefaultPaymentDueDates,
   getFirstInstallmentPercent,
 } from "@/lib/utils/payment-calculator";
-import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import {
+  resolveAdditionalServicesCents,
+  sumAdditionalServicesCents,
+  type FormParticipantServiceLike,
+} from "@/lib/sum-additional-services-cents";
 
 type RequiredContactFields = {
   pesel?: boolean;
@@ -57,6 +61,58 @@ function calculateNights(startDate: string | null, endDate: string | null): numb
   } catch {
     return 0;
   }
+}
+
+function formatPlnFromCents(cents: number): string {
+  return (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function buildTripPriceBreakdownHtml(params: {
+  tripBaseCents: number;
+  addonsCents: number;
+  totalCents: number;
+  depositCents?: number | null;
+  firstPercent?: number | null;
+}): string {
+  const { tripBaseCents, addonsCents, totalCents } = params;
+  const firstPercent = params.firstPercent ?? null;
+  const depositCents = typeof params.depositCents === "number" ? params.depositCents : null;
+
+  const note =
+    addonsCents > 0
+      ? `<div style="margin-top: 6px; font-size: 0.75rem; color: #6b7280;">* Cena końcowa zawiera wybrane usługi dodatkowe.</div>`
+      : "";
+
+  const depositLine =
+    depositCents !== null && firstPercent !== null
+      ? `<div style="display:flex; justify-content:space-between; gap:12px; margin-top:10px;">
+           <span>Zaliczka (${firstPercent}%)</span>
+           <strong style="white-space:nowrap;">${formatPlnFromCents(depositCents)} zł</strong>
+         </div>`
+      : "";
+
+  return `
+<div style="font-size: 0.875rem; line-height: 1.4;">
+  <div style="display:flex; justify-content:space-between; gap:12px;">
+    <span>Cena wycieczki</span>
+    <strong style="white-space:nowrap;">${formatPlnFromCents(tripBaseCents)} zł</strong>
+  </div>
+  <div style="display:flex; justify-content:space-between; gap:12px;">
+    <span>Usługi dodatkowe</span>
+    <strong style="white-space:nowrap;">${formatPlnFromCents(addonsCents)} zł</strong>
+  </div>
+  <div style="border-top: 1px solid #d1d5db; margin: 10px 0;"></div>
+  <div style="display:flex; justify-content:space-between; gap:12px;">
+    <span><strong>Łączna cena</strong></span>
+    <strong style="white-space:nowrap;">${formatPlnFromCents(totalCents)} zł</strong>
+  </div>
+  ${depositLine}
+  ${note}
+</div>
+  `.trim();
 }
 
 /**
@@ -201,6 +257,24 @@ export function replaceTripPlaceholders(
 
   // Cena całkowita (dla przykładu - 1 osoba, bo nie mamy danych o liczbie uczestników)
   result = result.replace(/\{\{trip_total_price\}\}/g, price);
+  // Rozpiska ceny (podgląd bez danych rezerwacji: 1 osoba, bez dopłat)
+  if (tripFullData.price_cents) {
+    const totalCents = tripFullData.price_cents;
+    const firstPercent = getFirstInstallmentPercent(tripFullData);
+    const depositCents = Math.round((totalCents * firstPercent) / 100);
+    result = result.replace(
+      /\{\{trip_price_breakdown\}\}/g,
+      buildTripPriceBreakdownHtml({
+        tripBaseCents: totalCents,
+        addonsCents: 0,
+        totalCents,
+        depositCents,
+        firstPercent,
+      }),
+    );
+  } else {
+    result = result.replace(/\{\{trip_price_breakdown\}\}/g, "-");
+  }
 
   // Kwota zaliczki (podgląd bez danych rezerwacji — 1 osoba, bez dopłat)
   if (tripFullData.price_cents) {
@@ -346,10 +420,12 @@ export function replaceBookingPlaceholders(
       selected_services?: unknown;
     }>;
     participants_count?: number;
-    participant_services?: Array<{
-      service_type?: string;
-      service_title?: string;
-    }>;
+    participant_services?: Array<
+      FormParticipantServiceLike & {
+        service_type?: string;
+        service_title?: string;
+      }
+    >;
     service_catalogs?: ServiceCatalogs;
   } | null,
   tripPrice?: number | null,
@@ -446,7 +522,10 @@ export function replaceBookingPlaceholders(
       formData.participants_count > 0
         ? Math.floor(formData.participants_count)
         : 0;
-    participantsCount = fromFormCount;
+    // Dla osób fizycznych `participants_count` zwykle nie jest ustawiane,
+    // a lista uczestników może zawierać jeszcze puste dane — mimo to cena ma liczyć
+    // zgodnie z liczbą wierszy uczestników w formularzu.
+    participantsCount = fromFormCount > 0 ? fromFormCount : participantRows.length;
     participantsList = "-";
   }
 
@@ -480,20 +559,29 @@ export function replaceBookingPlaceholders(
 
   // Cena całkowita i zaliczka (baza × liczba osób + dopłaty za usługi dodatkowe)
   if (tripPrice && participantsCount > 0) {
-    const addonFromParticipants =
-      participantRows.length > 0
-        ? sumAdditionalServicesCents(participantRows)
-        : 0;
-    const addon =
-      typeof addonTotalCents === "number" && Number.isFinite(addonTotalCents)
-        ? Math.round(addonTotalCents)
-        : addonFromParticipants;
+    const addon = resolveAdditionalServicesCents(
+      participantRows,
+      formData.participant_services,
+      addonTotalCents,
+    );
     const totalCents = tripPrice * participantsCount + addon;
     const totalPrice = (totalCents / 100).toFixed(2);
     const firstPercent = options?.firstInstallmentPercent ?? 30;
     const depositAmount = formatDepositAmountZloty(totalCents, firstPercent);
     result = result.replace(/\{\{trip_total_price\}\}/g, totalPrice);
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
+
+    const depositCents = Math.round((totalCents * firstPercent) / 100);
+    result = result.replace(
+      /\{\{trip_price_breakdown\}\}/g,
+      buildTripPriceBreakdownHtml({
+        tripBaseCents: tripPrice * participantsCount,
+        addonsCents: addon,
+        totalCents,
+        depositCents,
+        firstPercent,
+      }),
+    );
   }
 
   // Terminy płatności: zaliczka = termin pierwszej raty, całość = termin ostatniej raty.

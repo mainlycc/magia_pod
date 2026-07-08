@@ -48,7 +48,23 @@ export async function GET(
           agreement_pdf_url,
           created_at,
           trip_id,
-          trips:trips(id, title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_message)
+          trips:trips(
+            id,
+            title,
+            start_date,
+            end_date,
+            price_cents,
+            reservation_number,
+            company_participants_info,
+            reservation_success_message,
+            payment_split_enabled,
+            payment_split_first_percent,
+            payment_split_second_percent,
+            payment_schedule,
+            form_diets,
+            form_extra_insurances,
+            form_additional_attractions
+          )
         `)
         .eq("booking_ref", token)
         .single();
@@ -78,6 +94,13 @@ export async function GET(
           trip_reservation_number: trip?.reservation_number ?? null,
           trip_company_participants_info: trip?.company_participants_info ?? null,
           trip_reservation_success_message: trip?.reservation_success_message ?? null,
+          trip_payment_split_enabled: trip?.payment_split_enabled ?? null,
+          trip_payment_split_first_percent: trip?.payment_split_first_percent ?? null,
+          trip_payment_split_second_percent: trip?.payment_split_second_percent ?? null,
+          trip_payment_schedule: trip?.payment_schedule ?? null,
+          trip_form_diets: trip?.form_diets ?? null,
+          trip_form_extra_insurances: trip?.form_extra_insurances ?? null,
+          trip_form_additional_attractions: trip?.form_additional_attractions ?? null,
         }];
       }
     }
@@ -102,7 +125,7 @@ export async function GET(
       const { data: tripRow, error: tripErr } = await adminSupabase
         .from("trips")
         .select(
-          "title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_message",
+          "title, start_date, end_date, price_cents, reservation_number, company_participants_info, reservation_success_message, payment_split_enabled, payment_split_first_percent, payment_split_second_percent, payment_schedule, form_diets, form_extra_insurances, form_additional_attractions",
         )
         .eq("id", booking.trip_id)
         .single();
@@ -119,6 +142,13 @@ export async function GET(
           booking.trip_company_participants_info ?? tripRow.company_participants_info ?? null;
         booking.trip_reservation_success_message =
           booking.trip_reservation_success_message ?? tripRow.reservation_success_message ?? null;
+        booking.trip_payment_split_enabled = booking.trip_payment_split_enabled ?? tripRow.payment_split_enabled ?? null;
+        booking.trip_payment_split_first_percent = booking.trip_payment_split_first_percent ?? tripRow.payment_split_first_percent ?? null;
+        booking.trip_payment_split_second_percent = booking.trip_payment_split_second_percent ?? tripRow.payment_split_second_percent ?? null;
+        booking.trip_payment_schedule = booking.trip_payment_schedule ?? tripRow.payment_schedule ?? null;
+        booking.trip_form_diets = booking.trip_form_diets ?? tripRow.form_diets ?? null;
+        booking.trip_form_extra_insurances = booking.trip_form_extra_insurances ?? tripRow.form_extra_insurances ?? null;
+        booking.trip_form_additional_attractions = booking.trip_form_additional_attractions ?? tripRow.form_additional_attractions ?? null;
       }
     }
 
@@ -186,7 +216,7 @@ export async function GET(
     
     const { data: participants, error: participantsError } = await adminSupabase
       .from("participants")
-      .select("id, first_name, last_name, pesel, email, phone, document_type, document_number")
+      .select("id, first_name, last_name, pesel, email, phone, document_type, document_number, selected_services")
       .eq("booking_id", booking.id);
 
     if (participantsError) {
@@ -215,6 +245,13 @@ export async function GET(
           reservation_number: tripReservationNumber,
           company_participants_info: tripCompanyParticipantsInfo,
           reservation_success_message: tripReservationSuccessMessage,
+          payment_split_enabled: booking.trip_payment_split_enabled ?? null,
+          payment_split_first_percent: booking.trip_payment_split_first_percent ?? null,
+          payment_split_second_percent: booking.trip_payment_split_second_percent ?? null,
+          payment_schedule: booking.trip_payment_schedule ?? null,
+          form_diets: booking.trip_form_diets ?? null,
+          form_extra_insurances: booking.trip_form_extra_insurances ?? null,
+          form_additional_attractions: booking.trip_form_additional_attractions ?? null,
         },
         participants: participants || [],
       },

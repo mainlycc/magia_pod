@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { templateToHtml, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import { replaceTripPlaceholders, replaceBookingPlaceholders, removeCompanySectionFromAgreementHtml } from "@/lib/agreement-placeholder-replacer";
 import { getFirstInstallmentPercent } from "@/lib/utils/payment-calculator";
-import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 
 interface AgreementPreviewProps {
@@ -57,8 +56,12 @@ interface AgreementPreviewProps {
     }>;
     participants_count?: number;
     participant_services?: Array<{
+      type?: string;
       service_type?: string;
       service_title?: string;
+      price_cents?: number | null;
+      currency?: string | null;
+      include_in_contract?: boolean;
     }>;
     service_catalogs?: {
       form_diets?: unknown;
@@ -82,19 +85,19 @@ export function AgreementPreview({
   if (hideCompanySection) {
     html = removeCompanySectionFromAgreementHtml(html);
   }
-  let htmlWithData = replaceTripPlaceholders(html, tripFullData, tripContentData, { insuranceScope });
+  // Ważne: najpierw dane rezerwacji (poprawna cena = baza × osoby + usługi dodatkowe),
+  // dopiero potem fallbacki z danych wycieczki. Odwrotna kolejność powodowała,
+  // że {{trip_total_price}} / {{trip_deposit_amount}} / {{trip_price_breakdown}}
+  // były podstawiane wartościami dla 1 osoby bez dopłat.
+  let htmlWithData = html;
 
   if (formData) {
-    const addonTotalCents =
-      formData.participants && formData.participants.length > 0
-        ? sumAdditionalServicesCents(formData.participants)
-        : 0;
     htmlWithData = replaceBookingPlaceholders(
       htmlWithData,
       formData,
       tripFullData?.price_cents || null,
       tripFullData?.start_date || null,
-      addonTotalCents,
+      null,
       {
         requiredContactFields,
         requirePeselFallback,
@@ -105,7 +108,11 @@ export function AgreementPreview({
         paymentSchedule: tripFullData?.payment_schedule ?? null,
       },
     );
-  } else if (insuranceScope) {
+  }
+
+  htmlWithData = replaceTripPlaceholders(htmlWithData, tripFullData, tripContentData, { insuranceScope });
+
+  if (!formData && insuranceScope) {
     htmlWithData = htmlWithData.replace(/\{\{insurance_scope\}\}/g, insuranceScope);
   }
 

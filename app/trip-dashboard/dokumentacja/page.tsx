@@ -33,8 +33,8 @@ type Document = {
 const documentTypes: { type: DocumentType; label: string; description: string }[] = [
   {
     type: "agreement",
-    label: "Umowa o udział w imprezie turystycznej",
-    description: "Umowa o udział w imprezie turystycznej oraz programem imprezy turystycznej",
+    label: "Program imprezy turystycznej",
+    description: "Program imprezy turystycznej",
   },
   {
     type: "conditions_de_pl",

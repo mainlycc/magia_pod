@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { seedDefaultInsuranceForTrip } from "@/lib/insurance-local/seed-trip-defaults";
 import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
 
 // Helper do sprawdzenia czy użytkownik to admin
@@ -174,6 +175,10 @@ export async function POST(req: Request) {
     if (error) {
       console.error("Error inserting trip:", error);
       return NextResponse.json({ error: "insert_failed", details: error.message }, { status: 500 });
+    }
+
+    if (data?.id) {
+      await seedDefaultInsuranceForTrip(supabase, data.id);
     }
     
     return NextResponse.json({ ok: true, id: data?.id, slug: data?.slug });

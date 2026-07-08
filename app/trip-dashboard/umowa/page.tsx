@@ -30,76 +30,6 @@ import { ExternalLink } from "lucide-react";
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
 
-function newFieldId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `field-${crypto.randomUUID()}`;
-  }
-  return `field-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function ensureTripInfoTableFields(template: AgreementTemplate): AgreementTemplate {
-  const required = [
-    { label: "Rodzaj, typ pokoju:", key: "room_type" },
-    { label: "Ilość, rodzaj posiłków:", key: "meals_info" },
-    { label: "Transfery:", key: "transfer_info" },
-  ] as const;
-
-  const sections = template.sections.map((section) => ({ ...section }));
-
-  const tripInfoTableIndex = sections.findIndex((s) => {
-    if (s.type !== "table" || !s.fields?.length) return false;
-    return s.fields.some((f) => f.value.includes("{{accommodation_location}}"));
-  });
-
-  if (tripInfoTableIndex === -1) return template;
-
-  const tripInfoTable = { ...sections[tripInfoTableIndex] };
-  const fields = [...(tripInfoTable.fields || [])];
-
-  const normalizedFields = fields.map((f) => {
-    const labelLower = f.label.trim().toLowerCase();
-    const match = required.find((r) => r.label.trim().toLowerCase() === labelLower);
-    if (!match) return f;
-    const placeholder = `{{${match.key}}}`;
-    if (!f.value.trim() || f.value.trim() === placeholder) {
-      return { ...f, value: placeholder, type: "static" as const };
-    }
-    return f;
-  });
-
-  const existingLabels = new Set(normalizedFields.map((f) => f.label.trim().toLowerCase()));
-  const toAdd = required.filter((r) => !existingLabels.has(r.label.trim().toLowerCase()));
-  if (toAdd.length === 0) {
-    if (normalizedFields !== fields) {
-      tripInfoTable.fields = normalizedFields;
-      sections[tripInfoTableIndex] = tripInfoTable;
-      return { ...template, sections };
-    }
-    return template;
-  }
-
-  const insertAfterIndex = normalizedFields.findIndex((f) =>
-    f.value.includes("{{accommodation_location}}"),
-  );
-  const baseIndex = insertAfterIndex === -1 ? normalizedFields.length - 1 : insertAfterIndex;
-
-  normalizedFields.splice(
-    baseIndex + 1,
-    0,
-    ...toAdd.map((r) => ({
-      id: newFieldId(),
-      label: r.label,
-      value: `{{${r.key}}}`,
-      type: "static" as const,
-    })),
-  );
-
-  tripInfoTable.fields = normalizedFields;
-  sections[tripInfoTableIndex] = tripInfoTable;
-
-  return { ...template, sections };
-}
-
 const PLACEHOLDERS = [
   {
     category: "Dane zgłaszającego",
@@ -183,12 +113,8 @@ async function loadTemplatesFromApi(tripId: string): Promise<{
 
   const templates = await templatesRes.json();
   return {
-    individual: ensureTripInfoTableFields(
-      parseHtmlToTemplate(templates.individual || DEFAULT_TEMPLATE),
-    ),
-    company: ensureTripInfoTableFields(
-      parseHtmlToTemplate(templates.company || DEFAULT_TEMPLATE),
-    ),
+    individual: parseHtmlToTemplate(templates.individual || DEFAULT_TEMPLATE),
+    company: parseHtmlToTemplate(templates.company || DEFAULT_TEMPLATE),
   };
 }
 

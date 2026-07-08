@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { variantAttachmentPublicUrl } from "@/lib/insurance-local/variant-attachments"
 
 // Marker zapisywany w polu `source` na pozycji `form_extra_insurances`,
 // żeby odróżnić wpisy stworzone w zakładce "Ubezpieczenia" (synchronizowane
@@ -36,26 +37,32 @@ export type TripInsuranceVariantRow = {
     name: string
     provider: string | null
     description: string | null
+    coverage_scope?: string | null
   } | null
 }
 
 /** Jedna pozycja `form_extra_insurances` zsynchronizowana z `trip_insurance_variants`. */
 export function tripInsuranceVariantToExtraInsurance(
   row: TripInsuranceVariantRow,
+  owuUrlByVariantId: Map<string, string> = new Map(),
 ): ExtraInsuranceEntry | null {
-  return buildSyncedEntry(row)
+  return buildSyncedEntry(row, owuUrlByVariantId)
 }
 
-function buildSyncedEntry(row: TripInsuranceVariantRow): ExtraInsuranceEntry | null {
+function buildSyncedEntry(
+  row: TripInsuranceVariantRow,
+  owuUrlByVariantId: Map<string, string>,
+): ExtraInsuranceEntry | null {
   const iv = row.insurance_variants
   if (!iv) return null
   const titleParts = [iv.name, iv.provider].filter((s): s is string => Boolean(s && s.trim()))
   const title = titleParts.join(" — ") || iv.name || "Ubezpieczenie"
+  const scopeText = iv.coverage_scope?.trim() || iv.description?.trim() || ""
   return {
     id: `${SYNCED_INSURANCE_ID_PREFIX}${row.id}`,
     title,
-    description: iv.description ?? "",
-    owu_url: "",
+    description: scopeText,
+    owu_url: owuUrlByVariantId.get(iv.id) || "",
     price_cents: typeof row.price_grosz === "number" ? row.price_grosz : null,
     enabled: row.is_enabled !== false,
     source: FORM_EXTRA_INSURANCES_SYNC_SOURCE,
@@ -89,7 +96,7 @@ export async function syncFormExtraInsurancesForTrip(tripId: string): Promise<Ex
       trip_id,
       price_grosz,
       is_enabled,
-      insurance_variants ( id, type, name, provider, description )
+      insurance_variants ( id, type, name, provider, description, coverage_scope )
     `)
     .eq("trip_id", tripId)
     .order("created_at", { ascending: true })
@@ -102,9 +109,31 @@ export async function syncFormExtraInsurancesForTrip(tripId: string): Promise<Ex
   // Zostaw tylko Typ 2 (dodatkowe) i Typ 3 (KR) — Typ 1 jest "wliczony w cenę"
   // i nie pojawia się w katalogu wyboru dla klienta.
   const allowedTypes = new Set<number>([2, 3])
-  const synced = ((variantsRows ?? []) as unknown as TripInsuranceVariantRow[])
-    .filter((row) => row.insurance_variants && allowedTypes.has(row.insurance_variants.type))
-    .map(buildSyncedEntry)
+  const typedRows = ((variantsRows ?? []) as unknown as TripInsuranceVariantRow[]).filter(
+    (row) => row.insurance_variants && allowedTypes.has(row.insurance_variants.type),
+  )
+
+  const variantIds = typedRows
+    .map((row) => row.insurance_variants?.id)
+    .filter((id): id is string => Boolean(id))
+
+  const owuUrlByVariantId = new Map<string, string>()
+  if (variantIds.length > 0) {
+    const { data: attachmentRows } = await admin
+      .from("insurance_variant_attachments")
+      .select("variant_id, file_name, attachment_type")
+      .in("variant_id", variantIds)
+      .eq("attachment_type", "owu")
+
+    for (const attachment of attachmentRows || []) {
+      if (attachment.variant_id && attachment.file_name) {
+        owuUrlByVariantId.set(attachment.variant_id, variantAttachmentPublicUrl(attachment.file_name))
+      }
+    }
+  }
+
+  const synced = typedRows
+    .map((row) => buildSyncedEntry(row, owuUrlByVariantId))
     .filter((e): e is ExtraInsuranceEntry => e !== null)
 
   const { data: tripRow, error: tripError } = await admin

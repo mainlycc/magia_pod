@@ -27,6 +27,17 @@ describe("replaceBookingPlaceholders — ceny z dopłatami", () => {
     const out = replaceBookingPlaceholders(html, formData, tripPriceCents, null);
     expect(out).toBe("200.00 60.00");
   });
+
+  it("dolicza participant_services gdy brak selected_services u uczestników", () => {
+    const html = "{{trip_total_price}}";
+    const formData = {
+      participants_count: 2,
+      participants: [],
+      participant_services: [{ type: "diet", price_cents: 5000, currency: "PLN" }],
+    };
+    const out = replaceBookingPlaceholders(html, formData, 10000, null, null);
+    expect(out).toBe("250.00");
+  });
 });
 
 describe("replaceBookingPlaceholders — widoczność pól kontaktu (wiersze <tr>)", () => {

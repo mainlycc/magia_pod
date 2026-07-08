@@ -36,6 +36,10 @@ import {
   type FakturowniaInvoiceItem,
 } from "@/lib/fakturownia/client";
 import { sendTransactionalEmail } from "@/lib/email/send-transactional";
+import {
+  buildInvoiceServiceName,
+  INVOICE_VAT_MARGIN_NOTE,
+} from "@/lib/invoices/format-invoice-service-name";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // ===================== TYPES =====================
@@ -82,6 +86,9 @@ interface TripData {
   id: string;
   title: string;
   price_cents: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  reservation_number: string | null;
 }
 
 interface ParentInvoice {
@@ -296,7 +303,8 @@ async function recoverMissingFakturowniaOrderId(
   booking: BookingData,
   trip: TripData,
   participantsCount: number,
-  existingInvoices: InvoiceRowLite[]
+  existingInvoices: InvoiceRowLite[],
+  serviceName: string
 ): Promise<{ orderId: number } | { error: string }> {
   for (let i = existingInvoices.length - 1; i >= 0; i--) {
     const row = existingInvoices[i];
@@ -335,8 +343,7 @@ async function recoverMissingFakturowniaOrderId(
     buyer_email: booking.contact_email || undefined,
     currency: "PLN",
     lang: "pl",
-    description: `Zamówienie – ${trip.title} (${booking.booking_ref})`,
-    positions: [buildTripPosition(trip.title, participantsCount, totalPriceZloty)],
+    positions: [buildTripPosition(serviceName, participantsCount, totalPriceZloty)],
   });
 
   if (!orderResponse.success || !orderResponse.orderId) {
@@ -467,13 +474,33 @@ export async function processPaymentInvoice(
     // ─── 3. Pobierz dane wycieczki ───
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, title, price_cents")
+      .select("id, title, price_cents, start_date, end_date, reservation_number")
       .eq("id", booking.trip_id)
       .single();
 
     if (tripError || !trip) {
       return { success: false, error: "Trip not found: " + booking.trip_id };
     }
+
+    const { data: agreementRow } = await supabase
+      .from("agreements")
+      .select("agreement_seq")
+      .eq("booking_id", bookingId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .order("generated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    const agreementSeq =
+      typeof agreementRow?.agreement_seq === "number" ? agreementRow.agreement_seq : null;
+
+    const serviceName = buildInvoiceServiceName({
+      title: trip.title,
+      startDate: trip.start_date,
+      endDate: trip.end_date,
+      reservationNumber: trip.reservation_number,
+      agreementSeq,
+    });
 
     // ─── 4. Pobierz liczbę uczestników ───
     const { data: participants } = await supabase
@@ -546,8 +573,7 @@ export async function processPaymentInvoice(
         buyer_email: booking.contact_email || undefined,
         currency: "PLN",
         lang: "pl",
-        description: `Zamówienie – ${trip.title} (${booking.booking_ref})`,
-        positions: [buildTripPosition(trip.title, participantsCount, totalPriceZloty)],
+        positions: [buildTripPosition(serviceName, participantsCount, totalPriceZloty)],
       });
 
       if (!orderResponse.success || !orderResponse.orderId) {
@@ -589,7 +615,8 @@ export async function processPaymentInvoice(
           booking as BookingData,
           trip,
           participantsCount,
-          (existingInvoices || []) as InvoiceRowLite[]
+          (existingInvoices || []) as InvoiceRowLite[],
+          serviceName
         );
         if ("error" in recovered) {
           return await saveInvoiceWithoutProvider(
@@ -620,11 +647,6 @@ export async function processPaymentInvoice(
     }
 
     // ─── 9. Zbuduj dane faktury ───
-    const invoiceDescription =
-      invoiceType === "advance"
-        ? `Faktura zaliczkowa – ${trip.title}`
-        : `Faktura zaliczkowa do zaliczkowej – ${trip.title}`;
-
     const invoiceData: FakturowniaInvoiceData = {
       kind: "advance",
       issue_date: today,
@@ -647,7 +669,8 @@ export async function processPaymentInvoice(
       external_order_ref: booking.booking_ref || undefined,
       advance_creation_mode: "amount",
       advance_value: paymentAmountZloty,
-      position_name: invoiceDescription,
+      position_name: serviceName,
+      description: INVOICE_VAT_MARGIN_NOTE,
       from_invoice_id:
         parentInvoice?.fakturownia_invoice_id
           ? parseInt(parentInvoice.fakturownia_invoice_id, 10)

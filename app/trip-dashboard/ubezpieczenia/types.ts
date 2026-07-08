@@ -4,6 +4,7 @@ export type InsuranceVariant = {
   name: string
   provider: string
   description: string | null
+  coverage_scope?: string | null
   is_default: boolean
   is_active: boolean
 }

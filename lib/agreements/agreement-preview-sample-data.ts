@@ -78,9 +78,6 @@ export function getBookingFormPreviewDefaults() {
       standard_form_consent: true,
       electronic_services_consent: true,
       rodo_info_consent: true,
-      insurance_terms_consent: true,
-      insurance_data_consent: true,
-      insurance_other_person_consent: true,
     },
   };
 }

@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  INSURANCE_OWU_TYPES,
   buildDefaultOwuEmailSettings,
   isValidInsuranceOwuType,
 } from "@/lib/insurance-local/owu-constants";
 import { canManageInsuranceOwu } from "@/lib/insurance-local/owu-auth";
+import {
+  buildOwuDocumentsMap,
+  listResolvedOwuDocuments,
+} from "@/lib/insurance-local/owu-resolve";
 
 export async function GET(
   _request: NextRequest,
@@ -17,39 +20,38 @@ export async function GET(
     const supabase = await createClient();
     const adminClient = createAdminClient();
 
-    const { data: owuDocs, error: owuDocsError } = await supabase
-      .from("trip_insurance_owu_documents")
-      .select("*")
-      .eq("trip_id", tripId);
+    const [tripDocsRes, globalDocsRes, emailSettingsRes] = await Promise.all([
+      supabase.from("trip_insurance_owu_documents").select("*").eq("trip_id", tripId),
+      supabase.from("global_insurance_owu_documents").select("*"),
+      supabase
+        .from("trip_insurance_owu_email_settings")
+        .select("insurance_type, attach_on_reservation")
+        .eq("trip_id", tripId),
+    ]);
 
-    if (owuDocsError) {
-      console.error("Error fetching trip insurance OWU documents:", owuDocsError);
+    if (tripDocsRes.error) {
+      console.error("Error fetching trip insurance OWU documents:", tripDocsRes.error);
     }
-
-    const { data: emailSettingsRows, error: emailSettingsError } = await supabase
-      .from("trip_insurance_owu_email_settings")
-      .select("insurance_type, attach_on_reservation")
-      .eq("trip_id", tripId);
-
-    if (emailSettingsError) {
-      console.error("Error fetching trip insurance OWU email settings:", emailSettingsError);
+    if (globalDocsRes.error) {
+      console.error("Error fetching global insurance OWU documents:", globalDocsRes.error);
+    }
+    if (emailSettingsRes.error) {
+      console.error("Error fetching trip insurance OWU email settings:", emailSettingsRes.error);
     }
 
     const emailSettings = buildDefaultOwuEmailSettings();
-    for (const row of emailSettingsRows || []) {
+    for (const row of emailSettingsRes.data || []) {
       if (isValidInsuranceOwuType(row.insurance_type)) {
         emailSettings[row.insurance_type] = row.attach_on_reservation;
       }
     }
 
-    const docsMap = new Map(
-      (owuDocs || []).map((doc) => [doc.insurance_type, doc]),
-    );
+    const documentsMap = buildOwuDocumentsMap({
+      tripDocs: tripDocsRes.data || [],
+      globalDocs: globalDocsRes.data || [],
+    });
 
-    const documents = INSURANCE_OWU_TYPES.map((type) => {
-      const doc = docsMap.get(type);
-      if (!doc) return null;
-
+    const documents = listResolvedOwuDocuments(documentsMap).map((doc) => {
       const {
         data: { publicUrl },
       } = adminClient.storage.from("documents").getPublicUrl(doc.file_name);
@@ -58,7 +60,7 @@ export async function GET(
         ...doc,
         url: publicUrl,
       };
-    }).filter(Boolean);
+    });
 
     return NextResponse.json({ documents, email_settings: emailSettings });
   } catch (error) {
@@ -188,6 +190,7 @@ export async function POST(
     return NextResponse.json({
       ...savedDoc,
       url: publicUrl,
+      source: "trip",
       success: true,
     });
   } catch (error) {

@@ -585,22 +585,6 @@ export function AgreementEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
-        <Button onClick={() => onSave(buildTemplateForSave())} disabled={saving}>
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Zapisywanie...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Zapisz
-            </>
-          )}
-        </Button>
-      </div>
-
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -623,30 +607,45 @@ export function AgreementEditor({
         </SortableContext>
       </DndContext>
 
-      <div className="flex gap-2 pt-4 border-t">
-        <Button
-          variant="outline"
-          onClick={() => handleAddSection('table')}
-          size="sm"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Dodaj tabelę
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => handleAddSection('paragraph')}
-          size="sm"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Dodaj paragraf
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => handleAddSection('list')}
-          size="sm"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Dodaj listę
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => handleAddSection('table')}
+            size="sm"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Dodaj tabelę
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => handleAddSection('paragraph')}
+            size="sm"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Dodaj paragraf
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => handleAddSection('list')}
+            size="sm"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Dodaj listę
+          </Button>
+        </div>
+        <Button onClick={() => onSave(buildTemplateForSave())} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Zapisywanie...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Zapisz
+            </>
+          )}
         </Button>
       </div>
     </div>

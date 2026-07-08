@@ -18,6 +18,10 @@ import {
   ChevronRight,
   X,
 } from "lucide-react"
+import {
+  getAdditionalSectionContent,
+  hasAdditionalSectionContent,
+} from "@/lib/trip-additional-field-section"
 
 type Trip = {
   id: string
@@ -458,9 +462,8 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
             {additionalFieldSections
               .filter((section) => !hiddenAdditionalSections.includes(section.id))
               .map((section) => {
-                // Nie wyświetlaj sekcji bez tytułu lub bez pól z wartościami
-                const hasContent = section.fields.some(f => f.title || f.value)
-                if (!section.sectionTitle && !hasContent) return null
+                const content = getAdditionalSectionContent(section)
+                if (!section.sectionTitle && !hasAdditionalSectionContent(section)) return null
 
                 return (
                   <Card key={section.id}>
@@ -472,20 +475,12 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                       </CardHeader>
                     )}
                     <CardContent className={section.sectionTitle ? "pt-2" : "pt-4"}>
-                      <div className="space-y-2">
-                        {section.fields
-                          .filter(f => f.title || f.value)
-                          .map((field, idx) => (
-                            <div key={idx} className="flex flex-col gap-0.5">
-                              {field.title && (
-                                <span className="text-xs font-semibold text-foreground">{field.title}</span>
-                              )}
-                              {field.value && (
-                                <span className="text-sm text-muted-foreground">{field.value}</span>
-                              )}
-                            </div>
-                          ))}
-                      </div>
+                      {content && (
+                        <div
+                          className="prose prose-sm max-w-none text-sm text-muted-foreground"
+                          dangerouslySetInnerHTML={{ __html: content }}
+                        />
+                      )}
                     </CardContent>
                   </Card>
                 )

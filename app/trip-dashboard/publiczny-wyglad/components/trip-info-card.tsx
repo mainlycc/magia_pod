@@ -27,6 +27,7 @@ export function TripInfoCard({ show, onShowChange, text, onTextChange, title }: 
             content={text}
             onChange={onTextChange}
             label=""
+            showToolbar={false}
           />
         </CardContent>
       )}

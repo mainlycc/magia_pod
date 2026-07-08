@@ -147,6 +147,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconFileText,
     },
     {
+      title: "Ubezpieczenia",
+      url: "/trip-dashboard/ubezpieczenia-globalne",
+      icon: IconShieldCheck,
+    },
+    {
       title: "Raport umów TFG",
       url: "/trip-dashboard/raport-umow",
       icon: IconReportAnalytics,

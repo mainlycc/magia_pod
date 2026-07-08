@@ -108,10 +108,6 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
     <td>Bagaż:</td>
     <td>{{baggage_info}}</td>
   </tr>
-  <tr>
-    <td>Transfery:</td>
-    <td>{{transfer_info}}</td>
-  </tr>
 </table>
 
 <table>
@@ -129,7 +125,7 @@ export const DEFAULT_AGREEMENT_TEMPLATE_HTML = `<div style="text-align: center; 
   </tr>
   <tr>
     <td>Cena imprezy turystycznej:</td>
-    <td>{{trip_total_price}} zł brutto (łącznie za wszystkich uczestników, wraz z usługami dodatkowymi)</td>
+    <td>{{trip_price_breakdown}}</td>
   </tr>
   <tr>
     <td>Dodatkowe koszty:</td>

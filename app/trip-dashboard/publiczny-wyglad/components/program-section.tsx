@@ -29,6 +29,7 @@ export function ProgramSection({
           content={content}
           onChange={onChange}
           label=""
+          showToolbar={false}
         />
       </CardContent>
     </Card>

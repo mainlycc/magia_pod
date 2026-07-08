@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
+import { TripContentEditor } from "@/components/trip-content-editor"
 import { GripVertical } from "lucide-react"
 import type { AdditionalServiceCardProps } from "../types"
 
@@ -36,11 +36,11 @@ export function AdditionalServiceCard({
       </CardHeader>
       {isVisible && (
         <CardContent>
-          <Textarea
-            value={text}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Wpisz dodatkowe świadczenie (opcjonalne)..."
-            className="min-h-[120px]"
+          <TripContentEditor
+            content={text}
+            onChange={onChange}
+            label=""
+            showToolbar={false}
           />
         </CardContent>
       )}

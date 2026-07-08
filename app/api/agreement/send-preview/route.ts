@@ -66,18 +66,18 @@ export async function POST(req: Request) {
     // Generuj HTML z szablonu
     const html = templateToHtml(body.template);
     
-    // Zastąp placeholdery danymi z wycieczki
-    let htmlWithData = replaceTripPlaceholders(html, body.tripFullData, body.tripContentData);
-    
-    // Zastąp placeholdery danymi z formularza
-    htmlWithData = replaceBookingPlaceholders(
-      htmlWithData,
+    // Kolejność ma znaczenie: najpierw dane z formularza (poprawna cena z dopłatami),
+    // potem fallbacki z wycieczki.
+    let htmlWithData = replaceBookingPlaceholders(
+      html,
       body.formData,
       body.tripFullData?.price_cents || null,
       body.tripFullData?.start_date || null,
       null,
       { paymentSchedule: body.tripFullData?.payment_schedule ?? null }
     );
+
+    htmlWithData = replaceTripPlaceholders(htmlWithData, body.tripFullData, body.tripContentData);
 
     // Dodaj style CSS dla lepszego wyglądu PDF
     const styledHtml = `

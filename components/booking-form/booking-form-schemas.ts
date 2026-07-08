@@ -243,10 +243,6 @@ export const createBookingFormSchema = (requiredFields?: {
       standard_form_consent: z.literal(true),
       electronic_services_consent: z.literal(true),
       rodo_info_consent: z.literal(true),
-      // Nowe zgody - sekcja "UBEZPIECZENIE"
-      insurance_terms_consent: z.literal(true),
-      insurance_data_consent: z.literal(true),
-      insurance_other_person_consent: z.literal(true),
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,

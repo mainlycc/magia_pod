@@ -7,7 +7,10 @@ import { generatePdfFromHtml } from "@/lib/pdf-generator";
 import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agreement-placeholder-replacer";
 import type { TripContentData, TripFullData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
-import { sumAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import {
+  sumAdditionalServicesCents,
+  sumAdditionalServicesCentsUsingCatalogs,
+} from "@/lib/sum-additional-services-cents";
 import {
   calculateInstallmentAmounts,
   formatDepositAmountZloty,
@@ -891,13 +894,16 @@ export async function POST(req: Request) {
         },
       } as const;
 
-      const addonTotalCents = sumAdditionalServicesCents(body.participants);
-
-      let filledInnerHtml = replaceTripPlaceholders(customTemplate, tripFullData, tripContentData, {
-        insuranceScope,
+      const addonTotalCents = sumAdditionalServicesCentsUsingCatalogs(body.participants, {
+        form_diets: tripRow.form_diets,
+        form_extra_insurances: tripRow.form_extra_insurances,
+        form_additional_attractions: tripRow.form_additional_attractions,
       });
-      filledInnerHtml = replaceBookingPlaceholders(
-        filledInnerHtml,
+
+      // Kolejność ma znaczenie: najpierw dane rezerwacji (poprawna cena z dopłatami),
+      // potem fallbacki z wycieczki — inaczej cena/przedpłata liczą się dla 1 osoby bez usług.
+      let filledInnerHtml = replaceBookingPlaceholders(
+        customTemplate,
         formData,
         tripFullData.price_cents ?? null,
         tripFullData.start_date ?? null,
@@ -920,6 +926,9 @@ export async function POST(req: Request) {
           paymentSchedule: tripFullData.payment_schedule,
         },
       );
+      filledInnerHtml = replaceTripPlaceholders(filledInnerHtml, tripFullData, tripContentData, {
+        insuranceScope,
+      });
       const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);
       const withFonts = embedNotoSansIntoHtml(fullHtml);
       console.log("[/api/pdf] embedNotoSansIntoHtml:", withFonts.embedded ? "ok" : "missing");

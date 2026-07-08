@@ -1,8 +1,8 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { TripContentEditor } from "@/components/trip-content-editor"
 import type { ToggleableCardProps } from "../types"
 
 export function WeatherCard({ show, onShowChange, text, onTextChange, title }: ToggleableCardProps) {
@@ -23,11 +23,12 @@ export function WeatherCard({ show, onShowChange, text, onTextChange, title }: T
       </CardHeader>
       {show && (
         <CardContent className="space-y-2 pt-2">
-          <Textarea
-            value={text}
-            onChange={(e) => onTextChange(e.target.value)}
-            placeholder="Np. Średnia temperatura w ciągu dnia 24–28°C, wieczory chłodniejsze – zalecamy lekką kurtkę..."
-            className="min-h-[80px] text-xs"
+          <TripContentEditor
+            content={text}
+            onChange={onTextChange}
+            label=""
+            showToolbar={false}
+            minHeightClass="min-h-[80px]"
           />
         </CardContent>
       )}

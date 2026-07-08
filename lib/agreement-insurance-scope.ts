@@ -7,6 +7,7 @@ type InsuranceVariantInfo = {
   name: string;
   provider: string | null;
   description: string | null;
+  coverage_scope?: string | null;
 };
 
 type TripInsuranceVariantRow = {
@@ -41,8 +42,9 @@ function formatVariantLine(variant: InsuranceVariantInfo): string {
     parts.push(`(${variant.provider.trim()})`);
   }
   const header = parts.join(" ");
-  if (variant.description?.trim()) {
-    return `${header} — ${variant.description.trim()}`;
+  const scope = variant.coverage_scope?.trim() || variant.description?.trim();
+  if (scope) {
+    return `${header} — ${scope}`;
   }
   return header;
 }
@@ -109,7 +111,8 @@ export async function buildInsuranceScope(
         type,
         name,
         provider,
-        description
+        description,
+        coverage_scope
       )
     `)
     .eq("trip_id", tripId);

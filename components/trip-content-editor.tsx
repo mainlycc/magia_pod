@@ -3,30 +3,15 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import {
-  Bold,
-  Italic,
-  Strikethrough,
-  Heading1,
-  Heading2,
-  Heading3,
-  List,
-  ListOrdered,
-  Quote,
-  Undo,
-  Redo,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-} from "lucide-react";
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import {
   isEmptyRichTextHtml,
   normalizeHtmlForEditor,
   sanitizePastedHtml,
 } from "@/lib/agreements/rich-text-html";
+import { useRichTextEditorContext } from "@/components/trip-content-editor-context";
+import { TripContentEditorToolbar } from "@/components/trip-content-editor-toolbar";
+import { cn } from "@/lib/utils";
 
 export type TripContentEditorHandle = {
   getHtml: () => string;
@@ -36,23 +21,69 @@ interface TripContentEditorProps {
   content: string;
   onChange: (content: string) => void;
   label: string;
+  showToolbar?: boolean;
+  minHeightClass?: string;
+  maxHeightClass?: string;
+  autoGrow?: boolean;
+  resizable?: boolean;
 }
+
+const COMPACT_MIN_HEIGHT_PX = 52;
+const COMPACT_MAX_HEIGHT_PX = 384;
 
 function isEmptyEditorHtml(html: string): boolean {
   return isEmptyRichTextHtml(html);
 }
 
 export const TripContentEditor = forwardRef<TripContentEditorHandle, TripContentEditorProps>(
-  function TripContentEditor({ content, onChange, label }, ref) {
+  function TripContentEditor(
+    {
+      content,
+      onChange,
+      label,
+      showToolbar = true,
+      minHeightClass = "min-h-[120px]",
+      maxHeightClass,
+      autoGrow = false,
+      resizable = false,
+    },
+    ref,
+  ) {
+    const richTextContext = useRichTextEditorContext();
+    const richTextContextRef = useRef(richTextContext);
+    richTextContextRef.current = richTextContext;
+    const showToolbarRef = useRef(showToolbar);
+    showToolbarRef.current = showToolbar;
+
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
     const editorInstanceRef = useRef<ReturnType<typeof useEditor>>(null);
+    const contentContainerRef = useRef<HTMLDivElement>(null);
     const lastEmittedRef = useRef(normalizeHtmlForEditor(content));
+    const useCompactLayout = autoGrow || resizable;
 
     const emitChange = (html: string) => {
       lastEmittedRef.current = html;
       onChangeRef.current(html);
     };
+
+    const syncAutoHeight = useCallback(() => {
+      if (!autoGrow) return;
+      const container = contentContainerRef.current;
+      const ed = editorInstanceRef.current;
+      if (!container || !ed) return;
+
+      const prose = container.querySelector(".ProseMirror") as HTMLElement | null;
+      if (!prose) return;
+
+      container.style.height = "auto";
+      const padding = 32;
+      const next = Math.min(
+        COMPACT_MAX_HEIGHT_PX,
+        Math.max(COMPACT_MIN_HEIGHT_PX, prose.scrollHeight + padding),
+      );
+      container.style.height = `${next}px`;
+    }, [autoGrow]);
 
     const editor = useEditor({
       extensions: [
@@ -65,8 +96,10 @@ export const TripContentEditor = forwardRef<TripContentEditorHandle, TripContent
       immediatelyRender: false,
       editorProps: {
         attributes: {
-          class:
-            "ProseMirror focus:outline-none p-4 min-h-[120px] max-w-full break-words [overflow-wrap:anywhere]",
+          class: cn(
+            "ProseMirror focus:outline-none p-4 max-w-full break-words [overflow-wrap:anywhere]",
+            useCompactLayout ? "min-h-0" : minHeightClass,
+          ),
           "aria-label": label,
         },
         transformPastedHTML: sanitizePastedHtml,
@@ -82,6 +115,26 @@ export const TripContentEditor = forwardRef<TripContentEditorHandle, TripContent
       },
       onUpdate: ({ editor: ed }) => {
         emitChange(ed.getHTML());
+        if (autoGrow) {
+          requestAnimationFrame(syncAutoHeight);
+        }
+      },
+      onFocus: ({ editor: ed }) => {
+        const ctx = richTextContextRef.current;
+        if (!showToolbarRef.current && ctx) {
+          ctx.setActiveEditor(ed);
+        }
+      },
+      onBlur: ({ editor: ed }) => {
+        const ctx = richTextContextRef.current;
+        if (!showToolbarRef.current && ctx) {
+          window.setTimeout(() => {
+            const currentCtx = richTextContextRef.current;
+            if (currentCtx?.activeEditor === ed && !ed.isFocused) {
+              currentCtx.setActiveEditor(null);
+            }
+          }, 150);
+        }
       },
     });
 
@@ -108,7 +161,6 @@ export const TripContentEditor = forwardRef<TripContentEditorHandle, TripContent
 
       if (isEmptyEditorHtml(next) && isEmptyEditorHtml(current)) return;
       if (isEmptyEditorHtml(next) && !isEmptyEditorHtml(current)) return;
-      // Treść pochodzi z własnego onChange — nie nadpisuj edytora.
       if (next === lastEmittedRef.current) return;
       if (next === current) {
         lastEmittedRef.current = next;
@@ -117,165 +169,65 @@ export const TripContentEditor = forwardRef<TripContentEditorHandle, TripContent
 
       editor.commands.setContent(next, { emitUpdate: false });
       lastEmittedRef.current = next;
-    }, [content, editor]);
+      if (autoGrow) {
+        requestAnimationFrame(syncAutoHeight);
+      }
+    }, [content, editor, autoGrow, syncAutoHeight]);
+
+    useEffect(() => {
+      if (!editor || !autoGrow) return;
+      syncAutoHeight();
+      const handler = () => requestAnimationFrame(syncAutoHeight);
+      editor.on("create", handler);
+      editor.on("transaction", handler);
+      return () => {
+        editor.off("create", handler);
+        editor.off("transaction", handler);
+      };
+    }, [editor, autoGrow, syncAutoHeight]);
+
+    useEffect(() => {
+      if (!editor) return;
+      const ed = editor;
+      return () => {
+        const ctx = richTextContextRef.current;
+        if (ctx?.activeEditor === ed) {
+          ctx.setActiveEditor(null);
+        }
+      };
+    }, [editor]);
 
     if (!editor) {
       return null;
     }
 
     return (
-      <div className="space-y-2 border rounded-lg overflow-hidden">
-        <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/30">
-          {label}
-        </div>
-        {/* Pasek narzędzi */}
-        <div className="flex flex-wrap items-center gap-1 p-2 bg-muted/50 border-b">
-          <Button
-            type="button"
-            variant={editor.isActive("bold") ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            disabled={!editor.can().chain().focus().toggleBold().run()}
-          >
-            <Bold className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive("italic") ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            disabled={!editor.can().chain().focus().toggleItalic().run()}
-          >
-            <Italic className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive("strike") ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-            disabled={!editor.can().chain().focus().toggleStrike().run()}
-          >
-            <Strikethrough className="h-4 w-4" />
-          </Button>
+      <div
+        className={cn(
+          "space-y-2 border rounded-lg",
+          resizable ? "overflow-x-hidden" : "overflow-hidden",
+        )}
+      >
+        {label ? (
+          <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/30">
+            {label}
+          </div>
+        ) : null}
+        {showToolbar ? (
+          <TripContentEditorToolbar editor={editor} className="border-0 border-b rounded-none" />
+        ) : null}
 
-          <Separator orientation="vertical" className="h-6" />
-
-          <Button
-            type="button"
-            variant={editor.isActive("heading", { level: 1 }) ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-          >
-            <Heading1 className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive("heading", { level: 2 }) ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-          >
-            <Heading2 className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive("heading", { level: 3 }) ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          >
-            <Heading3 className="h-4 w-4" />
-          </Button>
-
-          <Separator orientation="vertical" className="h-6" />
-
-          <Button
-            type="button"
-            variant={editor.isActive("bulletList") ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive("orderedList") ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          >
-            <ListOrdered className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive("blockquote") ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          >
-            <Quote className="h-4 w-4" />
-          </Button>
-
-          <Separator orientation="vertical" className="h-6" />
-
-          <Button
-            type="button"
-            variant={editor.isActive({ textAlign: "left" }) ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().setTextAlign("left").run()}
-          >
-            <AlignLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive({ textAlign: "center" }) ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().setTextAlign("center").run()}
-          >
-            <AlignCenter className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={editor.isActive({ textAlign: "right" }) ? "default" : "ghost"}
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().setTextAlign("right").run()}
-          >
-            <AlignRight className="h-4 w-4" />
-          </Button>
-
-          <Separator orientation="vertical" className="h-6" />
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().undo().run()}
-            disabled={!editor.can().chain().focus().undo().run()}
-          >
-            <Undo className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().redo().run()}
-            disabled={!editor.can().chain().focus().redo().run()}
-          >
-            <Redo className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="max-w-full overflow-x-auto">
+        <div
+          ref={contentContainerRef}
+          className={cn(
+            "max-w-full",
+            useCompactLayout ? "min-h-[52px] overflow-auto" : "overflow-x-auto",
+            useCompactLayout && minHeightClass,
+            useCompactLayout && (maxHeightClass ?? "max-h-96"),
+            resizable && "resize-y",
+          )}
+          style={useCompactLayout ? { minHeight: COMPACT_MIN_HEIGHT_PX } : undefined}
+        >
           <EditorContent editor={editor} />
         </div>
       </div>

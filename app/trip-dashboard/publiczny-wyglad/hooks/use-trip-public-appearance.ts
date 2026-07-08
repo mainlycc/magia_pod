@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
 import { toast } from "sonner"
 import type { AdditionalFieldSection, MiddleSectionId, RightSectionId, TripData } from "../types"
+import { normalizeAdditionalFieldSections } from "../utils/additional-field-section"
 
 export function useTripPublicAppearance() {
   const router = useRouter()
@@ -149,15 +150,17 @@ export function useTripPublicAppearance() {
       
       if (content.additional_fields && Array.isArray(content.additional_fields)) {
         if (content.additional_fields.length > 0 && 'sectionTitle' in content.additional_fields[0]) {
-          setAdditionalFieldSections(content.additional_fields as AdditionalFieldSection[])
+          setAdditionalFieldSections(
+            normalizeAdditionalFieldSections(content.additional_fields as AdditionalFieldSection[]),
+          )
         } else {
           const oldFields = (content.additional_fields as unknown) as Array<{ title: string; value: string }>
           if (oldFields.length > 0) {
-            setAdditionalFieldSections([{
+            setAdditionalFieldSections(normalizeAdditionalFieldSections([{
               id: `section-${Date.now()}`,
               sectionTitle: "Pola dodatkowe",
               fields: oldFields
-            }])
+            }]))
           } else {
             setAdditionalFieldSections([])
           }

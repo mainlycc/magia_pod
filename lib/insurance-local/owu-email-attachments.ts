@@ -5,6 +5,7 @@ import {
   type InsuranceOwuType,
   isValidInsuranceOwuType,
 } from "@/lib/insurance-local/owu-constants";
+import { buildOwuDocumentsMap } from "@/lib/insurance-local/owu-resolve";
 
 export type Base64Attachment = { filename: string; base64: string };
 
@@ -14,17 +15,51 @@ type OwuDocumentRow = {
   display_name: string | null;
 };
 
-function guessOwuPdfFilename(row: OwuDocumentRow): string {
-  const typeLabel = isValidInsuranceOwuType(row.insurance_type)
-    ? INSURANCE_OWU_TYPE_LABELS[row.insurance_type]
-    : `Typ ${row.insurance_type}`;
-  const baseFromStorage =
-    (row.file_name || "").split("/").pop() || row.file_name || "owu-ubezpieczenie.pdf";
+function extractPurchasedVariantIdsByType(
+  rows: ParticipantInsuranceRow[],
+): Map<InsuranceOwuType, string> {
+  const result = new Map<InsuranceOwuType, string>();
+
+  for (const row of rows) {
+    if (row.status === "cancelled") continue;
+
+    const tivArr = Array.isArray(row.trip_insurance_variants)
+      ? row.trip_insurance_variants
+      : row.trip_insurance_variants
+        ? [row.trip_insurance_variants]
+        : [];
+
+    for (const variant of tivArr) {
+      const iv = variant?.insurance_variants;
+      const items = Array.isArray(iv) ? iv : iv ? [iv] : [];
+
+      for (const item of items) {
+        if (item?.type != null && isValidInsuranceOwuType(item.type) && item.id) {
+          if (!result.has(item.type)) {
+            result.set(item.type, item.id);
+          }
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function guessAttachmentFilename(row: {
+  file_name: string;
+  display_name: string | null;
+  insurance_type?: number;
+}): string {
+  const typeLabel =
+    row.insurance_type != null && isValidInsuranceOwuType(row.insurance_type)
+      ? INSURANCE_OWU_TYPE_LABELS[row.insurance_type]
+      : "Ubezpieczenie";
   const base = (row.display_name || "").trim() || `OWU ${typeLabel}`;
   return base.toLowerCase().endsWith(".pdf") ? base : `${base}.pdf`;
 }
 
-type NestedInsuranceVariant = { type?: number | null };
+type NestedInsuranceVariant = { id?: string | null; type?: number | null };
 type TripInsuranceVariantJoin = {
   insurance_variants?: NestedInsuranceVariant | NestedInsuranceVariant[] | null;
 } | null;
@@ -118,7 +153,7 @@ export async function getInsuranceOwuEmailAttachments(params: {
       `
       status,
       trip_insurance_variants (
-        insurance_variants ( type )
+        insurance_variants ( id, type )
       )
     `,
     )
@@ -130,20 +165,49 @@ export async function getInsuranceOwuEmailAttachments(params: {
   }
 
   const purchasedTypes = extractPurchasedInsuranceTypes(participantInsurances || []);
+  const purchasedVariantIdsByType = extractPurchasedVariantIdsByType(participantInsurances || []);
 
   if (purchasedTypes.length === 0) {
     return [];
   }
 
-  const { data: owuDocs, error: owuErr } = await adminClient
-    .from("trip_insurance_owu_documents")
-    .select("insurance_type, file_name, display_name")
-    .eq("trip_id", tripId);
+  const purchasedVariantIds = Array.from(purchasedVariantIdsByType.values());
 
-  if (owuErr) {
-    console.error("[InsuranceOwuEmail] Failed to fetch trip_insurance_owu_documents:", owuErr);
-    return [];
+  const [tripOwuRes, globalOwuRes, variantOwuRes] = await Promise.all([
+    adminClient
+      .from("trip_insurance_owu_documents")
+      .select("insurance_type, file_name, display_name")
+      .eq("trip_id", tripId),
+    adminClient
+      .from("global_insurance_owu_documents")
+      .select("insurance_type, file_name, display_name"),
+    purchasedVariantIds.length > 0
+      ? adminClient
+          .from("insurance_variant_attachments")
+          .select("variant_id, file_name, display_name, attachment_type")
+          .in("variant_id", purchasedVariantIds)
+          .eq("attachment_type", "owu")
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (tripOwuRes.error) {
+    console.error("[InsuranceOwuEmail] Failed to fetch trip_insurance_owu_documents:", tripOwuRes.error);
   }
+  if (globalOwuRes.error) {
+    console.error("[InsuranceOwuEmail] Failed to fetch global_insurance_owu_documents:", globalOwuRes.error);
+  }
+  if (variantOwuRes.error) {
+    console.error("[InsuranceOwuEmail] Failed to fetch insurance_variant_attachments:", variantOwuRes.error);
+  }
+
+  const variantOwuByVariantId = new Map(
+    (variantOwuRes.data || []).map((row) => [row.variant_id as string, row]),
+  );
+
+  const documentsMap = buildOwuDocumentsMap({
+    tripDocs: tripOwuRes.data || [],
+    globalDocs: globalOwuRes.data || [],
+  });
 
   const { data: emailSettingsRows, error: settingsErr } = await adminClient
     .from("trip_insurance_owu_email_settings")
@@ -155,7 +219,7 @@ export async function getInsuranceOwuEmailAttachments(params: {
   }
 
   const documentsByType = new Map<number, OwuDocumentRow>(
-    (owuDocs || []).map((d) => [d.insurance_type, d as OwuDocumentRow]),
+    Array.from(documentsMap.entries()).map(([type, doc]) => [type, doc]),
   );
 
   const attachSettings = new Map<number, boolean>(
@@ -171,7 +235,18 @@ export async function getInsuranceOwuEmailAttachments(params: {
   const attachments: Base64Attachment[] = [];
 
   for (const type of typesToAttach) {
-    const row = documentsByType.get(type);
+    const variantId = purchasedVariantIdsByType.get(type);
+    const variantOwu = variantId ? variantOwuByVariantId.get(variantId) : undefined;
+    const typeOwu = documentsByType.get(type);
+
+    const row = variantOwu?.file_name
+      ? {
+          file_name: variantOwu.file_name,
+          display_name: variantOwu.display_name,
+          insurance_type: type,
+        }
+      : typeOwu;
+
     if (!row?.file_name) continue;
 
     try {
@@ -189,7 +264,7 @@ export async function getInsuranceOwuEmailAttachments(params: {
 
       const arrayBuffer = await fileBlob.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
-      attachments.push({ filename: guessOwuPdfFilename(row), base64 });
+      attachments.push({ filename: guessAttachmentFilename(row), base64 });
     } catch (e) {
       console.error("[InsuranceOwuEmail] Unexpected error downloading OWU:", {
         file: row.file_name,
