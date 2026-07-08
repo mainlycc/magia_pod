@@ -2,24 +2,39 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkInsuranceOwuAdmin } from "@/lib/insurance-local/owu-auth";
-import { isValidInsuranceOwuType } from "@/lib/insurance-local/owu-constants";
+import {
+  buildDefaultOwuEmailSettings,
+  isValidInsuranceOwuType,
+} from "@/lib/insurance-local/owu-constants";
 
 export async function GET() {
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
 
-    const { data, error } = await supabase
-      .from("global_insurance_owu_documents")
-      .select("*")
-      .order("insurance_type");
+    const [docsRes, emailSettingsRes] = await Promise.all([
+      supabase.from("global_insurance_owu_documents").select("*").order("insurance_type"),
+      supabase
+        .from("global_insurance_owu_email_settings")
+        .select("insurance_type, attach_on_reservation"),
+    ]);
 
-    if (error) {
-      console.error("Error fetching global insurance OWU documents:", error);
+    if (docsRes.error) {
+      console.error("Error fetching global insurance OWU documents:", docsRes.error);
       return NextResponse.json({ error: "Failed to fetch documents" }, { status: 500 });
     }
+    if (emailSettingsRes.error) {
+      console.error("Error fetching global insurance OWU email settings:", emailSettingsRes.error);
+    }
 
-    const documents = (data || []).map((doc) => {
+    const emailSettings = buildDefaultOwuEmailSettings();
+    for (const row of emailSettingsRes.data || []) {
+      if (isValidInsuranceOwuType(row.insurance_type)) {
+        emailSettings[row.insurance_type] = row.attach_on_reservation;
+      }
+    }
+
+    const documents = (docsRes.data || []).map((doc) => {
       const {
         data: { publicUrl },
       } = adminClient.storage.from("documents").getPublicUrl(doc.file_name);
@@ -30,7 +45,7 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json(documents);
+    return NextResponse.json({ documents, email_settings: emailSettings });
   } catch (error) {
     console.error("GET /api/insurance-local/owu/global error", error);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });

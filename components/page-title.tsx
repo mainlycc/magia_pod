@@ -19,7 +19,7 @@ const pageTitles: Record<string, string> = {
   "/trip-dashboard/komunikacja-masowa": "Komunikacja masowa",
   "/trip-dashboard/dokumentacja": "Dokumentacja wycieczki",
   "/trip-dashboard/dokumenty": "Dokumenty zgód",
-  "/trip-dashboard/ubezpieczenia-globalne": "Ubezpieczenia globalne",
+  "/trip-dashboard/ubezpieczenia-globalne": "Panel ubezpieczeń",
   "/trip-dashboard/dodaj-wycieczke": "Dodaj wycieczkę",
 }
 

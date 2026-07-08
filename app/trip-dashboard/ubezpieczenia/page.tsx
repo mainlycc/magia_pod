@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useTrip } from "@/contexts/trip-context"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { InsuranceType1 } from "./components/InsuranceType1"
 import { InsuranceType2 } from "./components/InsuranceType2"
 import { InsuranceType3 } from "./components/InsuranceType3"
-import { InsuranceSettings } from "./components/InsuranceSettings"
 
 export default function UbezpieczeniaPage() {
   const { selectedTrip, invalidateTripCache } = useTrip()
@@ -68,8 +68,17 @@ export default function UbezpieczeniaPage() {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-muted-foreground">
-        Wycieczka: <span className="font-medium">{selectedTrip.title}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <div>
+          Wycieczka: <span className="font-medium">{selectedTrip.title}</span>
+        </div>
+        <div>
+          Warianty ubezpieczeń, dokumenty OWU i szablony maili definiujesz w{" "}
+          <Link href="/trip-dashboard/ubezpieczenia-globalne" className="underline font-medium">
+            ustawieniach globalnych
+          </Link>
+          . Tutaj wybierasz warianty dla tej wycieczki i ustalasz ich ceny.
+        </div>
       </div>
 
       <Tabs defaultValue="typ1">
@@ -77,7 +86,6 @@ export default function UbezpieczeniaPage() {
           <TabsTrigger value="typ1">Typ 1 — Podstawowe</TabsTrigger>
           <TabsTrigger value="typ2">Typ 2 — Dodatkowe</TabsTrigger>
           <TabsTrigger value="typ3">Typ 3 — KR</TabsTrigger>
-          <TabsTrigger value="ustawienia">Ustawienia</TabsTrigger>
         </TabsList>
 
         <TabsContent value="typ1" className="mt-6">
@@ -94,10 +102,6 @@ export default function UbezpieczeniaPage() {
 
         <TabsContent value="typ3" className="mt-6">
           <InsuranceType3 key={`typ3-${insuranceDataKey}`} tripId={selectedTrip.id} />
-        </TabsContent>
-
-        <TabsContent value="ustawienia" className="mt-6">
-          <InsuranceSettings />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useMemo } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
 import { createClient } from "@/lib/supabase/client"
@@ -9,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import {
   Table,
   TableBody,
@@ -17,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ChevronDown, Banknote, Loader2, Save, Trash2, FileText } from "lucide-react"
+import { ChevronDown, Banknote, Loader2, Mail, Save, Trash2, FileText, FileDown } from "lucide-react"
 import { toast } from "sonner"
 import {
   getPaymentStatusBadgeClass,
@@ -33,7 +36,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ParticipantAdditionalServicesEditor } from "./participant-additional-services-editor"
+
+// Wartości muszą odpowiadać PARTICIPANT_REPORT_TYPES z lib/reports/participants-report.ts
+// (nie importujemy stamtąd — moduł używa jsPDF/fs i jest przeznaczony na serwer).
+const PARTICIPANT_REPORT_OPTIONS = [
+  { value: "participants_list", label: "Lista uczestników" },
+  { value: "diets", label: "Raport diet" },
+  { value: "attractions", label: "Raport atrakcji" },
+  { value: "documents", label: "Lista uczestników z dokumentami" },
+  { value: "global", label: "Lista globalna (z danymi umowy)" },
+] as const
+
+type ParticipantReportTypeValue = (typeof PARTICIPANT_REPORT_OPTIONS)[number]["value"]
 
 type RequiredFields = {
   pesel?: boolean
@@ -205,7 +226,10 @@ function getAgreementPresentation(agreements: BookingAgreement[]) {
 
 export default function UczestnicyPage() {
   const router = useRouter()
-  const { selectedTrip, tripFullData, isLoadingTripData } = useTrip()
+  const { selectedTrip, tripFullData, isLoadingTripData, role } = useTrip()
+  // Koordynator: tabela tylko do odczytu — bez rozwijania szczegółów,
+  // edycji, wpłat i raportów.
+  const isCoordinator = role === "coordinator"
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
@@ -232,6 +256,73 @@ export default function UczestnicyPage() {
   } | null>(null)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [generatingInvoiceForPaymentId, setGeneratingInvoiceForPaymentId] = useState<string | null>(null)
+  const [generatingReportType, setGeneratingReportType] = useState<ParticipantReportTypeValue | null>(null)
+  // Wiadomość grupowa do uczestników (tak samo jak u koordynatora)
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false)
+  const [messageSubject, setMessageSubject] = useState("")
+  const [messageBody, setMessageBody] = useState("")
+  const [sendingMessage, setSendingMessage] = useState(false)
+
+  const sendGroupMessage = async () => {
+    if (!selectedTrip) return
+    setSendingMessage(true)
+    try {
+      const res = await fetch(`/api/trips/${selectedTrip.id}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: messageSubject, body: messageBody }),
+      })
+      if (!res.ok) {
+        toast.error("Nie udało się wysłać wiadomości")
+        return
+      }
+      toast.success("Wiadomość została wysłana")
+      setMessageDialogOpen(false)
+      setMessageSubject("")
+      setMessageBody("")
+    } catch (e) {
+      console.error(e)
+      toast.error("Nie udało się wysłać wiadomości")
+    } finally {
+      setSendingMessage(false)
+    }
+  }
+
+  const downloadParticipantsReport = async (reportType: ParticipantReportTypeValue) => {
+    if (!selectedTrip) return
+    setGeneratingReportType(reportType)
+    try {
+      const res = await fetch(`/api/trips/${selectedTrip.id}/reports/participants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportType }),
+      })
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null)
+        toast.error(
+          typeof errJson?.error === "string" ? errJson.error : "Nie udało się wygenerować raportu",
+        )
+        return
+      }
+
+      const blob = await res.blob()
+      const disposition = res.headers.get("Content-Disposition")
+      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? `raport-${reportType}.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Raport został pobrany")
+    } catch (e) {
+      console.error(e)
+      toast.error("Błąd pobierania raportu")
+    } finally {
+      setGeneratingReportType(null)
+    }
+  }
 
   useEffect(() => {
     if (!selectedTrip) {
@@ -843,8 +934,60 @@ export default function UczestnicyPage() {
 
       {/* Dolna sekcja - Lista uczestników */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
           <CardTitle>Lista uczestników ({participants.length} os.)</CardTitle>
+          {isCoordinator ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/coord/trips/${selectedTrip.id}/message`}>
+                <Mail className="mr-2 h-4 w-4" />
+                Wyślij wiadomość grupową
+              </Link>
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={participants.length === 0}
+                onClick={() => setMessageDialogOpen(true)}
+              >
+                <Mail className="mr-2 h-4 w-4" />
+                Wyślij wiadomość grupową
+              </Button>
+              <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={participants.length === 0 || generatingReportType !== null}
+                >
+                  {generatingReportType !== null ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generowanie…
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="mr-2 h-4 w-4" />
+                      Generuj raport
+                      <ChevronDown className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {PARTICIPANT_REPORT_OPTIONS.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onClick={() => downloadParticipantsReport(option.value)}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {participants.length === 0 ? (
@@ -867,7 +1010,7 @@ export default function UczestnicyPage() {
                 <TableBody>
                   {sortedParticipants.map((participant) => {
                     const booking = participant.bookings
-                    const isExpanded = expandedRows.has(participant.id)
+                    const isExpanded = !isCoordinator && expandedRows.has(participant.id)
                     const paymentStatus = booking?.payment_status || "unpaid"
                     const paidAmount = getPaidPerParticipantCents(participant)
                     const baseAmount = booking?.trips?.price_cents || 0
@@ -899,8 +1042,9 @@ export default function UczestnicyPage() {
                     return (
                       <React.Fragment key={participant.id}>
                         <TableRow
-                          className="cursor-pointer"
+                          className={cn(!isCoordinator && "cursor-pointer")}
                           onClick={() => {
+                            if (isCoordinator) return
                             if (booking?.id && !isExpanded) {
                               loadPaymentHistory(booking.id)
                             }
@@ -908,18 +1052,20 @@ export default function UczestnicyPage() {
                           }}
                         >
                           <TableCell className="w-[48px]">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                            >
-                              <ChevronDown
-                                className={cn(
-                                  "h-4 w-4 transition-transform",
-                                  isExpanded && "-rotate-90"
-                                )}
-                              />
-                            </Button>
+                            {!isCoordinator && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                              >
+                                <ChevronDown
+                                  className={cn(
+                                    "h-4 w-4 transition-transform",
+                                    isExpanded && "-rotate-90"
+                                  )}
+                                />
+                              </Button>
+                            )}
                           </TableCell>
                           <TableCell>
                             <span className="font-medium truncate block">
@@ -1532,6 +1678,69 @@ export default function UczestnicyPage() {
               disabled={!pendingDelete || !!deletingPaymentId}
             >
               Usuń
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={messageDialogOpen}
+        onOpenChange={(open) => {
+          if (sendingMessage) return
+          setMessageDialogOpen(open)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Wyślij wiadomość grupową</DialogTitle>
+            <DialogDescription>
+              Wiadomość e-mail zostanie wysłana do wszystkich zamawiających w tej wycieczce.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="group-message-subject">Temat</Label>
+              <Input
+                id="group-message-subject"
+                value={messageSubject}
+                onChange={(e) => setMessageSubject(e.target.value)}
+                disabled={sendingMessage}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="group-message-body">Wiadomość</Label>
+              <Textarea
+                id="group-message-body"
+                value={messageBody}
+                onChange={(e) => setMessageBody(e.target.value)}
+                rows={8}
+                disabled={sendingMessage}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMessageDialogOpen(false)}
+              disabled={sendingMessage}
+            >
+              Anuluj
+            </Button>
+            <Button
+              disabled={sendingMessage || !messageSubject.trim() || !messageBody.trim()}
+              onClick={sendGroupMessage}
+            >
+              {sendingMessage ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Wysyłanie…
+                </>
+              ) : (
+                <>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Wyślij
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

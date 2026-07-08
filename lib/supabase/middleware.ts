@@ -95,10 +95,11 @@ export async function updateSession(request: NextRequest) {
     return redirectResponse;
   }
 
-  // RBAC: coordinator area
+  // RBAC: coordinator area + trip-dashboard restrictions
   const requiresCoordinator = path.startsWith("/coord");
+  const isTripDashboard = path.startsWith("/trip-dashboard");
 
-  if (user && requiresCoordinator) {
+  if (user && (requiresCoordinator || isTripDashboard)) {
     // Fetch profile to check role
     const { data: profileRes } = await fetch(`${request.nextUrl.origin}/api/profile`, {
       headers: { cookie: request.headers.get("cookie") ?? "" },
@@ -115,6 +116,25 @@ export async function updateSession(request: NextRequest) {
         redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
       });
       return redirectResponse;
+    }
+
+    // Koordynator w /trip-dashboard ma dostęp wyłącznie do 2 zakładek:
+    // "Publiczny wygląd" i "Uczestnicy". Reszta (w tym root) → redirect.
+    if (isTripDashboard && role === "coordinator") {
+      // Dokładne ścieżki — podstrony (np. /uczestnicy/[id] ze szczegółami) też są zablokowane.
+      const coordinatorAllowed =
+        path === "/trip-dashboard/publiczny-wyglad" ||
+        path === "/trip-dashboard/uczestnicy";
+
+      if (!coordinatorAllowed) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/trip-dashboard/uczestnicy";
+        const redirectResponse = NextResponse.redirect(url);
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+          redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+        });
+        return redirectResponse;
+      }
     }
   }
 

@@ -95,11 +95,16 @@ export type TripContentData = {
   public_hidden_additional_sections: string[] | null
 }
 
+export type UserRole = "admin" | "coordinator" | null
+
 type TripContextType = {
   selectedTrip: Trip | null
   setSelectedTrip: (trip: Trip | null) => void
   trips: Trip[]
   setTrips: (trips: Trip[]) => void
+  // Rola zalogowanego użytkownika (null dopóki nie załadowana)
+  role: UserRole
+  isRoleLoaded: boolean
   // Cache pełnych danych
   tripFullData: TripFullData | null
   tripContentData: TripContentData | null
@@ -145,6 +150,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // bo to powoduje hydration mismatch (serwer renderuje null, klient renderuje zapisany trip).
   const [selectedTrip, setSelectedTripState] = React.useState<Trip | null>(null)
   const [trips, setTrips] = React.useState<Trip[]>([])
+  const [role, setRole] = React.useState<UserRole>(null)
+  const [isRoleLoaded, setIsRoleLoaded] = React.useState(false)
   const selectedTripRef = React.useRef<Trip | null>(selectedTrip)
   
   // Cache pełnych danych wycieczki
@@ -251,10 +258,42 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       } = await supabase.auth.getSession()
       const userId = session?.user?.id ?? null
 
+      // Pobierz profil (rola + przypisane wyjazdy) zanim pokażemy listę,
+      // żeby koordynator ani przez moment nie widział cudzych wycieczek.
+      let userRole: UserRole = null
+      let allowedTripIds: string[] | null = null
+      if (userId) {
+        try {
+          const res = await fetch("/api/profile")
+          if (res.ok) {
+            const profile = (await res.json()) as {
+              role?: string
+              allowed_trip_ids?: string[] | null
+            }
+            userRole =
+              profile.role === "admin" || profile.role === "coordinator"
+                ? profile.role
+                : null
+            allowedTripIds = profile.allowed_trip_ids ?? null
+          }
+        } catch {
+          // brak profilu — traktujemy jak brak roli
+        }
+      }
+      if (cancelled) return
+      setRole(userRole)
+      setIsRoleLoaded(true)
+
+      const filterByRole = (list: Trip[]): Trip[] => {
+        if (userRole !== "coordinator") return list
+        const allowed = new Set((allowedTripIds ?? []).map(String))
+        return list.filter((t) => allowed.has(String(t.id)))
+      }
+
       if (!cancelled && userId) {
         const cached = readTripsListCache(userId)
         if (cached && cached.length > 0) {
-          const list = cached as Trip[]
+          const list = filterByRole(cached as Trip[])
           setTrips(list)
           const tripToSelect = pickTripFromList(list, selectedTripRef.current)
           if (tripToSelect) {
@@ -280,9 +319,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
           writeTripsListCache(userId, data as TripsListCacheTrip[])
         }
 
-        setTrips(data as Trip[])
+        const filtered = filterByRole(data as Trip[])
+        setTrips(filtered)
 
-        const tripToSelect = pickTripFromList(data as Trip[], selectedTripRef.current)
+        const tripToSelect = pickTripFromList(filtered, selectedTripRef.current)
 
         if (tripToSelect) {
           const sameAsCurrent = selectedTripRef.current?.id === tripToSelect.id
@@ -323,6 +363,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         setSelectedTrip,
         trips,
         setTrips,
+        role,
+        isRoleLoaded,
         tripFullData,
         tripContentData,
         isLoadingTripData,

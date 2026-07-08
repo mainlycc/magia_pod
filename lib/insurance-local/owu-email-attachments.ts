@@ -209,22 +209,34 @@ export async function getInsuranceOwuEmailAttachments(params: {
     globalDocs: globalOwuRes.data || [],
   });
 
-  const { data: emailSettingsRows, error: settingsErr } = await adminClient
-    .from("trip_insurance_owu_email_settings")
-    .select("insurance_type, attach_on_reservation")
-    .eq("trip_id", tripId);
+  const [tripSettingsRes, globalSettingsRes] = await Promise.all([
+    adminClient
+      .from("trip_insurance_owu_email_settings")
+      .select("insurance_type, attach_on_reservation")
+      .eq("trip_id", tripId),
+    adminClient
+      .from("global_insurance_owu_email_settings")
+      .select("insurance_type, attach_on_reservation"),
+  ]);
 
-  if (settingsErr) {
-    console.error("[InsuranceOwuEmail] Failed to fetch trip_insurance_owu_email_settings:", settingsErr);
+  if (tripSettingsRes.error) {
+    console.error("[InsuranceOwuEmail] Failed to fetch trip_insurance_owu_email_settings:", tripSettingsRes.error);
+  }
+  if (globalSettingsRes.error) {
+    console.error("[InsuranceOwuEmail] Failed to fetch global_insurance_owu_email_settings:", globalSettingsRes.error);
   }
 
   const documentsByType = new Map<number, OwuDocumentRow>(
     Array.from(documentsMap.entries()).map(([type, doc]) => [type, doc]),
   );
 
+  // Ustawienia globalne jako baza, ewentualne ustawienia per wycieczka nadpisują.
   const attachSettings = new Map<number, boolean>(
-    (emailSettingsRows || []).map((row) => [row.insurance_type, row.attach_on_reservation]),
+    (globalSettingsRes.data || []).map((row) => [row.insurance_type, row.attach_on_reservation]),
   );
+  for (const row of tripSettingsRes.data || []) {
+    attachSettings.set(row.insurance_type, row.attach_on_reservation);
+  }
 
   const typesToAttach = resolveOwuTypesToAttach({
     purchasedTypes,

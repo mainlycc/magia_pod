@@ -19,6 +19,50 @@ import { AdditionalCostsCard } from "./components/additional-costs-card"
 import { AdditionalServiceCard } from "./components/additional-service-card"
 import { RichTextEditorProvider } from "@/components/trip-content-editor-context"
 import { PinnedSharedTripContentToolbar } from "@/components/trip-content-editor-toolbar"
+import { useTrip } from "@/contexts/trip-context"
+import { ExternalLink } from "lucide-react"
+
+/** Podgląd publicznej strony wycieczki dla koordynatora — bez możliwości edycji. */
+function CoordinatorPublicPreview() {
+  const { selectedTrip } = useTrip()
+
+  if (!selectedTrip) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Card>
+          <CardHeader>
+            <CardTitle>Wybierz wycieczkę</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  const publicUrl = `/trip/${selectedTrip.slug}`
+
+  return (
+    <div className="flex flex-col gap-3 h-full min-h-0">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          Podgląd publicznej strony wycieczki (tylko do odczytu).
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <a href={publicUrl} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Otwórz w nowej karcie
+          </a>
+        </Button>
+      </div>
+      <div className="flex-1 min-h-[70vh] rounded-lg border overflow-hidden">
+        <iframe
+          src={publicUrl}
+          title={`Podgląd: ${selectedTrip.title}`}
+          className="w-full h-full min-h-[70vh]"
+        />
+      </div>
+    </div>
+  )
+}
 
 function PublicznyWygladContent() {
   const {
@@ -328,6 +372,20 @@ function PublicznyWygladContent() {
 }
 
 export default function PublicznyWygladPage() {
+  const { role, isRoleLoaded } = useTrip()
+
+  if (!isRoleLoaded) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (role === "coordinator") {
+    return <CoordinatorPublicPreview />
+  }
+
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center h-full">

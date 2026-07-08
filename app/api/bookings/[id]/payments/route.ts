@@ -16,6 +16,23 @@ const deleteSchema = z.object({
   payment_id: z.string().uuid(),
 });
 
+// Modyfikacja wpłat tylko dla admina — koordynator ma dostęp wyłącznie do odczytu.
+async function checkAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<boolean> {
+  const { data: claims } = await supabase.auth.getClaims();
+  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
+  if (!userId) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  return profile?.role === "admin";
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -72,6 +89,10 @@ export async function POST(
   }
 
   const supabase = await createClient();
+
+  if (!(await checkAdmin(supabase))) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
 
   // Sprawdź czy rezerwacja istnieje
   const { data: booking, error: bookingError } = await supabase
@@ -148,6 +169,10 @@ export async function DELETE(
   }
 
   const supabase = await createClient();
+
+  if (!(await checkAdmin(supabase))) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
 
   // Upewnij się, że booking istnieje i pobierz dane do przeliczeń
   const { data: booking, error: bookingError } = await supabase

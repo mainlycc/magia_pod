@@ -39,8 +39,9 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
     email: string
     avatar: string
   } | null>(null)
-  const { selectedTrip, setSelectedTrip, trips } = useTrip()
+  const { selectedTrip, setSelectedTrip, trips, role, isRoleLoaded } = useTrip()
   const pathname = usePathname()
+  const isCoordinator = role === "coordinator"
 
   React.useEffect(() => {
     const loadUserData = async () => {
@@ -81,7 +82,12 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
     return pathname?.startsWith(url)
   }
 
-  const tripNavItems = [
+  const coordinatorAllowedUrls = [
+    "/trip-dashboard/publiczny-wyglad",
+    "/trip-dashboard/uczestnicy",
+  ]
+
+  const allTripNavItems = [
     {
       title: "Informacje ogólne",
       url: "/trip-dashboard/informacje",
@@ -125,6 +131,10 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
     },
   ]
 
+  const tripNavItems = isCoordinator
+    ? allTripNavItems.filter((item) => coordinatorAllowedUrls.includes(item.url))
+    : allTripNavItems
+
   const globalNavItems = [
     {
       title: "Dodaj wycieczkę",
@@ -147,7 +157,7 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconFileText,
     },
     {
-      title: "Ubezpieczenia",
+      title: "Panel ubezpieczeń",
       url: "/trip-dashboard/ubezpieczenia-globalne",
       icon: IconShieldCheck,
     },
@@ -204,21 +214,29 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavSimple
-          items={tripNavItems.map((item) => ({
-            ...item,
-            isActive: isActive(item.url),
-          }))}
-          label="Wycieczka"
-        />
-        <SidebarSeparator />
-        <NavSimple
-          items={globalNavItems.map((item) => ({
-            ...item,
-            isActive: isActive(item.url),
-          }))}
-          label="Globalne ustawienia"
-        />
+        {/* Menu renderujemy dopiero po ustaleniu roli, żeby koordynator nie widział
+            przez moment pełnej listy zakładek. */}
+        {isRoleLoaded && (
+          <NavSimple
+            items={tripNavItems.map((item) => ({
+              ...item,
+              isActive: isActive(item.url),
+            }))}
+            label="Wycieczka"
+          />
+        )}
+        {isRoleLoaded && !isCoordinator && (
+          <>
+            <SidebarSeparator />
+            <NavSimple
+              items={globalNavItems.map((item) => ({
+                ...item,
+                isActive: isActive(item.url),
+              }))}
+              label="Globalne ustawienia"
+            />
+          </>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={displayUser} />

@@ -9,6 +9,7 @@ import type { EmailTemplate } from "../ubezpieczenia/types"
 import type { ManagedInsuranceVariant } from "./types"
 import { VariantsManager } from "./components/variants-manager"
 import { EmailTemplatesManager } from "./components/email-templates-manager"
+import { GlobalOwuManager } from "./components/global-owu-manager"
 
 export default function GlobalneUbezpieczeniaPage() {
   const [variants, setVariants] = useState<ManagedInsuranceVariant[]>([])
@@ -72,11 +73,16 @@ export default function GlobalneUbezpieczeniaPage() {
       <Tabs defaultValue="variants">
         <TabsList>
           <TabsTrigger value="variants">Warianty ubezpieczeń</TabsTrigger>
+          <TabsTrigger value="owu">Dokumenty OWU</TabsTrigger>
           <TabsTrigger value="templates">Szablony wiadomości</TabsTrigger>
         </TabsList>
 
         <TabsContent value="variants" className="mt-6">
           <VariantsManager variants={variants} onRefresh={handleRefresh} />
+        </TabsContent>
+
+        <TabsContent value="owu" className="mt-6">
+          <GlobalOwuManager />
         </TabsContent>
 
         <TabsContent value="templates" className="mt-6">
