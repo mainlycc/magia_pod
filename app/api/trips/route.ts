@@ -178,7 +178,12 @@ export async function POST(req: Request) {
     }
 
     if (data?.id) {
-      await seedDefaultInsuranceForTrip(supabase, data.id);
+      // Błąd zasiewania domyślnych ubezpieczeń nie może blokować utworzenia wycieczki
+      try {
+        await seedDefaultInsuranceForTrip(supabase, data.id);
+      } catch (seedErr) {
+        console.error("seedDefaultInsuranceForTrip failed:", seedErr);
+      }
     }
     
     return NextResponse.json({ ok: true, id: data?.id, slug: data?.slug });

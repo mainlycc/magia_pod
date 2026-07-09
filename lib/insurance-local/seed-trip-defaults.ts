@@ -1,16 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { syncFormExtraInsurancesForTrip } from "@/lib/insurance-local/sync-form-extra-insurances";
 
+type VariantInfo = {
+  id: string;
+  type: number;
+  is_active: boolean;
+};
+
 type DefaultRow = {
   variant_id: string;
   price_grosz: number | null;
   is_enabled: boolean;
-  insurance_variants: {
-    id: string;
-    type: number;
-    is_active: boolean;
-  }[] | null;
+  // Supabase przy relacji many-to-one zwraca pojedynczy obiekt,
+  // ale zależnie od konfiguracji FK może też zwrócić tablicę.
+  insurance_variants: VariantInfo | VariantInfo[] | null;
 };
+
+function toVariantArray(raw: DefaultRow["insurance_variants"]): VariantInfo[] {
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
 
 /**
  * Przypisuje domyślne warianty ubezpieczeń do nowo utworzonej wycieczki
@@ -40,7 +49,7 @@ export async function seedDefaultInsuranceForTrip(
   }
 
   const rows = ((defaults ?? []) as unknown as DefaultRow[]).filter((row) =>
-    row.insurance_variants?.some((v) => v.is_active),
+    toVariantArray(row.insurance_variants).some((v) => v.is_active),
   );
 
   if (rows.length === 0) {
