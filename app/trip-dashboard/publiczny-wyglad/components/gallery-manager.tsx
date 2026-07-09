@@ -45,7 +45,7 @@ export function GalleryManager({
       <CardContent className="space-y-4 pt-2">
         <div className="grid grid-cols-2 gap-2">
           <div
-            className="col-span-2 relative rounded-xl overflow-hidden group h-[200px] border-2 border-dashed border-muted-foreground/20"
+            className="col-span-2 relative rounded-xl overflow-hidden group h-[200px] border-2 border-dashed border-muted-foreground/20 cursor-grab active:cursor-grabbing"
             draggable={!!galleryUrls[0] && galleryUrls.length > 1}
             onDragStart={(e) => {
               if (!galleryUrls[0]) return
@@ -106,7 +106,7 @@ export function GalleryManager({
             return (
               <div
                 key={index}
-                className="relative rounded-lg overflow-hidden border-2 border-dashed border-muted-foreground/20 h-[100px] group"
+                className="relative rounded-lg overflow-hidden border-2 border-dashed border-muted-foreground/20 h-[100px] group cursor-grab active:cursor-grabbing"
                 draggable={!!url}
                 onDragStart={(e) => {
                   if (!url) return

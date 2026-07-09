@@ -214,3 +214,16 @@ input[type="password"]::-ms-clear {
 .ProseMirror:focus {
   outline: none;
 }
+
+/* Na Windows systemowy kursor tekstowy (I-beam) bywa renderowany przez
+   Chromium jako niewidoczny (znany bug przy powiększonym wskaźniku /
+   skalowaniu ekranu). Wymuszamy zwykłą strzałkę nad polami edycji,
+   żeby kursor był zawsze widoczny. */
+input,
+textarea,
+select,
+[contenteditable="true"],
+.ProseMirror,
+.ProseMirror * {
+  cursor: default !important;
+}
