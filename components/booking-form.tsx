@@ -1070,6 +1070,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                 seats_reserved: fullTripData.seats_reserved,
                 is_active: fullTripData.is_active,
                 category: null,
+                territorial_scope: null,
+                country: null,
                 location: fullTripData.location,
                 transport_mode: fullTripData.transport_mode ?? null,
                 airport_codes: fullTripData.airport_codes ?? null,

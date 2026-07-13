@@ -138,7 +138,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const tmRaw = typeof transport_mode === "string" ? transport_mode.trim() : "";
+    const tmRaw = typeof transport_mode === "string" ? transport_mode.trim().toUpperCase() : "";
     const transportModeResolved =
       tmRaw && (TRIP_TRANSPORT_OPTIONS as readonly string[]).includes(tmRaw)
         ? tmRaw

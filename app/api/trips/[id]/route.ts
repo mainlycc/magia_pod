@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
+import { TRIP_TERRITORIAL_SCOPES } from "@/lib/trip-territorial-scope";
 import { canManageTrip } from "@/lib/trips/can-manage-trip";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
@@ -34,7 +35,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     console.log("Is admin:", isAdmin, "canManage:", canManage);
 
     const selectCols =
-      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
+      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,territorial_scope,country,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
 
     let data: Record<string, unknown> | null = null;
     let error: { message: string } | null = null;
@@ -82,6 +83,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       price_cents: number;
       seats_total: number;
       category: string;
+      territorial_scope: string;
+      country: string;
       location: string;
       transport_mode: string | null;
       airport_codes: string | null;
@@ -110,11 +113,26 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if ("price_cents" in body) payload.price_cents = body.price_cents;
     if ("seats_total" in body) payload.seats_total = body.seats_total;
     if ("category" in body) payload.category = body.category ?? null;
+    if ("territorial_scope" in body) {
+      const ts =
+        typeof body.territorial_scope === "string"
+          ? body.territorial_scope.trim().toUpperCase()
+          : "";
+      payload.territorial_scope =
+        ts && (TRIP_TERRITORIAL_SCOPES as readonly string[]).includes(ts)
+          ? ts
+          : null;
+    }
+    if ("country" in body)
+      payload.country =
+        typeof body.country === "string" && body.country.trim()
+          ? body.country.trim()
+          : null;
     if ("location" in body) payload.location = body.location ?? null;
     if ("transport_mode" in body) {
       const tm =
         typeof body.transport_mode === "string"
-          ? body.transport_mode.trim()
+          ? body.transport_mode.trim().toUpperCase()
           : "";
       payload.transport_mode =
         tm && (TRIP_TRANSPORT_OPTIONS as readonly string[]).includes(tm)

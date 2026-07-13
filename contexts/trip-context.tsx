@@ -36,6 +36,8 @@ export type TripFullData = {
   seats_reserved: number | null
   is_active: boolean | null
   category: string | null
+  territorial_scope: string | null
+  country: string | null
   location: string | null
   transport_mode: string | null
   airport_codes: string | null

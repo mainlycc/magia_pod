@@ -21,17 +21,16 @@ import { useTrip } from "@/contexts/trip-context"
 
 import { NavSimple } from "@/components/nav-simple"
 import { NavUser } from "@/components/nav-user"
+import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 
 export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [userData, setUserData] = React.useState<{
@@ -39,7 +38,7 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
     email: string
     avatar: string
   } | null>(null)
-  const { selectedTrip, setSelectedTrip, trips, role, isRoleLoaded } = useTrip()
+  const { role, isRoleLoaded } = useTrip()
   const pathname = usePathname()
   const isCoordinator = role === "coordinator"
 
@@ -94,30 +93,19 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconSettings,
     },
     {
+      title: "Publiczny wygląd",
+      url: "/trip-dashboard/publiczny-wyglad",
+      icon: IconEdit,
+    },
+    {
       title: "Formularz",
       url: "/trip-dashboard/informacje/formularz",
       icon: IconFileDescription,
     },
     {
-      title: "Publiczny wygląd",
-      url: "/trip-dashboard/publiczny-wyglad",
-      icon: IconEdit,
-    },
-    
-    {
-      title: "Uczestnicy",
-      url: "/trip-dashboard/uczestnicy",
-      icon: IconUsers,
-    },
-    {
       title: "Wzór umowy",
       url: "/trip-dashboard/umowa",
       icon: IconFileText,
-    },
-    {
-      title: "Faktury",
-      url: "/trip-dashboard/faktury",
-      icon: IconReceipt,
     },
     {
       title: "Ubezpieczenia",
@@ -128,6 +116,16 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       title: "Dokumentacja",
       url: "/trip-dashboard/dokumentacja",
       icon: IconFileText,
+    },
+    {
+      title: "Uczestnicy",
+      url: "/trip-dashboard/uczestnicy",
+      icon: IconUsers,
+    },
+    {
+      title: "Faktury",
+      url: "/trip-dashboard/faktury",
+      icon: IconReceipt,
     },
   ]
 
@@ -181,37 +179,8 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </Link>
             </div>
           </SidebarMenuItem>
-          <SidebarMenuItem>
-            <div className="flex w-full items-center px-2 pb-2 min-w-0 max-w-full overflow-hidden">
-              <div
-                className="flex-1 min-w-0 max-w-full overflow-hidden"
-                style={{ width: 0 }}
-              >
-                <NativeSelect
-                  size="default"
-                  className="w-full max-w-full text-sm font-semibold"
-                  value={selectedTrip?.id || ""}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    const trip = trips.find((t) => t.id === value)
-                    if (trip) {
-                      setSelectedTrip(trip)
-                    }
-                  }}
-                >
-                  <NativeSelectOption value="">
-                    Wybierz wycieczkę
-                  </NativeSelectOption>
-                  {trips.map((trip) => (
-                    <NativeSelectOption key={trip.id} value={trip.id}>
-                      {trip.title}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </div>
-            </div>
-          </SidebarMenuItem>
         </SidebarMenu>
+        <TeamSwitcher />
       </SidebarHeader>
       <SidebarContent>
         {/* Menu renderujemy dopiero po ustaleniu roli, żeby koordynator nie widział

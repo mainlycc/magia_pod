@@ -21,10 +21,11 @@ import { X } from "lucide-react"
 import { PaymentScheduleEditor } from "@/components/payment-schedule-editor"
 import { PaymentScheduleItem } from "@/contexts/trip-context"
 import {
-  TRIP_CLASS_CATEGORIES,
-  TRIP_CATEGORY_NONE,
-  TRIP_CLASS_CATEGORY_OPTIONS,
-} from "@/lib/trip-class-categories"
+  TERRITORIAL_SCOPE_NONE,
+  TRIP_TERRITORIAL_SCOPE_OPTIONS,
+  normalizeTerritorialScope,
+  territorialScopeToApi,
+} from "@/lib/trip-territorial-scope"
 import {
   TRIP_TRANSPORT_OPTIONS,
   TRANSPORT_NONE,
@@ -32,6 +33,7 @@ import {
   transportModeToApi,
 } from "@/lib/trip-transport"
 import { DatePicker } from "@/components/ui/date-picker"
+import { CountryCombobox } from "@/components/ui/country-combobox"
 import { getDefaultPaymentDueDates } from "@/lib/utils/payment-calculator"
 
 type Coordinator = {
@@ -57,7 +59,7 @@ export default function TripGeneralInfoPage() {
   const [location, setLocation] = useState("")
   const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
   const [airportCodes, setAirportCodes] = useState("")
-  const [tripCategory, setTripCategory] = useState<string>(TRIP_CATEGORY_NONE)
+  const [territorialScope, setTerritorialScope] = useState<string>(TERRITORIAL_SCOPE_NONE)
   const [roomType, setRoomType] = useState("")
   const [mealsInfo, setMealsInfo] = useState("")
   const [transferInfo, setTransferInfo] = useState("")
@@ -69,7 +71,6 @@ export default function TripGeneralInfoPage() {
   const [availableCoordinators, setAvailableCoordinators] = useState<
     Coordinator[]
   >([])
-  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("")
   const [loadingCoordinators, setLoadingCoordinators] = useState(true)
 
   // Użyj cache'owanych danych z kontekstu
@@ -111,14 +112,7 @@ export default function TripGeneralInfoPage() {
       setLocation(trip.location || "")
       setTransportMode(normalizeTransportMode(trip.transport_mode))
       setAirportCodes(trip.airport_codes || "")
-      {
-        const c = trip.category?.trim() ?? ""
-        setTripCategory(
-          (TRIP_CLASS_CATEGORIES as readonly string[]).includes(c)
-            ? c
-            : TRIP_CATEGORY_NONE
-        )
-      }
+      setTerritorialScope(normalizeTerritorialScope(trip.territorial_scope))
       if (tripContentData) {
         setRoomType(tripContentData.agreement_room_type || "")
         setMealsInfo(tripContentData.agreement_meals_info || "")
@@ -230,10 +224,7 @@ export default function TripGeneralInfoPage() {
           location: location || null,
           transport_mode: transportModeToApi(transportMode),
           airport_codes: airportCodes.trim() ? airportCodes.trim() : null,
-          category:
-            tripCategory === TRIP_CATEGORY_NONE || !tripCategory.trim()
-              ? null
-              : tripCategory,
+          territorial_scope: territorialScopeToApi(territorialScope),
           payment_schedule: paymentSchedule,
           payment_reminder_enabled: paymentReminderEnabled,
           payment_reminder_days_before: paymentReminderEnabled
@@ -299,23 +290,21 @@ export default function TripGeneralInfoPage() {
     (c) => !coordinators.some((assigned) => assigned.id === c.id)
   )
 
-  const assignCoordinator = async () => {
-    if (!selectedCoordinatorId || !selectedTrip) return
+  const assignCoordinator = async (coordinatorId: string) => {
+    if (!coordinatorId || !selectedTrip) return
 
     try {
       const res = await fetch(`/api/trips/${selectedTrip.id}/coordinators`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          coordinator_id: selectedCoordinatorId,
+          coordinator_id: coordinatorId,
           action: "assign",
         }),
       })
 
       if (res.ok) {
         toast.success("Koordynator został przypisany")
-        setSelectedCoordinatorId("")
-        // odśwież listę przypisanych
         const assignedRes = await fetch(
           `/api/trips/${selectedTrip.id}/coordinators`
         )
@@ -412,16 +401,6 @@ export default function TripGeneralInfoPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <Label className="text-xs">Trasa/Kraj</Label>
-                  <Input
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="np. Islandia"
-                    className="h-8 text-xs"
-                  />
-                </div>
-
-                <div className="grid gap-1">
                   <Label className="text-xs">Środek transportu</Label>
                   <Select
                     value={transportMode}
@@ -431,7 +410,6 @@ export default function TripGeneralInfoPage() {
                       <SelectValue placeholder="Wybierz" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={TRANSPORT_NONE}>Brak</SelectItem>
                       {TRIP_TRANSPORT_OPTIONS.map((mode) => (
                         <SelectItem key={mode} value={mode}>
                           {mode}
@@ -482,25 +460,34 @@ export default function TripGeneralInfoPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <Label className="text-xs">Kategoria wycieczki</Label>
+                  <Label className="text-xs">Zakres terytorialny</Label>
                   <Select
-                    value={tripCategory}
-                    onValueChange={setTripCategory}
+                    value={territorialScope}
+                    onValueChange={setTerritorialScope}
                   >
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Wybierz kategorię" />
+                      <SelectValue placeholder="Wybierz zakres" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={TRIP_CATEGORY_NONE}>
+                      <SelectItem value={TERRITORIAL_SCOPE_NONE}>
                         Brak
                       </SelectItem>
-                      {TRIP_CLASS_CATEGORY_OPTIONS.map((opt) => (
+                      {TRIP_TERRITORIAL_SCOPE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Kraj</Label>
+                  <CountryCombobox
+                    value={location}
+                    onChange={setLocation}
+                    placeholder="np. Islandia"
+                  />
                 </div>
 
                 <div className="grid gap-1">
@@ -605,37 +592,27 @@ export default function TripGeneralInfoPage() {
                     )}
 
                     {unassignedCoordinators.length > 0 && (
-                      <div className="flex gap-1.5 items-end w-1/2">
-                        <div className="flex-1 grid gap-1">
-                          <Label className="text-xs">Przypisz koordynatora</Label>
-                          <Select
-                            value={selectedCoordinatorId}
-                            onValueChange={setSelectedCoordinatorId}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Wybierz koordynatora" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {unassignedCoordinators.map((coordinator) => (
-                                <SelectItem
-                                  key={coordinator.id}
-                                  value={coordinator.id}
-                                >
-                                  {coordinator.full_name ||
-                                    "Brak imienia i nazwiska"}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button
-                          onClick={assignCoordinator}
-                          disabled={!selectedCoordinatorId}
-                          size="sm"
-                          className="h-8 text-xs"
+                      <div className="grid gap-1 w-1/2">
+                        <Label className="text-xs">Przypisz koordynatora</Label>
+                        <Select
+                          key={`coord-select-${coordinators.length}`}
+                          onValueChange={(value) => void assignCoordinator(value)}
                         >
-                          Przypisz
-                        </Button>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Wybierz koordynatora" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {unassignedCoordinators.map((coordinator) => (
+                              <SelectItem
+                                key={coordinator.id}
+                                value={coordinator.id}
+                              >
+                                {coordinator.full_name ||
+                                  "Brak imienia i nazwiska"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     )}
 

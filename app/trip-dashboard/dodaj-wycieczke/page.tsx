@@ -408,7 +408,6 @@ export default function DodajWycieczkePage() {
                   <SelectValue placeholder="Wybierz" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={TRANSPORT_NONE}>Brak</SelectItem>
                   {TRIP_TRANSPORT_OPTIONS.map((mode) => (
                     <SelectItem key={mode} value={mode}>
                       {mode}

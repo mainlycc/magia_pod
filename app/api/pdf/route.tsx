@@ -277,6 +277,8 @@ function buildTripFullDataFromTripRow(tripRow: any): TripFullData {
     seats_reserved: typeof tripRow.seats_reserved === "number" ? tripRow.seats_reserved : null,
     is_active: typeof tripRow.is_active === "boolean" ? tripRow.is_active : null,
     category: tripRow.category ?? null,
+    territorial_scope: tripRow.territorial_scope ?? null,
+    country: tripRow.country ?? null,
     location: tripRow.location ?? null,
     transport_mode: tripRow.transport_mode ?? null,
     airport_codes: tripRow.airport_codes ?? null,
