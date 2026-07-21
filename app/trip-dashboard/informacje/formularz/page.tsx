@@ -262,7 +262,21 @@ function TripFormContent() {
             is_active: true,
             is_public: step1Data.isPublic,
             public_slug: effectivePublicSlug || null,
-            location: step1Data.location || null,
+            territorial_scope: step1Data.territorialScope || null,
+            country: step1Data.country || null,
+            locality: step1Data.locality || null,
+            territorial_scope_2: step1Data.territorialScope2 || null,
+            country_2: step1Data.country2 || null,
+            locality_2: step1Data.locality2 || null,
+            location:
+              [
+                [step1Data.locality, step1Data.country].filter(Boolean).join(", "),
+                [step1Data.locality2, step1Data.country2].filter(Boolean).join(", "),
+              ]
+                .filter(Boolean)
+                .join(" / ") ||
+              step1Data.location ||
+              null,
             transport_mode: transportModeToApi(
               typeof step1Data.transportMode === "string"
                 ? step1Data.transportMode

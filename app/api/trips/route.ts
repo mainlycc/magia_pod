@@ -60,6 +60,12 @@ export async function POST(req: Request) {
       is_active,
       category,
       location,
+      country,
+      locality,
+      territorial_scope,
+      territorial_scope_2,
+      country_2,
+      locality_2,
       is_public,
       public_slug,
       registration_mode,
@@ -159,6 +165,28 @@ export async function POST(req: Request) {
         public_slug: public_slug ?? null,
         category: category ?? null,
         location: location ?? null,
+        territorial_scope:
+          typeof territorial_scope === "string" && territorial_scope.trim()
+            ? territorial_scope.trim().toUpperCase()
+            : null,
+        country:
+          typeof country === "string" && country.trim() ? country.trim() : null,
+        locality:
+          typeof locality === "string" && locality.trim()
+            ? locality.trim()
+            : null,
+        territorial_scope_2:
+          typeof territorial_scope_2 === "string" && territorial_scope_2.trim()
+            ? territorial_scope_2.trim().toUpperCase()
+            : null,
+        country_2:
+          typeof country_2 === "string" && country_2.trim()
+            ? country_2.trim()
+            : null,
+        locality_2:
+          typeof locality_2 === "string" && locality_2.trim()
+            ? locality_2.trim()
+            : null,
         registration_mode: registration_mode ?? "both",
         require_pesel: typeof require_pesel === "boolean" ? require_pesel : true,
         company_participants_info: company_participants_info ?? null,

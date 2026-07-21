@@ -34,6 +34,7 @@ import {
 } from "@/lib/trip-transport"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CountryCombobox } from "@/components/ui/country-combobox"
+import { AirportCombobox } from "@/components/ui/airport-combobox"
 import { getDefaultPaymentDueDates } from "@/lib/utils/payment-calculator"
 
 type Coordinator = {
@@ -56,7 +57,12 @@ export default function TripGeneralInfoPage() {
   const [endDate, setEndDate] = useState("")
   const [price, setPrice] = useState("")
   const [seatsTotal, setSeatsTotal] = useState("")
-  const [location, setLocation] = useState("")
+  const [country, setCountry] = useState("")
+  const [locality, setLocality] = useState("")
+  const [hasSecondLocation, setHasSecondLocation] = useState(false)
+  const [territorialScope2, setTerritorialScope2] = useState<string>(TERRITORIAL_SCOPE_NONE)
+  const [country2, setCountry2] = useState("")
+  const [locality2, setLocality2] = useState("")
   const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
   const [airportCodes, setAirportCodes] = useState("")
   const [territorialScope, setTerritorialScope] = useState<string>(TERRITORIAL_SCOPE_NONE)
@@ -109,7 +115,14 @@ export default function TripGeneralInfoPage() {
       setSeatsTotal(
         typeof trip.seats_total === "number" ? String(trip.seats_total) : ""
       )
-      setLocation(trip.location || "")
+      setCountry(trip.country || "")
+      setLocality(trip.locality || "")
+      setHasSecondLocation(
+        Boolean(trip.territorial_scope_2 || trip.country_2 || trip.locality_2)
+      )
+      setTerritorialScope2(normalizeTerritorialScope(trip.territorial_scope_2))
+      setCountry2(trip.country_2 || "")
+      setLocality2(trip.locality_2 || "")
       setTransportMode(normalizeTransportMode(trip.transport_mode))
       setAirportCodes(trip.airport_codes || "")
       setTerritorialScope(normalizeTerritorialScope(trip.territorial_scope))
@@ -221,7 +234,22 @@ export default function TripGeneralInfoPage() {
           end_date: endDate || null,
           price_cents: priceNumber,
           seats_total: seatsNumber,
-          location: location || null,
+          location:
+            [
+              [locality, country].filter(Boolean).join(", "),
+              hasSecondLocation
+                ? [locality2, country2].filter(Boolean).join(", ")
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" / ") || null,
+          country: country || null,
+          locality: locality || null,
+          territorial_scope_2: hasSecondLocation
+            ? territorialScopeToApi(territorialScope2)
+            : null,
+          country_2: hasSecondLocation ? country2 || null : null,
+          locality_2: hasSecondLocation ? locality2 || null : null,
           transport_mode: transportModeToApi(transportMode),
           airport_codes: airportCodes.trim() ? airportCodes.trim() : null,
           territorial_scope: territorialScopeToApi(territorialScope),
@@ -420,12 +448,10 @@ export default function TripGeneralInfoPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <Label className="text-xs">Kody lotnisk</Label>
-                  <Input
+                  <Label className="text-xs">Kod lotniska</Label>
+                  <AirportCombobox
                     value={airportCodes}
-                    onChange={(e) => setAirportCodes(e.target.value)}
-                    placeholder="np. WAW, KRK"
-                    className="h-8 text-xs"
+                    onChange={setAirportCodes}
                   />
                 </div>
 
@@ -484,11 +510,101 @@ export default function TripGeneralInfoPage() {
                 <div className="grid gap-1">
                   <Label className="text-xs">Kraj</Label>
                   <CountryCombobox
-                    value={location}
-                    onChange={setLocation}
+                    value={country}
+                    onChange={setCountry}
                     placeholder="np. Islandia"
                   />
                 </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Miejscowość</Label>
+                  <Input
+                    value={locality}
+                    onChange={(e) => setLocality(e.target.value)}
+                    placeholder="np. Reykjavik"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                {!hasSecondLocation ? (
+                  <div className="col-span-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => setHasSecondLocation(true)}
+                    >
+                      Dodaj drugą lokalizację
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="col-span-2 flex items-center justify-between rounded-md border p-2">
+                      <div>
+                        <div className="text-xs font-medium">Druga lokalizacja</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Uzupełnij tylko, jeśli wycieczka obejmuje drugi kraj lub miejscowość.
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setHasSecondLocation(false)
+                          setTerritorialScope2(TERRITORIAL_SCOPE_NONE)
+                          setCountry2("")
+                          setLocality2("")
+                        }}
+                      >
+                        Usuń
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Zakres terytorialny 2</Label>
+                      <Select
+                        value={territorialScope2}
+                        onValueChange={setTerritorialScope2}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Wybierz zakres" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={TERRITORIAL_SCOPE_NONE}>
+                            Brak
+                          </SelectItem>
+                          {TRIP_TERRITORIAL_SCOPE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Kraj 2</Label>
+                      <CountryCombobox
+                        value={country2}
+                        onChange={setCountry2}
+                        placeholder="np. Niemcy"
+                      />
+                    </div>
+
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Miejscowość 2</Label>
+                      <Input
+                        value={locality2}
+                        onChange={(e) => setLocality2(e.target.value)}
+                        placeholder="np. Berlin"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="grid gap-1">
                   <Label className="text-xs">Cena (PLN)</Label>

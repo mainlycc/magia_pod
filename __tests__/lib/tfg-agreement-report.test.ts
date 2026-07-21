@@ -1,10 +1,48 @@
-import { describe, it, expect } from "@jest/globals";
-import {
+import { describe, it, expect, jest } from "@jest/globals";
+
+jest.mock("exceljs", () => ({
+  __esModule: true,
+  default: class MockWorkbook {
+    addWorksheet() {
+      return { addRow: jest.fn() };
+    }
+    xlsx = {
+      writeBuffer: jest.fn(async () => new ArrayBuffer(0)),
+    };
+  },
+}));
+
+jest.mock("jspdf", () => ({
+  __esModule: true,
+  jsPDF: class MockJsPdf {
+    setFont() {}
+    setFontSize() {}
+    text() {}
+    output() {
+      return new ArrayBuffer(0);
+    }
+  },
+}));
+
+jest.mock("jspdf-autotable", () => ({
+  __esModule: true,
+  default: jest.fn(),
+}));
+
+jest.mock("@/lib/pdf/register-noto-fonts", () => ({
+  __esModule: true,
+  NOTO_SANS_FAMILY: "NotoSans",
+  registerNotoFonts: jest.fn(),
+}));
+
+const {
+  buildDetailRowFromBooking,
+  DETAIL_HEADERS,
   getAgreementConclusionDate,
   isConcludedAgreement,
   isEffectiveDateInRange,
   resolvePeriodBounds,
-} from "@/lib/reports/tfg-agreement-report-dates";
+} = require("@/lib/reports/tfg-agreement-report");
 
 describe("lib/reports/tfg-agreement-report", () => {
   describe("resolvePeriodBounds", () => {
@@ -118,6 +156,85 @@ describe("lib/reports/tfg-agreement-report", () => {
           { status: "cancelled", payment_status: "paid" },
         ),
       ).toBe(false);
+    });
+  });
+
+  describe("buildDetailRowFromBooking", () => {
+    it("buduje wiersz TFG z nowymi polami lokalizacji i wartościami domyślnymi", () => {
+      expect(DETAIL_HEADERS).toEqual([
+        "Numer umowy",
+        "Przedmiot umowy",
+        "Data zawarcia umowy",
+        "Termin rozpoczęcia imprezy",
+        "Termin zakończenia imprezy",
+        "Liczba podróżnych",
+        "Zakres Terytorialny 1",
+        "Kraj Realizacji Umowy 1",
+        "Miejscowość Realizacji Umowy 1",
+        "Zakres Terytorialny 2",
+        "Kraj 2",
+        "Miejscowość 2",
+        "Rodzaj środka transportu",
+        "Kody lotnisk",
+        "Łączna cena usług",
+        "WalutaUslug1",
+        "SposobPrzyjmowaniaWplat",
+        "Data anulacji",
+      ]);
+
+      const row = buildDetailRowFromBooking(
+        {
+          id: "booking-1",
+          status: "confirmed",
+          payment_status: "paid",
+          booking_ref: "BOOK-1",
+          cancelled_at: "2026-06-12T08:00:00.000Z",
+          trips: {
+            title: "Nieuzywane",
+            start_date: "2026-07-10",
+            end_date: "2026-07-15",
+            location: "Nieuzywane",
+            category: "ABC",
+            price_cents: 123456,
+            reservation_number: "12",
+            transport_mode: "LOTNCZART",
+            airport_codes: "WAW,KRK",
+            territorial_scope: "EUR",
+            country: "Hiszpania",
+            locality: "Barcelona",
+            territorial_scope_2: "PLISAS",
+            country_2: "Polska",
+            locality_2: "Warszawa",
+          },
+          participants: [{ id: "p1" }, { id: "p2" }],
+        },
+        {
+          agreement_seq: 7,
+          conclusion_date: "2026-06-10T10:00:00.000Z",
+        },
+        { cancellationDate: "2026-06-12T08:00:00.000Z" },
+      );
+
+      expect(row).toEqual([
+        "#000012/007",
+        "IT",
+        "10.06.2026",
+        "10.07.2026",
+        "15.07.2026",
+        "2",
+        "EUR",
+        "Hiszpania",
+        "Barcelona",
+        "PLISAS",
+        "Polska",
+        "Warszawa",
+        "LOTNCZART",
+        "WAW,KRK",
+        "2469,12",
+        "PLN",
+        "WPLATAPRZED",
+        "12.06.2026",
+      ]);
     });
   });
 });

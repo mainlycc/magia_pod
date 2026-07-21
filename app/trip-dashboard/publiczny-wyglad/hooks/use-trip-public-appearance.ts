@@ -93,7 +93,10 @@ export function useTripPublicAppearance() {
             seats_total: data.seats ? parseInt(data.seats) : 0,
             seats_reserved: 0,
             is_active: true,
-            location: data.location || null,
+            location:
+              [data.locality, data.country].filter(Boolean).join(", ") ||
+              data.location ||
+              null,
             description: data.description || null,
             category: data.category || null,
           })

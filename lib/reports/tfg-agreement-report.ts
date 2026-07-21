@@ -39,13 +39,17 @@ export const DETAIL_HEADERS = [
   "Termin rozpoczęcia imprezy",
   "Termin zakończenia imprezy",
   "Liczba podróżnych",
-  "Cena (PLN)",
-  "Miejsce / trasa",
-  "Środek transportu",
+  "Zakres Terytorialny 1",
+  "Kraj Realizacji Umowy 1",
+  "Miejscowość Realizacji Umowy 1",
+  "Zakres Terytorialny 2",
+  "Kraj 2",
+  "Miejscowość 2",
+  "Rodzaj środka transportu",
   "Kody lotnisk",
-  "—",
-  "—",
-  "Kategoria TFG/TFP",
+  "Łączna cena usług",
+  "WalutaUslug1",
+  "SposobPrzyjmowaniaWplat",
   "Data anulacji",
 ] as const;
 
@@ -59,6 +63,12 @@ type TripLite = {
   reservation_number: string | null;
   transport_mode: string | null;
   airport_codes: string | null;
+  territorial_scope: string | null;
+  country: string | null;
+  locality: string | null;
+  territorial_scope_2: string | null;
+  country_2: string | null;
+  locality_2: string | null;
 };
 
 type BookingLite = {
@@ -138,18 +148,22 @@ export function buildDetailRowFromBooking(
 
   return [
     formatAgreementNumber(resNum, seq),
-    trip?.title ?? "",
+    "IT",
     agreement ? formatPlDate(agreement.conclusion_date) : "",
     formatPlDate(trip?.start_date ?? null),
     formatPlDate(trip?.end_date ?? null),
     String(n),
-    formatMoneyPln(price),
-    trip?.location ?? "",
+    trip?.territorial_scope ?? "",
+    trip?.country ?? "",
+    trip?.locality ?? "",
+    trip?.territorial_scope_2 ?? "",
+    trip?.country_2 ?? "",
+    trip?.locality_2 ?? "",
     trip?.transport_mode ?? "",
     trip?.airport_codes ?? "",
-    "",
-    "",
-    trip?.category ?? "",
+    formatMoneyPln(price),
+    "PLN",
+    "WPLATAPRZED",
     options.cancellationDate ? formatPlDate(options.cancellationDate) : "",
   ];
 }
@@ -247,7 +261,13 @@ export async function fetchSignedAgreementRows(
         price_cents,
         reservation_number,
         transport_mode,
-        airport_codes
+        airport_codes,
+        territorial_scope,
+        country,
+        locality,
+        territorial_scope_2,
+        country_2,
+        locality_2
       ),
       participants (id)
     `,
@@ -310,7 +330,13 @@ export async function fetchCancellationRows(
         price_cents,
         reservation_number,
         transport_mode,
-        airport_codes
+        airport_codes,
+        territorial_scope,
+        country,
+        locality,
+        territorial_scope_2,
+        country_2,
+        locality_2
       ),
       participants (id)
     `,

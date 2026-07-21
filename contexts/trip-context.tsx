@@ -38,6 +38,10 @@ export type TripFullData = {
   category: string | null
   territorial_scope: string | null
   country: string | null
+  locality: string | null
+  territorial_scope_2: string | null
+  country_2: string | null
+  locality_2: string | null
   location: string | null
   transport_mode: string | null
   airport_codes: string | null

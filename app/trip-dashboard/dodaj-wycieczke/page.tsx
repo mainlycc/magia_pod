@@ -25,6 +25,8 @@ import { PaymentScheduleEditor } from "@/components/payment-schedule-editor"
 import { PaymentScheduleItem } from "@/contexts/trip-context"
 import { createClient } from "@/lib/supabase/client"
 import { DatePicker } from "@/components/ui/date-picker"
+import { AirportCombobox } from "@/components/ui/airport-combobox"
+import { CountryCombobox } from "@/components/ui/country-combobox"
 import {
   TRIP_CLASS_CATEGORIES,
   TRIP_CATEGORY_NONE,
@@ -52,7 +54,13 @@ export default function DodajWycieczkePage() {
   const [endDate, setEndDate] = useState("")
   const [price, setPrice] = useState("")
   const [seats, setSeats] = useState("")
-  const [location, setLocation] = useState("")
+  const [territorialScope, setTerritorialScope] = useState("BRAK")
+  const [country, setCountry] = useState("")
+  const [locality, setLocality] = useState("")
+  const [hasSecondLocation, setHasSecondLocation] = useState(false)
+  const [territorialScope2, setTerritorialScope2] = useState("BRAK")
+  const [country2, setCountry2] = useState("")
+  const [locality2, setLocality2] = useState("")
   const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
   const [airportCodes, setAirportCodes] = useState("")
   const [tripCategory, setTripCategory] = useState<string>(TRIP_CATEGORY_NONE)
@@ -90,7 +98,23 @@ export default function DodajWycieczkePage() {
           setEndDate(data.endDate || "")
           setPrice(data.price || "")
           setSeats(data.seats || "")
-          setLocation(data.location || "")
+          setTerritorialScope(typeof data.territorialScope === "string" ? data.territorialScope : "BRAK")
+          setCountry(
+            typeof data.country === "string"
+              ? data.country
+              : typeof data.location === "string"
+                ? data.location
+                : ""
+          )
+          setLocality(typeof data.locality === "string" ? data.locality : "")
+          setHasSecondLocation(
+            Boolean(data.territorialScope2 || data.country2 || data.locality2)
+          )
+          setTerritorialScope2(
+            typeof data.territorialScope2 === "string" ? data.territorialScope2 : "BRAK"
+          )
+          setCountry2(typeof data.country2 === "string" ? data.country2 : "")
+          setLocality2(typeof data.locality2 === "string" ? data.locality2 : "")
           setTransportMode(
             normalizeTransportMode(
               typeof data.transportMode === "string"
@@ -290,7 +314,12 @@ export default function DodajWycieczkePage() {
         endDate,
         price,
         seats,
-        location,
+        territorialScope,
+        country,
+        locality,
+        territorialScope2: hasSecondLocation ? territorialScope2 : "",
+        country2: hasSecondLocation ? country2 : "",
+        locality2: hasSecondLocation ? locality2 : "",
         transportMode,
         airportCodes,
         tripCategory,
@@ -390,16 +419,112 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
-            {/* Trasa/Kraj */}
             <div className="grid gap-1">
-              <Label className="text-xs">Trasa/Kraj</Label>
-              <Input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
+              <Label className="text-xs">Zakres terytorialny</Label>
+              <Select value={territorialScope} onValueChange={setTerritorialScope}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Wybierz zakres" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BRAK">Brak</SelectItem>
+                  <SelectItem value="PLISAS">Polska i strefa Schengen</SelectItem>
+                  <SelectItem value="EUR">Europa</SelectItem>
+                  <SelectItem value="POZAEUR">Poza Europą</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Kraj</Label>
+              <CountryCombobox
+                value={country}
+                onChange={setCountry}
                 placeholder="np. Islandia"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Miejscowość</Label>
+              <Input
+                value={locality}
+                onChange={(e) => setLocality(e.target.value)}
+                placeholder="np. Reykjavik"
                 className="h-8 text-xs"
               />
             </div>
+
+            {!hasSecondLocation ? (
+              <div className="col-span-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setHasSecondLocation(true)}
+                >
+                  Dodaj drugą lokalizację
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="col-span-2 flex items-center justify-between rounded-md border p-2">
+                  <div>
+                    <div className="text-xs font-medium">Druga lokalizacja</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      Uzupełnij tylko, jeśli wycieczka obejmuje drugi kraj lub miejscowość.
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setHasSecondLocation(false)
+                      setTerritorialScope2("BRAK")
+                      setCountry2("")
+                      setLocality2("")
+                    }}
+                  >
+                    Usuń
+                  </Button>
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Zakres terytorialny 2</Label>
+                  <Select value={territorialScope2} onValueChange={setTerritorialScope2}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Wybierz zakres" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BRAK">Brak</SelectItem>
+                      <SelectItem value="PLISAS">Polska i strefa Schengen</SelectItem>
+                      <SelectItem value="EUR">Europa</SelectItem>
+                      <SelectItem value="POZAEUR">Poza Europą</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Kraj 2</Label>
+                  <CountryCombobox
+                    value={country2}
+                    onChange={setCountry2}
+                    placeholder="np. Niemcy"
+                  />
+                </div>
+
+                <div className="grid gap-1">
+                  <Label className="text-xs">Miejscowość 2</Label>
+                  <Input
+                    value={locality2}
+                    onChange={(e) => setLocality2(e.target.value)}
+                    placeholder="np. Berlin"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="grid gap-1">
               <Label className="text-xs">Środek transportu</Label>
@@ -418,12 +543,10 @@ export default function DodajWycieczkePage() {
             </div>
 
             <div className="grid gap-1">
-              <Label className="text-xs">Kody lotnisk</Label>
-              <Input
+              <Label className="text-xs">Kod lotniska</Label>
+              <AirportCombobox
                 value={airportCodes}
-                onChange={(e) => setAirportCodes(e.target.value)}
-                placeholder="np. WAW, KRK"
-                className="h-8 text-xs"
+                onChange={setAirportCodes}
               />
             </div>
 

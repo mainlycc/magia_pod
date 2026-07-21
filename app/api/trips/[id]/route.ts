@@ -35,7 +35,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     console.log("Is admin:", isAdmin, "canManage:", canManage);
 
     const selectCols =
-      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,territorial_scope,country,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
+      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,category,territorial_scope,country,locality,territorial_scope_2,country_2,locality_2,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
 
     let data: Record<string, unknown> | null = null;
     let error: { message: string } | null = null;
@@ -85,6 +85,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       category: string;
       territorial_scope: string;
       country: string;
+      locality: string;
+      territorial_scope_2: string;
+      country_2: string;
+      locality_2: string;
       location: string;
       transport_mode: string | null;
       airport_codes: string | null;
@@ -123,10 +127,35 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
           ? ts
           : null;
     }
+    if ("territorial_scope_2" in body) {
+      const ts2 =
+        typeof body.territorial_scope_2 === "string"
+          ? body.territorial_scope_2.trim().toUpperCase()
+          : "";
+      payload.territorial_scope_2 =
+        ts2 && (TRIP_TERRITORIAL_SCOPES as readonly string[]).includes(ts2)
+          ? ts2
+          : null;
+    }
     if ("country" in body)
       payload.country =
         typeof body.country === "string" && body.country.trim()
           ? body.country.trim()
+          : null;
+    if ("locality" in body)
+      payload.locality =
+        typeof body.locality === "string" && body.locality.trim()
+          ? body.locality.trim()
+          : null;
+    if ("country_2" in body)
+      payload.country_2 =
+        typeof body.country_2 === "string" && body.country_2.trim()
+          ? body.country_2.trim()
+          : null;
+    if ("locality_2" in body)
+      payload.locality_2 =
+        typeof body.locality_2 === "string" && body.locality_2.trim()
+          ? body.locality_2.trim()
           : null;
     if ("location" in body) payload.location = body.location ?? null;
     if ("transport_mode" in body) {
