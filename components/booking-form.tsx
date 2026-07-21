@@ -1,20 +1,12 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm, useWatch, type FieldPath } from "react-hook-form";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -55,6 +47,22 @@ import {
 } from "@/components/booking-form/utils/booking-form-utils";
 import { calculateBookingTotalCents } from "@/lib/utils/payment-calculator";
 import { resolveAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import {
+  ApplicantTypeToggle,
+  AzureBtnGhost,
+  AzureBtnOutline,
+  AzureBtnPrimary,
+  AzureCancelLink,
+  AzureCard,
+  AzureFormFooter,
+  AzureInfoAlert,
+  AzurePricePanel,
+  BookingStepper,
+  azureClasses,
+  getStepKicker,
+  ParticipantCardShell,
+  SectionLabel,
+} from "@/components/client-panel";
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
 
@@ -1903,6 +1911,71 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
   const showParticipantDocument = tripConfig?.form_required_participant_fields?.document === true;
   const showParticipantGender = tripConfig?.form_required_participant_fields?.gender === true;
 
+  const stepperSteps = useMemo(
+    () =>
+      visibleSteps.map((step) => ({
+        id: step.id,
+        title:
+          step.id === "participants" && applicantType === "company"
+            ? "Liczba uczestników"
+            : step.label,
+        description: step.description,
+      })),
+    [visibleSteps, applicantType],
+  );
+
+  const priceSummary = useMemo(() => {
+    const toPln = (cents: number) =>
+      (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+    if (tripPrice === null) return null;
+
+    const allServices = form.watch("participant_services") || [];
+    const previewParticipants = buildParticipantsWithSelectedServices(
+      form.getValues() as any,
+      applicantType,
+      tripConfig?.seats_total,
+    );
+
+    const participantsCount =
+      applicantType === "company"
+        ? form.watch("participants_count") || tripConfig?.seats_total || 0
+        : participantsSummary.length;
+
+    const tripBaseCents = (tripPrice ?? 0) * Math.max(0, participantsCount || 0);
+    const addonsCents = resolveAdditionalServicesCents(previewParticipants, allServices);
+    const totalCents = tripBaseCents + addonsCents;
+    const depositCents = Math.round((totalCents * paymentSplitFirstPercent) / 100);
+
+    const participantLines =
+      applicantType === "individual"
+        ? participantsSummary.map((participant) => ({
+            label: `${participant.first_name} ${participant.last_name}`.trim() || "Uczestnik",
+            amountCents: tripPrice ?? 0,
+          }))
+        : [];
+
+    return {
+      toPln,
+      tripBaseCents,
+      addonsCents,
+      totalCents,
+      depositCents,
+      participantLines,
+    };
+  }, [
+    tripPrice,
+    applicantType,
+    participantsSummary,
+    form,
+    tripConfig?.seats_total,
+    paymentSplitFirstPercent,
+    watchedParticipantServices,
+  ]);
+
   return (
     <>
       {startAtAgreementPreview && (
@@ -1915,20 +1988,32 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
         </Alert>
       )}
       <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="w-full">
-        <TabsList className={cn("grid w-full gap-2", hasAdditionalServices ? "grid-cols-1 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
+        <BookingStepper
+          steps={stepperSteps}
+          currentStepId={currentStep.id}
+          maxAvailableIndex={maxAvailableStep}
+          onStepClick={handleTabsChange}
+        />
+        <TabsList className="sr-only">
           {visibleSteps.map((step, index) => {
-            const originalIndex = steps.findIndex(s => s.id === step.id);
-            const stepLabel = step.id === "participants" && applicantType === "company" 
-              ? "Liczba uczestników" 
-              : step.label;
+            const originalIndex = steps.findIndex((s) => s.id === step.id);
+            const stepLabel =
+              step.id === "participants" && applicantType === "company"
+                ? "Liczba uczestników"
+                : step.label;
             return (
               <TabsTrigger
                 key={step.id}
                 value={step.id}
-                className={cn("text-left", originalIndex > maxAvailableStep && "cursor-not-allowed opacity-50")}
+                className={cn(
+                  "text-left",
+                  originalIndex > maxAvailableStep && "cursor-not-allowed opacity-50",
+                )}
                 disabled={originalIndex > maxAvailableStep + 1}
               >
-                <span className="text-sm font-semibold">{index + 1}. {stepLabel}</span>
+                <span className="text-sm font-semibold">
+                  {index + 1}. {stepLabel}
+                </span>
               </TabsTrigger>
             );
           })}
@@ -2022,48 +2107,33 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
             className="space-y-6"
           >
             <TabsContent value="contact" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Dane Osoby Zgłaszającej</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
+              <AzureCard
+                accent="blue"
+                kicker={getStepKicker(mappedStepIndex >= 0 ? mappedStepIndex : 0, visibleSteps.length)}
+                title="Dane Osoby Zgłaszającej"
+                subtitle="Te informacje wykorzystamy do kontaktu i wystawienia dokumentów rezerwacyjnych."
+              >
+                <div className="space-y-6">
                   {reservationInfoText?.trim() ? (
-                    <Alert>
-                      <AlertTitle>Ważna informacja dotycząca rezerwacji</AlertTitle>
-                      <AlertDescription>{reservationInfoText}</AlertDescription>
-                    </Alert>
+                    <AzureInfoAlert title="WAŻNE · INFORMACJA OD BIURA">
+                      {reservationInfoText}
+                    </AzureInfoAlert>
                   ) : null}
 
                   {tripConfig?.registration_mode === "both" && (
-                    <div className="space-y-2">
-                      <h3 className="font-medium text-sm">Typ osoby Zgłaszającej</h3>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant={applicantType === "individual" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            setApplicantType("individual");
-                            setValue("applicant_type", "individual");
-                          }}
-                        >
-                          1. Osoba fizyczna
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={applicantType === "company" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            setApplicantType("company");
-                            setValue("applicant_type", "company");
-                          }}
-                        >
-                          2. Firma
-                        </Button>
-                      </div>
+                    <div className="space-y-3">
+                      <SectionLabel>Typ osoby Zgłaszającej</SectionLabel>
+                      <ApplicantTypeToggle
+                        value={applicantType}
+                        onChange={(type) => {
+                          setApplicantType(type);
+                          setValue("applicant_type", type);
+                        }}
+                      />
                     </div>
                   )}
 
+                  <SectionLabel>Dane kontaktowe</SectionLabel>
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField
                       control={control}
@@ -2358,7 +2428,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           name="invoice.type"
                           render={({ field }) => (
                             <FormItem className="grid gap-1">
-                              <FormLabel className="text-xs">Typ danych do faktury</FormLabel>
+                              <FormLabel className={azureClasses.label}>Typ danych do faktury</FormLabel>
                               <Select
                                 onValueChange={field.onChange}
                                 defaultValue={field.value}
@@ -2528,24 +2598,34 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                       </div>
                     )}
                   </div>
-                </CardContent>
-                <CardFooter className="flex justify-end gap-3">
-                  <Button variant="secondary" asChild>
-                    <Link href={`/trip/${slug}`}>Anuluj</Link>
-                  </Button>
-                  <Button type="button" onClick={goToNextStep}>
+                </div>
+                <AzureFormFooter align="between">
+                  <AzureCancelLink href={`/trip/${slug}`} />
+                  <AzureBtnPrimary type="button" onClick={goToNextStep}>
                     Dalej
-                  </Button>
-                </CardFooter>
-              </Card>
+                  </AzureBtnPrimary>
+                </AzureFormFooter>
+              </AzureCard>
             </TabsContent>
 
             <TabsContent value="participants" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{applicantType === "company" ? "Liczba uczestników" : "Uczestnicy"}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
+              <AzureCard
+                accent="blue"
+                kicker={getStepKicker(
+                  Math.max(
+                    0,
+                    visibleSteps.findIndex((s) => s.id === "participants"),
+                  ),
+                  visibleSteps.length,
+                )}
+                title={applicantType === "company" ? "Liczba uczestników" : "Uczestnicy wyjazdu"}
+                subtitle={
+                  applicantType === "company"
+                    ? "Podaj liczbę osób uczestniczących w wyjeździe firmowym."
+                    : "Dodaj wszystkie osoby uczestniczące w wyjeździe — pierwszy uczestnik to Osoba Zgłaszająca z poprzedniego kroku."
+                }
+              >
+                <div className="space-y-6">
                   {applicantType === "company" ? (
                     <div className="space-y-3">
                       <div className="rounded-md border p-3">
@@ -2571,7 +2651,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           : null;
                         if (seatsAvailable === null) return null;
                         return (
-                          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                          <div className="rounded-[14px] border border-[#cee4fc] bg-[#e8f2fe] p-3 text-sm text-[#1574d6]">
                             <span className="font-medium">Wolne miejsca:</span>{" "}
                             <span>
                               {seatsAvailable} z {seatsTotal}
@@ -2594,26 +2674,18 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           Brak uczestników. Dodaj co najmniej jednego uczestnika, aby wysłać rezerwację.
                         </p>
                       )}
-                      {fields.map((field, index) => (
-                        <div
+                      {fields.map((field, index) => {
+                        const participant = participantsWatch?.[index];
+                        return (
+                        <ParticipantCardShell
                           key={field.id}
-                          className="rounded-xl border p-4 shadow-sm"
+                          index={index}
+                          firstName={participant?.first_name}
+                          lastName={participant?.last_name}
+                          isMain={index === 0}
+                          canRemove={fields.length > 1}
+                          onRemove={() => remove(index)}
                         >
-                          <div className="flex items-center justify-between pb-4">
-                            <div className="font-medium text-sm">
-                              Uczestnik {index + 1}
-                            </div>
-                            {fields.length > 1 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => remove(index)}
-                              >
-                                Usuń
-                              </Button>
-                            )}
-                          </div>
                           <div className="grid gap-4 md:grid-cols-2">
                             <FormField
                               control={control}
@@ -2798,8 +2870,9 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                               </div>
                             </>
                           )}
-                        </div>
-                      ))}
+                        </ParticipantCardShell>
+                      );
+                      })}
                       {(() => {
                         const seatsTotal = tripConfig?.seats_total ?? null;
                         const seatsReserved = tripConfig?.seats_reserved ?? 0;
@@ -2811,9 +2884,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           seatsAvailable !== null && currentCount >= seatsAvailable;
                         return (
                           <div className="space-y-2">
-                            <Button
+                            <AzureBtnPrimary
                               type="button"
-                              variant="default"
                               disabled={reachedLimit}
                               onClick={() => {
                                 if (reachedLimit) return;
@@ -2830,7 +2902,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                               }}
                             >
                               Dodaj kolejnego uczestnika
-                            </Button>
+                            </AzureBtnPrimary>
                             {reachedLimit && seatsAvailable !== null && (
                               <p className="text-sm text-red-700">
                                 Osiągnięto limit wolnych miejsc na tej wycieczce
@@ -2842,27 +2914,32 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                       })()}
                     </>
                   )}
-                </CardContent>
-                <CardFooter className="flex justify-between gap-3">
-                  <Button type="button" variant="outline" onClick={goToPrevStep}>
-                    Wstecz
-                  </Button>
-                  <Button type="button" onClick={goToNextStep}>
+                </div>
+                <AzureFormFooter>
+                  <AzureBtnOutline type="button" onClick={goToPrevStep}>
+                    ← Wstecz
+                  </AzureBtnOutline>
+                  <AzureBtnPrimary type="button" onClick={goToNextStep}>
                     Dalej
-                  </Button>
-                </CardFooter>
-              </Card>
+                  </AzureBtnPrimary>
+                </AzureFormFooter>
+              </AzureCard>
             </TabsContent>
 
             {hasAdditionalServices && (
               <TabsContent value="services" className="mt-6 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Usługi dodatkowe</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
+                <AzureCard
+                  accent="blue"
+                  kicker={getStepKicker(
+                    Math.max(0, visibleSteps.findIndex((s) => s.id === "services")),
+                    visibleSteps.length,
+                  )}
+                  title="Usługi dodatkowe"
+                  subtitle="Wybierz opcjonalne diety, ubezpieczenia i atrakcje dla uczestników."
+                >
+                  <div className="space-y-6">
                     {applicantType === "individual" && fields.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className={azureClasses.serviceEmpty}>
                         Dodaj uczestników, aby wybrać usługi dodatkowe.
                       </p>
                     ) : (
@@ -2884,11 +2961,6 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                               <div className="space-y-6">
                                 {fields.map((pField, participantIndex) => {
                                   const p = participantsWatch?.[participantIndex];
-                                  const participantName =
-                                    p && (p.first_name || p.last_name)
-                                      ? `${p.first_name || ""} ${p.last_name || ""}`.trim()
-                                      : `Uczestnik ${participantIndex + 1}`;
-                                  const participantLabel = `${participantIndex + 1}. ${participantName}`;
 
                                   const removeAtIndex = (idx: number) => {
                                     const currentServices = form.getValues("participant_services") || [];
@@ -2913,15 +2985,17 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                   };
 
                                   return (
-                                    <div key={pField.id} className="rounded-lg border p-4 space-y-5">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <Label className="text-sm font-semibold">{participantLabel}</Label>
-                                      </div>
-
+                                    <ParticipantCardShell
+                                      key={pField.id}
+                                      index={participantIndex}
+                                      firstName={p?.first_name}
+                                      lastName={p?.last_name}
+                                    >
+                                      <div className="space-y-6">
                                       {/* Diety */}
                                       {enabledDiets.length > 0 && (
                                         <div className="space-y-3">
-                                          <Label className="text-xs text-muted-foreground">Diety</Label>
+                                          <SectionLabel>Diety</SectionLabel>
                                           <div className="space-y-3">
                                             {enabledDiets.map((diet: any) => {
                                               const idx = allServices.findIndex(
@@ -2937,40 +3011,36 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                 <div
                                                   key={`diet-${diet.id}`}
                                                   className={cn(
-                                                    "rounded-md border p-3 transition-colors",
-                                                    selected
-                                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
-                                                      : "bg-muted/20",
+                                                    azureClasses.serviceOption,
+                                                    selected && azureClasses.serviceOptionSelected,
                                                   )}
                                                 >
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
-                                                      <div className="text-sm font-medium">{diet.title}</div>
+                                                      <div className={azureClasses.serviceTitle}>{diet.title}</div>
                                                       {diet.description && (
-                                                        <p className="text-xs text-muted-foreground">
+                                                        <p className={azureClasses.serviceDesc}>
                                                           {diet.description}
                                                         </p>
                                                       )}
                                                       {diet.price_cents !== null && diet.price_cents > 0 && (
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className={azureClasses.servicePrice}>
                                                           +{((diet.price_cents || 0) / 100).toFixed(2)} PLN
                                                         </div>
                                                       )}
                                                     </div>
                                                     {selected ? (
-                                                      <Button
+                                                      <AzureBtnGhost
                                                         type="button"
-                                                        variant="ghost"
-                                                        size="sm"
+                                                        className="px-2 py-1.5"
                                                         onClick={() => removeAtIndex(idx)}
                                                       >
                                                         <X className="h-4 w-4" />
-                                                      </Button>
+                                                      </AzureBtnGhost>
                                                     ) : (
-                                                      <Button
+                                                      <AzureBtnOutline
                                                         type="button"
-                                                        variant="outline"
-                                                        size="sm"
+                                                        className="px-3 py-1.5 text-xs"
                                                         onClick={() => {
                                                           const currentServices = form.getValues("participant_services") || [];
                                                           const v0 = variants?.[0] ?? null;
@@ -2988,13 +3058,13 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         }}
                                                       >
                                                         Dodaj
-                                                      </Button>
+                                                      </AzureBtnOutline>
                                                     )}
                                                   </div>
 
                                                   {selected && variants && (
                                                     <div className="mt-3 space-y-1">
-                                                      <Label className="text-xs">Wariant</Label>
+                                                      <Label className={azureClasses.label}>Wariant</Label>
                                                       <Select
                                                         value={service?.variant_id ?? variants[0]?.id ?? ""}
                                                         onValueChange={(value) => {
@@ -3028,7 +3098,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                       {/* Ubezpieczenia */}
                                       {enabledInsurances.length > 0 && (
                                         <div className="space-y-3">
-                                          <Label className="text-xs text-muted-foreground">Ubezpieczenia dodatkowe</Label>
+                                          <SectionLabel>Ubezpieczenia dodatkowe</SectionLabel>
                                           <div className="space-y-3">
                                             {enabledInsurances.map((insurance: any) => {
                                               const idx = allServices.findIndex(
@@ -3045,17 +3115,15 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                 <div
                                                   key={`ins-${insurance.id}`}
                                                   className={cn(
-                                                    "rounded-md border p-3 transition-colors",
-                                                    selected
-                                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
-                                                      : "bg-muted/20",
+                                                    azureClasses.serviceOption,
+                                                    selected && azureClasses.serviceOptionSelected,
                                                   )}
                                                 >
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
-                                                      <div className="text-sm font-medium">{insurance.title}</div>
+                                                      <div className={azureClasses.serviceTitle}>{insurance.title}</div>
                                                       {insurance.description && (
-                                                        <p className="text-xs text-muted-foreground">
+                                                        <p className={azureClasses.serviceDesc}>
                                                           {insurance.description}
                                                         </p>
                                                       )}
@@ -3063,25 +3131,23 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         insurance.price_cents !== null &&
                                                         insurance.price_cents !== undefined &&
                                                         insurance.price_cents > 0 && (
-                                                          <div className="text-xs text-muted-foreground">
+                                                          <div className={azureClasses.servicePrice}>
                                                             +{((insurance.price_cents || 0) / 100).toFixed(2)} PLN
                                                           </div>
                                                         )}
                                                     </div>
                                                     {selected ? (
-                                                      <Button
+                                                      <AzureBtnGhost
                                                         type="button"
-                                                        variant="ghost"
-                                                        size="sm"
+                                                        className="px-2 py-1.5"
                                                         onClick={() => removeAtIndex(idx)}
                                                       >
                                                         <X className="h-4 w-4" />
-                                                      </Button>
+                                                      </AzureBtnGhost>
                                                     ) : (
-                                                      <Button
+                                                      <AzureBtnOutline
                                                         type="button"
-                                                        variant="outline"
-                                                        size="sm"
+                                                        className="px-3 py-1.5 text-xs"
                                                         onClick={() => {
                                                           const currentServices = form.getValues("participant_services") || [];
                                                           const v0 = variants?.[0] ?? null;
@@ -3100,13 +3166,13 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         }}
                                                       >
                                                         Dodaj
-                                                      </Button>
+                                                      </AzureBtnOutline>
                                                     )}
                                                   </div>
 
                                                   {selected && variants && (
                                                     <div className="mt-3 space-y-1">
-                                                      <Label className="text-xs">Wariant</Label>
+                                                      <Label className={azureClasses.label}>Wariant</Label>
                                                       <Select
                                                         value={service?.variant_id ?? variants[0]?.id ?? ""}
                                                         onValueChange={(value) => {
@@ -3140,7 +3206,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                       {/* Atrakcje */}
                                       {enabledAttractions.length > 0 && (
                                         <div className="space-y-3">
-                                          <Label className="text-xs text-muted-foreground">Atrakcje dodatkowe</Label>
+                                          <SectionLabel>Atrakcje dodatkowe</SectionLabel>
                                           <div className="space-y-3">
                                             {enabledAttractions.map((attraction: any) => {
                                               const idx = allServices.findIndex(
@@ -3154,22 +3220,20 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                 <div
                                                   key={`att-${attraction.id}`}
                                                   className={cn(
-                                                    "rounded-md border p-3 transition-colors",
-                                                    selected
-                                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
-                                                      : "bg-muted/20",
+                                                    azureClasses.serviceOption,
+                                                    selected && azureClasses.serviceOptionSelected,
                                                   )}
                                                 >
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
-                                                      <div className="text-sm font-medium">{attraction.title}</div>
+                                                      <div className={azureClasses.serviceTitle}>{attraction.title}</div>
                                                       {attraction.description && (
-                                                        <p className="text-xs text-muted-foreground">
+                                                        <p className={azureClasses.serviceDesc}>
                                                           {attraction.description}
                                                         </p>
                                                       )}
                                                       {attraction.price_cents !== null && attraction.price_cents > 0 && (
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className={azureClasses.servicePrice}>
                                                           +{((attraction.price_cents || 0) / 100).toFixed(2)}{" "}
                                                           {attraction.currency || "PLN"}
                                                           {attraction.currency && attraction.currency !== "PLN"
@@ -3179,19 +3243,17 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                       )}
                                                     </div>
                                                     {selected ? (
-                                                      <Button
+                                                      <AzureBtnGhost
                                                         type="button"
-                                                        variant="ghost"
-                                                        size="sm"
+                                                        className="px-2 py-1.5"
                                                         onClick={() => removeAtIndex(idx)}
                                                       >
                                                         <X className="h-4 w-4" />
-                                                      </Button>
+                                                      </AzureBtnGhost>
                                                     ) : (
-                                                      <Button
+                                                      <AzureBtnOutline
                                                         type="button"
-                                                        variant="outline"
-                                                        size="sm"
+                                                        className="px-3 py-1.5 text-xs"
                                                         onClick={() => {
                                                           const currentServices = form.getValues("participant_services") || [];
                                                           form.setValue("participant_services", [
@@ -3208,7 +3270,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         }}
                                                       >
                                                         Dodaj
-                                                      </Button>
+                                                      </AzureBtnOutline>
                                                     )}
                                                   </div>
                                                 </div>
@@ -3217,7 +3279,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                           </div>
                                         </div>
                                       )}
-                                    </div>
+                                      </div>
+                                    </ParticipantCardShell>
                                   );
                                 })}
                               </div>
@@ -3230,7 +3293,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                               {/* Diety */}
                               {tripConfig?.diets && tripConfig.diets.filter((d: any) => d.enabled !== false).length > 0 && (
                                 <div className="space-y-4">
-                                  <Label className="text-sm font-semibold">Diety</Label>
+                                  <SectionLabel>Diety</SectionLabel>
                                   {tripConfig.diets
                                     .filter((d: any) => d.enabled !== false)
                                     .map((diet) => {
@@ -3239,20 +3302,19 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                       );
 
                                       return (
-                                        <div key={diet.id} className="border rounded-lg p-4 space-y-3">
+                                        <div key={diet.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
                                           <div className="flex items-center justify-between">
                                             <div>
-                                              <Label className="text-sm font-medium">{diet.title}</Label>
+                                              <div className={azureClasses.serviceTitle}>{diet.title}</div>
                                               {diet.price_cents !== null && diet.price_cents > 0 && (
-                                                <span className="ml-2 text-xs text-muted-foreground">
+                                                <span className={cn("ml-2", azureClasses.servicePrice)}>
                                                   (+{((diet.price_cents || 0) / 100).toFixed(2)} PLN)
                                                 </span>
                                               )}
                                             </div>
-                                            <Button
+                                            <AzureBtnOutline
                                               type="button"
-                                              variant="outline"
-                                              size="sm"
+                                              className="px-3 py-1.5 text-xs"
                                               onClick={() => {
                                                 const currentServices = form.getValues("participant_services") || [];
                                                 const newService: any = {
@@ -3269,7 +3331,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                               }}
                                             >
                                               Dodaj dietę
-                                            </Button>
+                                            </AzureBtnOutline>
                                           </div>
 
                                           {dietServices.map((service: any) => {
@@ -3286,7 +3348,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                             return (
                                               <div
                                                 key={serviceArrayIndex}
-                                                className="border rounded p-3 space-y-2 border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
                                               >
                                                 <div className="flex items-start justify-between gap-2">
                                                   <div className="flex-1 space-y-2">
@@ -3296,7 +3358,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         name={`participant_services.${serviceArrayIndex}.participant_first_name`}
                                                         render={({ field: firstNameField }) => (
                                                           <div className="space-y-1">
-                                                            <Label className="text-xs">Imię uczestnika</Label>
+                                                            <Label className={azureClasses.label}>Imię uczestnika</Label>
                                                             <Input
                                                               {...firstNameField}
                                                               className="h-8 text-xs"
@@ -3310,7 +3372,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         name={`participant_services.${serviceArrayIndex}.participant_last_name`}
                                                         render={({ field: lastNameField }) => (
                                                           <div className="space-y-1">
-                                                            <Label className="text-xs">{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                            <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
                                                             <Input
                                                               {...lastNameField}
                                                               className="h-8 text-xs"
@@ -3327,7 +3389,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         name={`participant_services.${serviceArrayIndex}.variant_id`}
                                                         render={({ field: variantField }) => (
                                                           <div className="space-y-1">
-                                                            <Label className="text-xs">Wariant diety</Label>
+                                                            <Label className={azureClasses.label}>Wariant diety</Label>
                                                             <Select
                                                               value={variantField.value || ""}
                                                               onValueChange={(value) => {
@@ -3366,10 +3428,9 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                       />
                                                     )}
                                                   </div>
-                                                  <Button
+                                                  <AzureBtnGhost
                                                     type="button"
-                                                    variant="ghost"
-                                                    size="sm"
+                                                    className="px-2 py-1.5"
                                                     onClick={() => {
                                                       const currentServices = form.getValues("participant_services") || [];
                                                       const updatedServices = currentServices.filter(
@@ -3379,7 +3440,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                     }}
                                                   >
                                                     <X className="h-4 w-4" />
-                                                  </Button>
+                                                  </AzureBtnGhost>
                                                 </div>
                                               </div>
                                             );
@@ -3394,7 +3455,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                               {tripConfig?.extra_insurances &&
                                 tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).length > 0 && (
                                   <div className="space-y-4">
-                                    <Label className="text-sm font-semibold">Ubezpieczenia dodatkowe</Label>
+                                    <SectionLabel>Ubezpieczenia dodatkowe</SectionLabel>
                                     {tripConfig.extra_insurances
                                       .filter((i: any) => i.enabled !== false)
                                       .map((insurance) => {
@@ -3403,22 +3464,22 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                         );
 
                                         return (
-                                          <div key={insurance.id} className="border rounded-lg p-4 space-y-3">
+                                          <div key={insurance.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
                                             <div className="flex items-start justify-between gap-2">
                                               <div className="flex-1">
                                                 <div className="flex items-center gap-2">
-                                                  <Label className="text-sm font-medium">{insurance.title}</Label>
+                                                  <div className={azureClasses.serviceTitle}>{insurance.title}</div>
                                                   {(!insurance.variants || insurance.variants.length === 0) &&
                                                     insurance.price_cents !== null &&
                                                     insurance.price_cents !== undefined &&
                                                     insurance.price_cents > 0 && (
-                                                      <span className="text-xs text-muted-foreground">
+                                                      <span className={azureClasses.servicePrice}>
                                                         (+{((insurance.price_cents || 0) / 100).toFixed(2)} PLN)
                                                       </span>
                                                     )}
                                                 </div>
                                                 {insurance.description && (
-                                                  <p className="text-xs text-muted-foreground mt-1">
+                                                  <p className={cn(azureClasses.serviceDesc, "mt-1")}>
                                                     {insurance.description}
                                                   </p>
                                                 )}
@@ -3427,17 +3488,16 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                     href={insurance.owu_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                                    className="mt-1 flex items-center gap-1 text-xs font-medium text-[#1e90ff] hover:underline"
                                                   >
                                                     <ExternalLink className="h-3 w-3" />
                                                     OWU
                                                   </a>
                                                 )}
                                               </div>
-                                              <Button
+                                              <AzureBtnOutline
                                                 type="button"
-                                                variant="outline"
-                                                size="sm"
+                                                className="px-3 py-1.5 text-xs"
                                                 onClick={() => {
                                                   const currentServices = form.getValues("participant_services") || [];
                                                   const newService: any = {
@@ -3459,7 +3519,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                 }}
                                               >
                                                 Dodaj ubezpieczenie
-                                              </Button>
+                                              </AzureBtnOutline>
                                             </div>
 
                                             {insuranceServices.map((service: any, serviceIndex: number) => {
@@ -3477,7 +3537,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                               return (
                                                 <div
                                                   key={serviceArrayIndex}
-                                                  className="border rounded p-3 space-y-2 border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                  className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
                                                 >
                                                   <div className="flex items-start justify-between gap-2">
                                                     <div className="flex-1 space-y-2">
@@ -3487,7 +3547,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                           name={`participant_services.${serviceArrayIndex}.participant_first_name`}
                                                           render={({ field: firstNameField }) => (
                                                             <div className="space-y-1">
-                                                              <Label className="text-xs">Imię uczestnika</Label>
+                                                              <Label className={azureClasses.label}>Imię uczestnika</Label>
                                                               <Input
                                                                 {...firstNameField}
                                                                 className="h-8 text-xs"
@@ -3501,7 +3561,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                           name={`participant_services.${serviceArrayIndex}.participant_last_name`}
                                                           render={({ field: lastNameField }) => (
                                                             <div className="space-y-1">
-                                                              <Label className="text-xs">{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                              <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
                                                               <Input
                                                                 {...lastNameField}
                                                                 className="h-8 text-xs"
@@ -3518,7 +3578,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                           name={`participant_services.${serviceArrayIndex}.variant_id`}
                                                           render={({ field: variantField }) => (
                                                             <div className="space-y-1">
-                                                              <Label className="text-xs">Wariant ubezpieczenia</Label>
+                                                              <Label className={azureClasses.label}>Wariant ubezpieczenia</Label>
                                                               <Select
                                                                 value={variantField.value || ""}
                                                                 onValueChange={(value) => {
@@ -3563,10 +3623,9 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         />
                                                       )}
                                                     </div>
-                                                    <Button
+                                                    <AzureBtnGhost
                                                       type="button"
-                                                      variant="ghost"
-                                                      size="sm"
+                                                      className="px-2 py-1.5"
                                                       onClick={() => {
                                                         const currentServices = form.getValues("participant_services") || [];
                                                         const updatedServices = currentServices.filter(
@@ -3576,7 +3635,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                       }}
                                                     >
                                                       <X className="h-4 w-4" />
-                                                    </Button>
+                                                    </AzureBtnGhost>
                                                   </div>
                                                 </div>
                                               );
@@ -3591,7 +3650,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                               {tripConfig?.additional_attractions &&
                                 tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).length > 0 && (
                                   <div className="space-y-4">
-                                    <Label className="text-sm font-semibold">Atrakcje dodatkowe</Label>
+                                    <SectionLabel>Atrakcje dodatkowe</SectionLabel>
                                     {tripConfig.additional_attractions
                                       .filter((a: any) => a.enabled !== false)
                                       .map((attraction) => {
@@ -3600,33 +3659,32 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                         );
 
                                         return (
-                                          <div key={attraction.id} className="border rounded-lg p-4 space-y-3">
+                                          <div key={attraction.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
                                             <div className="flex items-start justify-between gap-2">
                                               <div className="flex-1">
-                                                <Label className="text-sm font-medium">{attraction.title}</Label>
+                                                <div className={azureClasses.serviceTitle}>{attraction.title}</div>
                                                 {attraction.description && (
-                                                  <p className="text-xs text-muted-foreground mt-1">
+                                                  <p className={cn(azureClasses.serviceDesc, "mt-1")}>
                                                     {attraction.description}
                                                   </p>
                                                 )}
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="mt-1 flex items-center gap-2">
                                                   {attraction.price_cents !== null && attraction.price_cents > 0 && (
-                                                    <span className="text-xs font-medium">
+                                                    <span className={azureClasses.servicePrice}>
                                                       {(attraction.price_cents / 100).toFixed(2)}{" "}
                                                       {attraction.currency || "PLN"}
                                                     </span>
                                                   )}
                                                   {attraction.currency && attraction.currency !== "PLN" && (
-                                                    <span className="text-xs text-muted-foreground">
+                                                    <span className={azureClasses.serviceDesc}>
                                                       (nie wlicza się do umowy)
                                                     </span>
                                                   )}
                                                 </div>
                                               </div>
-                                              <Button
+                                              <AzureBtnOutline
                                                 type="button"
-                                                variant="outline"
-                                                size="sm"
+                                                className="px-3 py-1.5 text-xs"
                                                 onClick={() => {
                                                   const currentServices = form.getValues("participant_services") || [];
                                                   const newService: any = {
@@ -3640,7 +3698,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                 }}
                                               >
                                                 Dodaj atrakcję
-                                              </Button>
+                                              </AzureBtnOutline>
                                             </div>
 
                                             {attractionServices.map((service: any, serviceIndex: number) => {
@@ -3657,7 +3715,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                               return (
                                                 <div
                                                   key={serviceArrayIndex}
-                                                  className="border rounded p-3 space-y-2 border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
+                                                  className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
                                                 >
                                                   <div className="flex items-start justify-between gap-2">
                                                     <div className="flex-1">
@@ -3667,7 +3725,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                           name={`participant_services.${serviceArrayIndex}.participant_first_name`}
                                                           render={({ field: firstNameField }) => (
                                                             <div className="space-y-1">
-                                                              <Label className="text-xs">Imię uczestnika</Label>
+                                                              <Label className={azureClasses.label}>Imię uczestnika</Label>
                                                               <Input
                                                                 {...firstNameField}
                                                                 className="h-8 text-xs"
@@ -3681,7 +3739,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                           name={`participant_services.${serviceArrayIndex}.participant_last_name`}
                                                           render={({ field: lastNameField }) => (
                                                             <div className="space-y-1">
-                                                              <Label className="text-xs">{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                              <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
                                                               <Input
                                                                 {...lastNameField}
                                                                 className="h-8 text-xs"
@@ -3692,10 +3750,9 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         />
                                                       </div>
                                                     </div>
-                                                    <Button
+                                                    <AzureBtnGhost
                                                       type="button"
-                                                      variant="ghost"
-                                                      size="sm"
+                                                      className="px-2 py-1.5"
                                                       onClick={() => {
                                                         const currentServices = form.getValues("participant_services") || [];
                                                         const updatedServices = currentServices.filter(
@@ -3705,7 +3762,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                       }}
                                                     >
                                                       <X className="h-4 w-4" />
-                                                    </Button>
+                                                    </AzureBtnGhost>
                                                   </div>
                                                 </div>
                                               );
@@ -3721,25 +3778,32 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
                       </div>
                     )}
-                  </CardContent>
-                  <CardFooter className="flex justify-between gap-3">
-                    <Button type="button" variant="outline" onClick={goToPrevStep}>
-                      Wstecz
-                    </Button>
-                    <Button type="button" onClick={goToNextStep}>
+                  </div>
+                  <AzureFormFooter>
+                    <AzureBtnOutline type="button" onClick={goToPrevStep}>
+                      ← Wstecz
+                    </AzureBtnOutline>
+                    <AzureBtnPrimary type="button" onClick={goToNextStep}>
                       Dalej
-                    </Button>
-                  </CardFooter>
-                </Card>
+                    </AzureBtnPrimary>
+                  </AzureFormFooter>
+                </AzureCard>
               </TabsContent>
             )}
 
             <TabsContent value="summary" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Podsumowanie rezerwacji</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] xl:items-start">
+                <div className="space-y-6">
+              <AzureCard
+                accent="blue"
+                kicker={getStepKicker(
+                  Math.max(0, visibleSteps.findIndex((s) => s.id === "summary")),
+                  visibleSteps.length,
+                )}
+                title="Podsumowanie rezerwacji"
+                subtitle="Sprawdź dane przed wysłaniem zgłoszenia."
+              >
+                <div className="space-y-6">
                   {applicantType === "company" ? (
                     <>
                       {/* Dla firm: najpierw DANE FIRMY */}
@@ -3971,97 +4035,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
                   <Separator />
 
-                  {tripPrice !== null && (
-                    <>
-                      <section className="space-y-3">
-                        <h3 className="font-medium text-sm uppercase text-muted-foreground">Cena</h3>
-                        <div className="grid gap-2 text-sm">
-                          {(() => {
-                            const toPln = (cents: number) =>
-                              (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              });
-
-                            const allServices = form.watch("participant_services") || [];
-                            const previewParticipants = buildParticipantsWithSelectedServices(
-                              form.getValues() as any,
-                              applicantType,
-                              tripConfig?.seats_total,
-                            );
-
-                            const participantsCount =
-                              applicantType === "company"
-                                ? form.watch("participants_count") || tripConfig?.seats_total || 0
-                                : participantsSummary.length;
-
-                            const tripBaseCents = (tripPrice ?? 0) * Math.max(0, participantsCount || 0);
-                            const addonsCents = resolveAdditionalServicesCents(
-                              previewParticipants,
-                              allServices,
-                            );
-                            const totalCents = tripBaseCents + addonsCents;
-                            const depositCents = Math.round(
-                              (totalCents * paymentSplitFirstPercent) / 100,
-                            );
-
-                            return (
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between gap-4">
-                                  <span className="text-muted-foreground">
-                                    Cena wycieczki
-                                  </span>
-                                  <span className="font-semibold tabular-nums">
-                                    {toPln(tripBaseCents)} PLN
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between gap-4">
-                                  <span className="text-muted-foreground">
-                                    Usługi dodatkowe
-                                  </span>
-                                  <span className="font-semibold tabular-nums">
-                                    {toPln(addonsCents)} PLN
-                                  </span>
-                                </div>
-
-                                <Separator className="my-2" />
-
-                                <div className="flex items-center justify-between gap-4">
-                                  <span className="text-muted-foreground font-medium">
-                                    Łączna cena
-                                  </span>
-                                  <span className="font-semibold text-lg tabular-nums">
-                                    {toPln(totalCents)} PLN
-                                  </span>
-                                </div>
-
-                                <div className="flex items-center justify-between gap-4 mt-2">
-                                  <span className="text-muted-foreground">
-                                    Zaliczka ({paymentSplitFirstPercent}%)
-                                  </span>
-                                  <span className="font-semibold text-lg tabular-nums">
-                                    {toPln(depositCents)} PLN
-                                  </span>
-                                </div>
-
-                                {addonsCents > 0 && (
-                                  <p className="text-xs text-muted-foreground mt-2">
-                                    * Cena końcowa zawiera wybrane usługi dodatkowe.
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </section>
-                      <Separator />
-                    </>
-                  )}
-
-                  <Separator />
-
                   <section className="space-y-4">
-                    <h3 className="font-medium text-sm uppercase text-muted-foreground">Zgody</h3>
+                    <SectionLabel>Zgody</SectionLabel>
                     
                     <div className="space-y-4">
                       <div>
@@ -4079,7 +4054,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                   />
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
                                     Umową o udział w imprezie turystycznej oraz programem imprezy turystycznej
                                   </FormLabel>
                                   {documents.agreement && (
@@ -4110,7 +4085,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                   />
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
                                     Warunkami Udziału w Imprezach Turystycznych GRUPY DE-PL
                                   </FormLabel>
                                   {documents.conditions_de_pl && (
@@ -4141,7 +4116,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                   />
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
                                     Standardowym Formularzem Informacyjnym
                                   </FormLabel>
                                   {documents.standard_form && (
@@ -4172,7 +4147,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                   />
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
                                     Regulaminem Świadczenia Usług Drogą Elektroniczną
                                   </FormLabel>
                                   {documents.electronic_services && (
@@ -4203,7 +4178,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                   />
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
-                                  <FormLabel className="text-sm font-medium leading-none">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
                                     Informację nt przetwarzania danych osobowych
                                   </FormLabel>
                                   {documents.rodo_info && (
@@ -4285,16 +4260,33 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                     })()}
                   </section>
 
-                </CardContent>
-                <CardFooter className="flex flex-col gap-3">
-                  <div className="flex justify-between gap-3 w-full">
-                    <Button type="button" variant="outline" onClick={goToPrevStep}>
-                      Wstecz
-                    </Button>
+                </div>
+              </AzureCard>
+                </div>
+
+                {priceSummary && (
+                  <div className="min-w-0 xl:sticky xl:top-6">
+                    <AzurePricePanel
+                      depositCents={priceSummary.depositCents}
+                      totalCents={priceSummary.totalCents}
+                      firstPercent={paymentSplitFirstPercent}
+                      tripBaseCents={priceSummary.tripBaseCents}
+                      addonsCents={priceSummary.addonsCents}
+                      participantLines={priceSummary.participantLines}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <AzureFormFooter className="flex-col sm:flex-row">
+                <AzureBtnOutline type="button" onClick={goToPrevStep} className="w-full sm:w-auto">
+                  ← Wstecz
+                </AzureBtnOutline>
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                     {applicantType === "company" ? (
-                      /* Dla firm: tylko jeden przycisk "ZAREZERWUJ" */
-                      <Button 
+                      <AzureBtnPrimary
                         type="button"
+                        className="w-full sm:w-auto"
                         disabled={isSubmitting}
                         onClick={async (e) => {
                           e.preventDefault();
@@ -4328,13 +4320,12 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                         }}
                       >
                         {submittingAction === "company" ? "Wysyłanie..." : "ZAREZERWUJ"}
-                      </Button>
+                      </AzureBtnPrimary>
                     ) : (
-                      /* Dla osoby fizycznej: dwa przyciski */
-                      <div className="flex gap-3">
-                        <Button 
-                          type="button" 
-                          variant="outline"
+                      <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                        <AzureBtnOutline
+                          type="button"
+                          className="w-full sm:w-auto"
                           disabled={isSubmitting}
                           onClick={async (e) => {
                             e.preventDefault();
@@ -4366,9 +4357,10 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           }}
                         >
                           {submittingAction === "reserve" ? "Wysyłanie..." : "Rezerwuj"}
-                        </Button>
-                        <Button 
+                        </AzureBtnOutline>
+                        <AzureBtnPrimary
                           type="button"
+                          className="w-full sm:w-auto"
                           disabled={isSubmitting}
                           onClick={async (e) => {
                             e.preventDefault();
@@ -4400,12 +4392,11 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           }}
                         >
                           {submittingAction === "pay" ? "Wysyłanie..." : "Rezerwuj i Zapłać"}
-                        </Button>
+                        </AzureBtnPrimary>
                       </div>
                     )}
-                  </div>
-                </CardFooter>
-              </Card>
+                </div>
+              </AzureFormFooter>
             </TabsContent>
           </form>
         </Form>

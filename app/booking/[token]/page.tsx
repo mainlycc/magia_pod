@@ -2,13 +2,19 @@
 
 import { use, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AzureCard,
+  ClientPanelHeader,
+  ClientPanelShell,
+  ClientPanelTitleAccent,
+  azureClasses,
+} from "@/components/client-panel";
+import { cn } from "@/lib/utils";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 import {
   calculateBookingTotalCents,
@@ -137,7 +143,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     fetchBooking();
   }, [token]);
 
-  // Po powrocie z Paynow (continueUrl → /booking/{token}?paymentStatus=...) zsynchronizuj wpłatę i wystaw fakturę
   useEffect(() => {
     const syncPaymentAfterPaynow = async () => {
       if (!bookingData?.booking?.booking_ref) return;
@@ -191,7 +196,6 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       const shouldEnsure =
         createdFlag || resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID";
 
-      // Jeśli umowa już ma numer, nic nie robimy
       if (!shouldEnsure) return;
       if (ensureFailed) return;
       if (typeof bookingData.booking.agreement_seq === "number" && bookingData.booking.agreement_seq > 0) return;
@@ -204,22 +208,21 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
   if (loading) {
     return (
-      <div className="container mx-auto max-w-4xl p-6">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <ClientPanelShell>
+        <div className="flex min-h-[400px] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#a1a1aa]" />
         </div>
-      </div>
+      </ClientPanelShell>
     );
   }
 
   if (error || !bookingData) {
     return (
-      <div className="container mx-auto max-w-4xl p-6">
-        <Alert variant="destructive">
-          <AlertTitle>Błąd</AlertTitle>
-          <AlertDescription>{error || "Nie udało się załadować danych rezerwacji"}</AlertDescription>
-        </Alert>
-      </div>
+      <ClientPanelShell>
+        <AzureCard accent="danger" title="Błąd">
+          <p className="text-sm text-[#3f3f46]">{error || "Nie udało się załadować danych rezerwacji"}</p>
+        </AzureCard>
+      </ClientPanelShell>
     );
   }
 
@@ -268,49 +271,58 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     agreementSeq: booking.agreement_seq,
   });
   const agreementHeaderText = agreementNumberText === "-" ? "—" : agreementNumberText.replace(/^#/, "");
-  const agreementHeaderLabel = "Numer umowy";
 
   const paymentUi =
     resolvedPaymentStatus === "CONFIRMED" || resolvedPaymentStatus === "PAID"
-      ? { label: "Płatność potwierdzona", variant: "default" as const }
+      ? { label: "Płatność potwierdzona", success: true }
       : resolvedPaymentStatus === "PENDING"
-        ? { label: "Oczekuje na płatność", variant: "secondary" as const }
+        ? { label: "Oczekuje na płatność", success: false }
         : resolvedPaymentStatus
-          ? { label: `Status płatności: ${resolvedPaymentStatus}`, variant: "outline" as const }
-          : { label: "Status płatności: —", variant: "outline" as const };
+          ? { label: `Status płatności: ${resolvedPaymentStatus}`, success: false }
+          : { label: "Status płatności: —", success: false };
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-6 p-6">
-      <Card className="overflow-hidden">
-        <div className="bg-gradient-to-b from-muted/60 to-background">
-          <CardHeader className="gap-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">{agreementHeaderLabel}</p>
-                {isEnsuringAgreement ? (
-                  <div className="flex items-center gap-2 py-1">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="text-lg text-muted-foreground">Przypisywanie numeru…</span>
-                  </div>
-                ) : (
-                  <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                    {agreementHeaderText}
-                  </h1>
-                )}
+    <ClientPanelShell>
+      <ClientPanelHeader
+        showSessionBadge
+        title={
+          <>
+            Twoja <ClientPanelTitleAccent>rezerwacja</ClientPanelTitleAccent>
+          </>
+        }
+        subtitle="Płatność jest potwierdzeniem zawarcia umowy. Poniżej znajdziesz szczegóły rezerwacji."
+      />
+
+      <AzureCard accent="blue" className="mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-[#a1a1aa]">Numer umowy</p>
+            {isEnsuringAgreement ? (
+              <div className="flex items-center gap-2 py-1">
+                <Loader2 className="h-5 w-5 animate-spin text-[#a1a1aa]" />
+                <span className="text-lg text-[#a1a1aa]">Przypisywanie numeru…</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={paymentUi.variant}>{paymentUi.label}</Badge>
-              </div>
-            </div>
-            <p className="text-muted-foreground">
-              Płatność jest potwierdzeniem zawarcia umowy. Poniżej znajdziesz szczegóły rezerwacji.
-            </p>
-          </CardHeader>
+            ) : (
+              <h1 className="text-3xl font-semibold tracking-tight text-[#0a0a0a] sm:text-4xl">
+                {agreementHeaderText}
+              </h1>
+            )}
+          </div>
+          <div className={cn(azureClasses.badgeSuccess, paymentUi.success && "border-[#bbf7d0]")}>
+            <span
+              className={cn(
+                azureClasses.badgeSuccessDot,
+                !paymentUi.success && "bg-[#a1a1aa] shadow-none",
+              )}
+              aria-hidden
+            />
+            {paymentUi.label}
+          </div>
         </div>
-      </Card>
+      </AzureCard>
 
       {ensureFailed && agreementHeaderText === "—" && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mb-6 rounded-[14px] border-[#fecaca] bg-[#fee2e2]">
           <AlertTitle>Nie udało się przypisać numeru umowy</AlertTitle>
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Spróbuj odświeżyć — numer powinien pojawić się automatycznie po zawarciu umowy.</span>
@@ -319,7 +331,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
               size="sm"
               onClick={() => void runEnsureAgreement()}
               disabled={isEnsuringAgreement}
-              className="shrink-0"
+              className="shrink-0 rounded-xl border-[#dadce3]"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
               Odśwież
@@ -329,62 +341,71 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       )}
 
       {shouldShowSuccessMessage && booking.trip.reservation_success_message?.trim() && (
-        <p className="whitespace-pre-wrap">{booking.trip.reservation_success_message}</p>
+        <AzureCard accent="success" className="mb-6">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#3f3f46]">
+            {booking.trip.reservation_success_message}
+          </p>
+        </AzureCard>
       )}
 
-      {/* Szczegóły rezerwacji */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Szczegóły rezerwacji</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <AzureCard accent="blue" title="Szczegóły rezerwacji">
+        <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <Label className="text-muted-foreground text-sm">Wycieczka</Label>
-              <p className="font-medium">{booking.trip.title}</p>
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-[#a1a1aa]">
+                Wycieczka
+              </Label>
+              <p className="mt-1 font-medium text-[#0a0a0a]">{booking.trip.title}</p>
             </div>
             <div>
-              <Label className="text-muted-foreground text-sm">Termin</Label>
-              <p className="font-medium">
-                {formatDate(booking.trip.start_date)} {booking.trip.end_date && `- ${formatDate(booking.trip.end_date)}`}
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-[#a1a1aa]">
+                Termin
+              </Label>
+              <p className="mt-1 font-medium text-[#0a0a0a]">
+                {formatDate(booking.trip.start_date)}{" "}
+                {booking.trip.end_date && `- ${formatDate(booking.trip.end_date)}`}
               </p>
             </div>
             <div>
-              <Label className="text-muted-foreground text-sm">Liczba uczestników</Label>
-              <p className="font-medium">{booking.participants.length}</p>
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-[#a1a1aa]">
+                Liczba uczestników
+              </Label>
+              <p className="mt-1 font-medium text-[#0a0a0a]">{booking.participants.length}</p>
             </div>
             <div>
-              <Label className="text-muted-foreground text-sm">Kwota do zapłaty</Label>
-              <div className="space-y-2">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-[#a1a1aa]">
+                Kwota do zapłaty
+              </Label>
+              <div className="mt-2 space-y-2">
                 <div className="grid gap-1 text-sm">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">Cena wycieczki</span>
-                    <span className="font-semibold tabular-nums">
+                    <span className="text-[#3f3f46]">Cena wycieczki</span>
+                    <span className={cn(azureClasses.mono, "font-semibold")}>
                       {(tripBaseCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">Usługi dodatkowe</span>
-                    <span className="font-semibold tabular-nums">
+                    <span className="text-[#3f3f46]">Usługi dodatkowe</span>
+                    <span className={cn(azureClasses.mono, "font-semibold")}>
                       {(addonsCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
-                  <Separator className="my-1" />
+                  <Separator className="my-1 bg-[#eceef3]" />
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground font-medium">Łączna cena</span>
-                    <span className="font-semibold text-lg text-primary tabular-nums">
+                    <span className="font-medium text-[#3f3f46]">Łączna cena</span>
+                    <span className={cn(azureClasses.mono, "text-lg font-semibold text-[#1e90ff]")}>
                       {(totalPrice / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">Zaliczka ({firstPercent}%)</span>
-                    <span className="font-semibold tabular-nums">
+                    <span className="text-[#3f3f46]">Zaliczka ({firstPercent}%)</span>
+                    <span className={cn(azureClasses.mono, "font-semibold")}>
                       {(depositCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
                 </div>
                 {addonsCents > 0 && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-[#a1a1aa]">
                     * Cena końcowa zawiera wybrane usługi dodatkowe.
                   </p>
                 )}
@@ -392,39 +413,50 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
             </div>
           </div>
 
-          <Separator />
+          <Separator className="bg-[#eceef3]" />
 
           <div>
-            <Label className="text-muted-foreground text-sm mb-2 block">Uczestnicy</Label>
+            <Label className="mb-3 block text-[11px] font-semibold uppercase tracking-wide text-[#a1a1aa]">
+              Uczestnicy
+            </Label>
             {showDetailedParticipantList ? (
-              <div className="divide-y rounded-lg border bg-muted/10">
-                {booking.participants.map((participant, idx) => (
-                  <div key={participant.id} className="flex items-start gap-3 p-3">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
-                      {idx + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium leading-5">
-                        {participant.first_name} {participant.last_name}
+              <div className="space-y-3">
+                {booking.participants.map((participant, idx) => {
+                  const initials = `${participant.first_name?.[0] ?? ""}${participant.last_name?.[0] ?? ""}`.toUpperCase();
+                  return (
+                    <div
+                      key={participant.id}
+                      className="flex items-start gap-3 rounded-2xl border border-[#dadce3] bg-[#f7f8fb] p-4"
+                    >
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1e90ff] text-sm font-semibold text-white shadow-[0_6px_14px_-6px_#1e90ff]">
+                        {initials || idx + 1}
                       </div>
-                      {(participant.email || participant.phone) && (
-                        <div className="text-xs text-muted-foreground">
-                          {participant.email ? participant.email : "—"}
-                          {participant.phone ? ` • ${participant.phone}` : ""}
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold tracking-wide text-[#a1a1aa]">
+                          UCZESTNIK {String(idx + 1).padStart(2, "0")}
                         </div>
-                      )}
+                        <div className="text-sm font-semibold leading-5 text-[#0a0a0a]">
+                          {participant.first_name} {participant.last_name}
+                        </div>
+                        {(participant.email || participant.phone) && (
+                          <div className="text-xs text-[#3f3f46]">
+                            {participant.email ? participant.email : "—"}
+                            {participant.phone ? ` • ${participant.phone}` : ""}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
-                <p className="text-sm leading-relaxed">
+              <div className="space-y-3 rounded-2xl border border-[#dadce3] bg-[#f7f8fb] p-4">
+                <p className="text-sm leading-relaxed text-[#3f3f46]">
                   Przy zgłoszeniu grupowym nie wyświetlamy tu imion i nazwisk — lista uczestników zostanie przekazana mailem zgodnie z zasadami podanymi przez organizatora. Liczba uczestników odpowiada liczbie miejsc z sekcji powyżej (
-                  <span className="font-medium">{booking.participants.length}</span>
+                  <span className="font-medium text-[#0a0a0a]">{booking.participants.length}</span>
                   ).
                 </p>
-                <p className="text-sm leading-relaxed text-muted-foreground">
+                <p className="text-sm leading-relaxed text-[#a1a1aa]">
                   {booking.trip.company_participants_info?.trim()
                     ? booking.trip.company_participants_info
                     : DEFAULT_COMPANY_PARTICIPANTS_INFO}
@@ -432,10 +464,8 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
-
-    </div>
+        </div>
+      </AzureCard>
+    </ClientPanelShell>
   );
 }
-

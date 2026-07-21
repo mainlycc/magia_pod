@@ -2,11 +2,16 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
 import Link from "next/link";
+import {
+  AzureBtnOutline,
+  AzureBtnPrimary,
+  AzureCard,
+  ClientPanelHeader,
+  ClientPanelShell,
+} from "@/components/client-panel";
 
 function PaymentReturnContent() {
   const searchParams = useSearchParams();
@@ -176,27 +181,27 @@ function PaymentReturnContent() {
   }, [searchParams]);
 
   return (
-    <div className="container mx-auto max-w-2xl space-y-6 p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Status płatności</CardTitle>
-          <CardDescription>
-            {bookingRef ? `Rezerwacja: ${bookingRef}` : "Informacja o płatności"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <ClientPanelShell containerClassName="max-w-2xl">
+      <ClientPanelHeader
+        title="Status płatności"
+        subtitle={bookingRef ? `Rezerwacja: ${bookingRef}` : "Informacja o płatności"}
+        showBrand
+      />
+
+      <AzureCard accent="blue" title="Status płatności">
+        <div className="space-y-4">
           {status === "loading" && (
             <div className="flex flex-col items-center justify-center gap-4 py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-muted-foreground">{message || "Sprawdzanie statusu płatności..."}</p>
+              <Loader2 className="h-12 w-12 animate-spin text-[#1e90ff]" />
+              <p className="text-[#3f3f46]">{message || "Sprawdzanie statusu płatności..."}</p>
             </div>
           )}
 
           {status === "success" && (
-            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertTitle className="text-green-800 dark:text-green-200">Płatność zakończona pomyślnie</AlertTitle>
-              <AlertDescription className="text-green-700 dark:text-green-300">
+            <Alert className="rounded-[14px] border-[#bbf7d0] bg-[#f0fdf4]">
+              <CheckCircle2 className="h-4 w-4 text-[#16a34a]" />
+              <AlertTitle className="text-[#166534]">Płatność zakończona pomyślnie</AlertTitle>
+              <AlertDescription className="text-[#166534]">
                 {message}
                 {bookingRef && (
                   <p className="mt-2 text-sm">
@@ -211,10 +216,10 @@ function PaymentReturnContent() {
           )}
 
           {status === "pending" && (
-            <Alert>
-              <Clock className="h-4 w-4" />
-              <AlertTitle>Płatność w trakcie przetwarzania</AlertTitle>
-              <AlertDescription>
+            <Alert className="rounded-[14px] border-[#dadce3] bg-[#f7f8fb]">
+              <Clock className="h-4 w-4 text-[#1e90ff]" />
+              <AlertTitle className="text-[#0a0a0a]">Płatność w trakcie przetwarzania</AlertTitle>
+              <AlertDescription className="text-[#3f3f46]">
                 {message}
                 {bookingRef && (
                   <p className="mt-2 text-sm">
@@ -230,7 +235,7 @@ function PaymentReturnContent() {
           )}
 
           {status === "error" && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="rounded-[14px] border-[#fecaca] bg-[#fee2e2]">
               <XCircle className="h-4 w-4" />
               <AlertTitle>Płatność nie została zrealizowana</AlertTitle>
               <AlertDescription>
@@ -250,37 +255,31 @@ function PaymentReturnContent() {
 
           <div className="flex flex-col gap-2 pt-4">
             {bookingRef && (
-              <Button asChild variant="default" className="w-full">
+              <AzureBtnPrimary asChild className="w-full">
                 <Link href={`/booking/${bookingRef}`}>Wróć do rezerwacji</Link>
-              </Button>
+              </AzureBtnPrimary>
             )}
-            <Button asChild variant="outline" className="w-full">
+            <AzureBtnOutline asChild className="w-full">
               <Link href="/">Wróć do strony głównej</Link>
-            </Button>
+            </AzureBtnOutline>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </AzureCard>
+    </ClientPanelShell>
   );
 }
 
 export default function PaymentReturnPage() {
   return (
     <Suspense fallback={
-      <div className="container mx-auto max-w-2xl space-y-6 p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Status płatności</CardTitle>
-            <CardDescription>Informacja o płatności</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col items-center justify-center gap-4 py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-muted-foreground">Ładowanie...</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <ClientPanelShell containerClassName="max-w-2xl">
+        <AzureCard accent="blue" title="Status płatności">
+          <div className="flex flex-col items-center justify-center gap-4 py-8">
+            <Loader2 className="h-12 w-12 animate-spin text-[#1e90ff]" />
+            <p className="text-[#3f3f46]">Ładowanie...</p>
+          </div>
+        </AzureCard>
+      </ClientPanelShell>
     }>
       <PaymentReturnContent />
     </Suspense>

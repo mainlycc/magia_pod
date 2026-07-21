@@ -1,11 +1,13 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { BookingForm } from "@/components/booking-form";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AzureCard, ClientPanelShell } from "@/components/client-panel";
+import {
+  ClientPanelHeader,
+  ClientPanelTitleAccent,
+} from "@/components/client-panel/client-panel-header";
 import { createClient } from "@/lib/supabase/client";
 
 type TripForReserve = {
@@ -32,7 +34,7 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
       try {
         const supabase = createClient();
 
-        let { data: tripData, error: tripError } = await supabase
+        const { data: tripData, error: tripError } = await supabase
           .from("trips")
           .select("id,title,slug,public_slug,seats_total,seats_reserved,is_active")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
@@ -49,7 +51,7 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
         }
 
         setTrip(tripData);
-      } catch (e) {
+      } catch {
         setError("Wystąpił błąd podczas ładowania danych wycieczki.");
       } finally {
         setLoading(false);
@@ -59,64 +61,45 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
     loadTrip();
   }, [slug]);
 
-  const seatsLeft = trip
-    ? Math.max(0, (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0))
-    : 0;
-
+  const seatsLeft = trip ? Math.max(0, (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0)) : 0;
+  const seatsTotal = trip?.seats_total ?? 0;
   const hasNoSeats = trip ? seatsLeft <= 0 : false;
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-6 p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">Rezerwacja wycieczki</h1>
-          <p className="text-muted-foreground text-sm">
-            Wypełnij dane kontaktowe, listę uczestników oraz zaakceptuj wymagane zgody, aby wysłać rezerwację.
-          </p>
-        </div>
-        <Button asChild variant="ghost">
-          <Link href={`/trip/${slug}`}>Wróć do szczegółów</Link>
-        </Button>
-      </div>
+    <ClientPanelShell>
+      <ClientPanelHeader
+        title={
+          <>
+            Rezerwacja <ClientPanelTitleAccent>wycieczki</ClientPanelTitleAccent>
+          </>
+        }
+        subtitle="Wypełnij dane kontaktowe, uzupełnij listę uczestników i zaakceptuj zgody, aby wysłać rezerwację."
+        backHref={`/trip/${slug}`}
+      />
 
       {loading && (
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Ładowanie danych wycieczki...</p>
-          </CardContent>
-        </Card>
+        <AzureCard accent="blue" title="Ładowanie">
+          <p className="text-sm text-[#3f3f46]">Ładowanie danych wycieczki...</p>
+        </AzureCard>
       )}
 
       {!loading && error && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Rezerwacja niedostępna</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">{error}</p>
-          </CardContent>
-        </Card>
+        <AzureCard accent="danger" title="Rezerwacja niedostępna">
+          <p className="text-sm text-[#3f3f46]">{error}</p>
+        </AzureCard>
       )}
 
       {!loading && !error && trip && hasNoSeats && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Brak wolnych miejsc</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Dla tej wycieczki nie ma już wolnych miejsc. Formularz rezerwacji jest niedostępny.
-            </p>
-          </CardContent>
-        </Card>
+        <AzureCard accent="black" title="Brak wolnych miejsc">
+          <p className="text-sm text-[#3f3f46]">
+            Dla tej wycieczki nie ma już wolnych miejsc. Formularz rezerwacji jest niedostępny.
+          </p>
+        </AzureCard>
       )}
 
       {!loading && !error && trip && !hasNoSeats && (
-        <>
-          <BookingForm slug={slug} startAtAgreementPreview={agreementPreviewMode} />
-        </>
+        <BookingForm slug={slug} startAtAgreementPreview={agreementPreviewMode} />
       )}
-    </div>
+    </ClientPanelShell>
   );
 }
-
