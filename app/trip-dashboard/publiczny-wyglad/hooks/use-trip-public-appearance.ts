@@ -98,7 +98,6 @@ export function useTripPublicAppearance() {
               data.location ||
               null,
             description: data.description || null,
-            category: data.category || null,
           })
         } catch (e) {
           console.error("Error loading step1 data:", e)
@@ -202,7 +201,6 @@ export function useTripPublicAppearance() {
         is_active: trip.is_active ?? null,
         location: trip.location || null,
         description: trip.description || null,
-        category: trip.category || null,
       })
       setLoading(false)
     } else if (isLoadingTripData) {

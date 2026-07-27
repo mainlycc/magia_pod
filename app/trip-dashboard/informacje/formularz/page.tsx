@@ -23,7 +23,6 @@ import type {
   Diet,
   ExtraInsurance,
 } from "@/components/trip-form/types"
-import { TRIP_CATEGORY_NONE } from "@/lib/trip-class-categories"
 import { transportModeToApi } from "@/lib/trip-transport"
 
 function TripFormContent() {
@@ -242,8 +241,6 @@ function TripFormContent() {
         const step1Data = JSON.parse(step1DataStr)
         const step2Data = JSON.parse(step2DataStr)
 
-        const effectivePublicSlug = step1Data.isPublic ? step1Data.publicSlug : ""
-
         // 1. Utwórz wycieczkę z danymi z kroku 1
         const tripRes = await fetch("/api/trips", {
           method: "POST",
@@ -261,7 +258,7 @@ function TripFormContent() {
             seats_total: step1Data.seats ? parseInt(step1Data.seats) : 0,
             is_active: true,
             is_public: step1Data.isPublic,
-            public_slug: effectivePublicSlug || null,
+            public_slug: null,
             territorial_scope: step1Data.territorialScope || null,
             country: step1Data.country || null,
             locality: step1Data.locality || null,
@@ -286,12 +283,6 @@ function TripFormContent() {
               typeof step1Data.airportCodes === "string" &&
               step1Data.airportCodes.trim()
                 ? step1Data.airportCodes.trim()
-                : null,
-            category:
-              typeof step1Data.tripCategory === "string" &&
-              step1Data.tripCategory.trim() &&
-              step1Data.tripCategory !== TRIP_CATEGORY_NONE
-                ? step1Data.tripCategory.trim()
                 : null,
             payment_split_enabled: step1Data.paymentSplitEnabled !== undefined ? step1Data.paymentSplitEnabled : true,
             payment_split_first_percent: step1Data.paymentSplitEnabled
@@ -402,10 +393,18 @@ function TripFormContent() {
         // 6. Odśwież listę wycieczek i ustaw nową wycieczkę jako wybraną
         const tripsRes = await fetch("/api/trips")
         if (tripsRes.ok) {
-          const tripsData = await tripsRes.json()
-          setTrips(tripsData)
-          
-          const newTrip = tripsData.find((t: { id: string }) => t.id === tripId)
+          const tripsData = (await tripsRes.json()) as Array<{
+            id: string
+            title: string
+            slug: string
+            start_date: string | null
+            end_date: string | null
+            is_active?: boolean
+          }>
+          const activeTrips = tripsData.filter((trip) => trip.is_active !== false)
+          setTrips(activeTrips)
+
+          const newTrip = activeTrips.find((t) => t.id === tripId)
           if (newTrip) {
             setSelectedTrip(newTrip)
           }

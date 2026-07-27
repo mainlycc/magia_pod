@@ -1,56 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { duplicateTripFull } from "@/lib/trips/duplicate-trip";
 
-export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  const supabase = await createClient();
-  const { data: trip } = await supabase
-    .from("trips")
-    .select("title,slug,description,start_date,end_date,price_cents,seats_total,is_active")
-    .eq("id", id)
+async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
+  const { data: claims } = await supabase.auth.getClaims();
+  const userId = (claims?.claims as { sub?: string } | null | undefined)?.sub;
+  if (!userId) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
     .single();
-  if (!trip) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Generuj automatycznie numeryczny slug (tak jak przy tworzeniu nowej wycieczki)
-  const { data: existingTrips, error: fetchError } = await supabase
-    .from("trips")
-    .select("slug");
-
-  if (fetchError) {
-    console.error("Error fetching existing trips:", fetchError);
-    return NextResponse.json({ error: "fetch_failed", details: fetchError.message }, { status: 500 });
-  }
-
-  // Znajdź najwyższy numeryczny slug
-  let maxNumericSlug = 0;
-  if (existingTrips) {
-    for (const existingTrip of existingTrips) {
-      const slug = existingTrip.slug;
-      // Sprawdź czy slug jest czysto numeryczny
-      if (slug && /^\d+$/.test(slug)) {
-        const numericValue = parseInt(slug, 10);
-        if (!isNaN(numericValue) && numericValue > maxNumericSlug) {
-          maxNumericSlug = numericValue;
-        }
-      }
-    }
-  }
-
-  // Wygeneruj nowy numeryczny slug (następny numer)
-  const newSlug = String(maxNumericSlug + 1);
-
-  const { error } = await supabase.from("trips").insert({
-    title: `${trip.title} (kopiuj)`,
-    slug: newSlug,
-    description: trip.description,
-    start_date: trip.start_date,
-    end_date: trip.end_date,
-    price_cents: trip.price_cents,
-    seats_total: trip.seats_total,
-    is_active: false,
-  });
-  if (error) return NextResponse.json({ error: "duplicate_failed" }, { status: 500 });
-  return NextResponse.redirect(new URL(`/trip-dashboard`, process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"));
+  return profile?.role === "admin";
 }
 
+export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params;
+    const supabase = await createClient();
 
+    const isAdmin = await checkAdmin(supabase);
+    if (!isAdmin) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
+    }
+
+    const adminClient = createAdminClient();
+    const result = await duplicateTripFull(adminClient, id);
+
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unexpected";
+    if (message === "not_found") {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    console.error("Error in POST /api/trips/[id]/duplicate:", err);
+    return NextResponse.json({ error: "duplicate_failed" }, { status: 500 });
+  }
+}

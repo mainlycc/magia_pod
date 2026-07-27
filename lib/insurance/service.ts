@@ -213,7 +213,6 @@ export class InsuranceService {
           start_date: (submission as any).trips.start_date,
           end_date: (submission as any).trips.end_date,
           location: (submission as any).trips.location,
-          category: (submission as any).trips.category,
         }
       : null;
 
@@ -662,7 +661,6 @@ export class InsuranceService {
         start_date: trip.start_date,
         end_date: trip.end_date,
         location: trip.location,
-        category: trip.category,
       },
     };
   }

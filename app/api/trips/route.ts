@@ -58,7 +58,6 @@ export async function POST(req: Request) {
       price_cents,
       seats_total,
       is_active,
-      category,
       location,
       country,
       locality,
@@ -163,7 +162,6 @@ export async function POST(req: Request) {
         is_active: is_active ?? true,
         is_public: Boolean(is_public),
         public_slug: public_slug ?? null,
-        category: category ?? null,
         location: location ?? null,
         territorial_scope:
           typeof territorial_scope === "string" && territorial_scope.trim()

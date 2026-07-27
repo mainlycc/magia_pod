@@ -18,6 +18,7 @@ import { Plus, Search, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -40,6 +41,7 @@ import { Label } from "@/components/ui/label";
 export interface ReusableTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  cardClassName?: string;
   searchable?: boolean;
   searchPlaceholder?: string;
   searchColumn?: string;
@@ -76,6 +78,7 @@ export interface ReusableTableProps<TData, TValue> {
 export function ReusableTable<TData, TValue>({
   columns,
   data,
+  cardClassName,
   searchable = true,
   searchPlaceholder = "Szukaj...",
   searchColumn,
@@ -312,7 +315,7 @@ export function ReusableTable<TData, TValue>({
       </div>
 
       {/* Table */}
-      <Card className="p-0 overflow-hidden">
+      <Card className={cn("p-0 overflow-hidden", cardClassName)}>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

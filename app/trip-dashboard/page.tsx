@@ -459,12 +459,6 @@ export default function TripDashboardPage() {
                 {tripFullData?.is_public ? "Tak" : "Nie"}
               </Badge>
             </div>
-            {tripFullData?.category && (
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">Kategoria:</span>
-                <span className="font-semibold">{tripFullData.category}</span>
-              </div>
-            )}
             <Separator />
             {/* Koordynatorzy */}
             <div className="space-y-2">

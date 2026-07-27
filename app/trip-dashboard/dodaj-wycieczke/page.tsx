@@ -28,11 +28,6 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { AirportCombobox } from "@/components/ui/airport-combobox"
 import { CountryCombobox } from "@/components/ui/country-combobox"
 import {
-  TRIP_CLASS_CATEGORIES,
-  TRIP_CATEGORY_NONE,
-  TRIP_CLASS_CATEGORY_OPTIONS,
-} from "@/lib/trip-class-categories"
-import {
   TRIP_TRANSPORT_OPTIONS,
   TRANSPORT_NONE,
   normalizeTransportMode,
@@ -63,20 +58,17 @@ export default function DodajWycieczkePage() {
   const [locality2, setLocality2] = useState("")
   const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
   const [airportCodes, setAirportCodes] = useState("")
-  const [tripCategory, setTripCategory] = useState<string>(TRIP_CATEGORY_NONE)
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([])
   const [isPublic, setIsPublic] = useState(false)
-  const [publicSlug, setPublicSlug] = useState("")
 
   const [coordinators, setCoordinators] = useState<Coordinator[]>([])
   const [availableCoordinators, setAvailableCoordinators] = useState<Coordinator[]>([])
-  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("")
   const [loadingCoordinators, setLoadingCoordinators] = useState(true)
   const [nextTripNumber, setNextTripNumber] = useState<string | null>(null)
 
-  const effectivePublicSlug = isPublic ? publicSlug : ""
+  const effectiveTripNumber = tripNumber.trim() || nextTripNumber || "numer"
 
   // Wczytaj dane z localStorage jeśli istnieją (gdy użytkownik wraca)
   useEffect(() => {
@@ -131,16 +123,7 @@ export default function DodajWycieczkePage() {
                 ? data.airport_codes
                 : ""
           )
-          {
-            const c = typeof data.tripCategory === "string" ? data.tripCategory.trim() : ""
-            setTripCategory(
-              (TRIP_CLASS_CATEGORIES as readonly string[]).includes(c)
-                ? c
-                : TRIP_CATEGORY_NONE
-            )
-          }
           setIsPublic(data.isPublic || false)
-          setPublicSlug(data.publicSlug || "")
           setPaymentReminderEnabled(data.paymentReminderEnabled || false)
           setPaymentReminderDaysBefore(data.paymentReminderDaysBefore || "")
           if (data.paymentSchedule && Array.isArray(data.paymentSchedule)) {
@@ -228,12 +211,11 @@ export default function DodajWycieczkePage() {
     void loadNextTripNumber()
   }, [])
 
-  // Ustaw domyślny numer wycieczki (jeśli użytkownik jeszcze nie wpisał)
+  // Ustaw domyślny numer wycieczki tylko raz przy pierwszym załadowaniu podpowiedzi
   useEffect(() => {
-    if (!tripNumber.trim() && nextTripNumber) {
-      setTripNumber(nextTripNumber)
-    }
-  }, [nextTripNumber, tripNumber])
+    if (!nextTripNumber) return
+    setTripNumber((prev) => (prev.trim() ? prev : nextTripNumber))
+  }, [nextTripNumber])
 
   // Wczytaj koordynatorów
   useEffect(() => {
@@ -254,24 +236,23 @@ export default function DodajWycieczkePage() {
     void loadCoordinators()
   }, [])
 
-  const assignCoordinator = async () => {
-    if (!selectedCoordinatorId) return
+  const assignCoordinator = (coordinatorId: string) => {
+    if (!coordinatorId) return
 
-    try {
-      const coordinator = availableCoordinators.find((c) => c.id === selectedCoordinatorId)
-      if (coordinator) {
-        setCoordinators([...coordinators, coordinator])
-        setSelectedCoordinatorId("")
-        toast.success("Koordynator został dodany")
-      }
-    } catch {
-      toast.error("Nie udało się dodać koordynatora")
+    const coordinator = availableCoordinators.find((c) => c.id === coordinatorId)
+    if (coordinator) {
+      setCoordinators((prev) =>
+        prev.some((c) => c.id === coordinatorId) ? prev : [...prev, coordinator]
+      )
+      toast.success("Koordynator został przypisany")
+    } else {
+      toast.error("Nie udało się przypisać koordynatora")
     }
   }
 
   const unassignCoordinator = (coordinatorId: string) => {
-    setCoordinators(coordinators.filter((c) => c.id !== coordinatorId))
-    toast.success("Koordynator został usunięty")
+    setCoordinators((prev) => prev.filter((c) => c.id !== coordinatorId))
+    toast.success("Koordynator został odpięty")
   }
 
   const handleSave = async () => {
@@ -322,9 +303,7 @@ export default function DodajWycieczkePage() {
         locality2: hasSecondLocation ? locality2 : "",
         transportMode,
         airportCodes,
-        tripCategory,
         isPublic,
-        publicSlug,
         paymentSchedule,
         paymentReminderEnabled,
         paymentReminderDaysBefore,
@@ -550,23 +529,6 @@ export default function DodajWycieczkePage() {
               />
             </div>
 
-            <div className="grid gap-1">
-              <Label className="text-xs">Kategoria wycieczki</Label>
-              <Select value={tripCategory} onValueChange={setTripCategory}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Wybierz kategorię" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TRIP_CATEGORY_NONE}>Brak</SelectItem>
-                  {TRIP_CLASS_CATEGORY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Cena */}
             <div className="grid gap-1">
               <Label className="text-xs">Cena (PLN)</Label>
@@ -594,40 +556,29 @@ export default function DodajWycieczkePage() {
             {/* Publiczna strona */}
             <div className="grid gap-1">
               <Label className="text-xs invisible">Publiczna strona</Label>
-              <div className="flex items-center gap-2 h-8">
-                <Checkbox
-                  id="is-public"
-                  checked={isPublic}
-                  onCheckedChange={(checked) => setIsPublic(Boolean(checked))}
-                  className="h-4 w-4"
-                />
-                <Label
-                  htmlFor="is-public"
-                  className="text-xs cursor-pointer"
-                >
-                  Publiczna strona wycieczki
-                </Label>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 h-8">
+                  <Checkbox
+                    id="is-public"
+                    checked={isPublic}
+                    onCheckedChange={(checked) => setIsPublic(Boolean(checked))}
+                    className="h-4 w-4"
+                  />
+                  <Label
+                    htmlFor="is-public"
+                    className="text-xs cursor-pointer"
+                  >
+                    Publiczna strona wycieczki
+                  </Label>
+                </div>
+                {isPublic && (
+                  <p className="text-[10px] text-muted-foreground">
+                    URL:{" "}
+                    <span className="font-mono">/trip/{effectiveTripNumber}</span>
+                  </p>
+                )}
               </div>
             </div>
-
-            {/* Slug publiczny */}
-            {isPublic && (
-              <div className="grid gap-1">
-                <Label className="text-xs">Slug publiczny</Label>
-                <Input
-                  placeholder="np. magicka-wycieczka-wlochy"
-                  value={publicSlug}
-                  onChange={(e) => setPublicSlug(e.target.value)}
-                  className="h-8 text-xs"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  URL:{" "}
-                  <span className="font-mono">
-                    /trip/{effectivePublicSlug || "twoj-slug"}
-                  </span>
-                </p>
-              </div>
-            )}
           </div>
 
           <Separator />
@@ -712,37 +663,27 @@ export default function DodajWycieczkePage() {
                 )}
 
                 {unassignedCoordinators.length > 0 && (
-                  <div className="flex gap-2 items-end">
-                    <div className="flex-1 grid gap-1">
-                      <Label className="text-xs">Przypisz koordynatora</Label>
-                      <Select
-                        value={selectedCoordinatorId}
-                        onValueChange={setSelectedCoordinatorId}
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Wybierz koordynatora" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {unassignedCoordinators.map((coordinator) => (
-                            <SelectItem
-                              key={coordinator.id}
-                              value={coordinator.id}
-                            >
-                              {coordinator.full_name ||
-                                "Brak imienia i nazwiska"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      onClick={assignCoordinator}
-                      disabled={!selectedCoordinatorId}
-                      size="sm"
-                      className="h-8 text-xs"
+                  <div className="grid gap-1 w-1/2">
+                    <Label className="text-xs">Przypisz koordynatora</Label>
+                    <Select
+                      key={`coord-select-${coordinators.length}`}
+                      onValueChange={(value) => assignCoordinator(value)}
                     >
-                      Przypisz
-                    </Button>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Wybierz koordynatora" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {unassignedCoordinators.map((coordinator) => (
+                          <SelectItem
+                            key={coordinator.id}
+                            value={coordinator.id}
+                          >
+                            {coordinator.full_name ||
+                              "Brak imienia i nazwiska"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 

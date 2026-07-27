@@ -42,7 +42,7 @@ test.describe("Raporty TFG/TFP (pkt 10)", () => {
       title: `Trip TFG ${Date.now()}`,
       slug: uniq.tripSlug,
       is_public: true,
-      category: "TestCategory",
+      territorial_scope: "EUR",
       reservation_number: `TFG-${Date.now()}`,
       price_cents: 10000,
     });

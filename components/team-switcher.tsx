@@ -47,9 +47,13 @@ export function TeamSwitcher() {
   const { selectedTrip, setSelectedTrip, trips, role } = useTrip()
   const isCoordinator = role === "coordinator"
 
-  const activeTrip = selectedTrip ?? trips[0] ?? null
+  const activeTrips = trips.filter((trip) => trip.is_active !== false)
+  const activeTrip =
+    (selectedTrip && selectedTrip.is_active !== false ? selectedTrip : null) ??
+    activeTrips[0] ??
+    null
 
-  if (trips.length === 0) {
+  if (activeTrips.length === 0) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
@@ -103,7 +107,7 @@ export function TeamSwitcher() {
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Wycieczki
             </DropdownMenuLabel>
-            {trips.map((trip) => (
+            {activeTrips.map((trip) => (
               <DropdownMenuItem
                 key={trip.id}
                 onClick={() => setSelectedTrip(trip)}

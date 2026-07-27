@@ -13,7 +13,6 @@ const tripFullData: TripFullData = {
   seats_total: 40,
   seats_reserved: 5,
   is_active: true,
-  category: null,
   territorial_scope: null,
   country: null,
   locality: null,

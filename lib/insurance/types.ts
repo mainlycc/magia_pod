@@ -220,7 +220,6 @@ export interface TripData {
   start_date: string | null;
   end_date: string | null;
   location: string | null;
-  category: string | null;
 }
 
 // Typy dla serwisu

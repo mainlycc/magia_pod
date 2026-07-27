@@ -13,6 +13,7 @@ import {
   IconEdit,
   IconPlus,
   IconFileText,
+  IconMap2,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -138,6 +139,11 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       title: "Dodaj wycieczkę",
       url: "/trip-dashboard/dodaj-wycieczke",
       icon: IconPlus,
+    },
+    {
+      title: "Zarządzanie wycieczkami",
+      url: "/trip-dashboard/wycieczki",
+      icon: IconMap2,
     },
     {
       title: "Zaproszenia koordynatorów",

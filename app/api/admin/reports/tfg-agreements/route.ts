@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient();
 
     let detailRows: string[][] = [];
-    let summaryInputs: { category: string; participants: number; valuePln: number }[] = [];
+    let summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] = [];
 
     switch (body.reportType) {
       case "tfg_signed_detail": {

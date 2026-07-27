@@ -122,14 +122,6 @@ export function mapTripToHdiParameters(trip: TripData): Array<{ code: string; va
     }
   }
 
-  if (trip.category) {
-    parameters.push({
-      code: 'TRIP_CATEGORY',
-      value: trip.category,
-      type: 'string',
-    });
-  }
-
   return parameters;
 }
 

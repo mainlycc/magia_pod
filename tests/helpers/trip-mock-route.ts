@@ -57,7 +57,6 @@ export function buildMockTripRow(overrides: TripMockOverrides = {}) {
     location: "Mock",
     transport_mode: null,
     airport_codes: null,
-    category: null,
     registration_mode: overrides.registration_mode ?? "individual",
     require_pesel: overrides.require_pesel ?? false,
     form_show_additional_services: overrides.form_show_additional_services ?? false,

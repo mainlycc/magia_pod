@@ -59,9 +59,9 @@
 }
 
 .client-panel .azure-italic-accent {
-  font-family: var(--font-instrument-serif, Georgia, serif);
-  font-style: italic;
-  font-weight: 400;
+  font-family: inherit;
+  font-style: normal;
+  font-weight: inherit;
   color: var(--client-accent);
 }
 

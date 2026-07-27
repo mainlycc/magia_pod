@@ -58,7 +58,6 @@ type TripLite = {
   start_date: string | null;
   end_date: string | null;
   location: string | null;
-  category: string | null;
   price_cents: number | null;
   reservation_number: string | null;
   transport_mode: string | null;
@@ -169,16 +168,16 @@ export function buildDetailRowFromBooking(
 }
 
 export type SummaryRow = {
-  category: string;
+  territorialScope: string;
   agreementCount: number;
   participantSum: number;
   valueSumPln: number;
 };
 
-export function aggregateSummary(rows: { category: string; participants: number; valuePln: number }[]): SummaryRow[] {
+export function aggregateSummary(rows: { territorialScope: string; participants: number; valuePln: number }[]): SummaryRow[] {
   const map = new Map<string, { agreementCount: number; participantSum: number; valueSumPln: number }>();
   for (const r of rows) {
-    const key = r.category.trim() || "(brak kategorii)";
+    const key = r.territorialScope.trim() || "(brak zakresu)";
     const cur = map.get(key) ?? { agreementCount: 0, participantSum: 0, valueSumPln: 0 };
     cur.agreementCount += 1;
     cur.participantSum += r.participants;
@@ -186,19 +185,19 @@ export function aggregateSummary(rows: { category: string; participants: number;
     map.set(key, cur);
   }
   const sorted = [...map.entries()]
-    .map(([category, v]) => ({ category, ...v }))
-    .sort((a, b) => a.category.localeCompare(b.category, "pl"));
+    .map(([territorialScope, v]) => ({ territorialScope, ...v }))
+    .sort((a, b) => a.territorialScope.localeCompare(b.territorialScope, "pl"));
   if (sorted.length > 1) {
     const agreementCount = sorted.reduce((s, r) => s + r.agreementCount, 0);
     const participantSum = sorted.reduce((s, r) => s + r.participantSum, 0);
     const valueSumPln = sorted.reduce((s, r) => s + r.valueSumPln, 0);
-    sorted.push({ category: "RAZEM", agreementCount, participantSum, valueSumPln });
+    sorted.push({ territorialScope: "RAZEM", agreementCount, participantSum, valueSumPln });
   }
   return sorted;
 }
 
 const SUMMARY_HEADERS = [
-  "Kategoria wycieczki",
+  "Zakres terytorialny",
   "Liczba umów / rezerwacji",
   "Suma uczestników",
   "Suma wartości (PLN)",
@@ -236,7 +235,7 @@ export async function fetchSignedAgreementRows(
   admin: SupabaseClient,
   startIso: string,
   endIso: string,
-): Promise<{ detail: string[][]; summaryInputs: { category: string; participants: number; valuePln: number }[] }> {
+): Promise<{ detail: string[][]; summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] }> {
   const list = await fetchAgreementsInConclusionPeriod(admin, startIso, endIso);
   if (list.length === 0) {
     return { detail: [], summaryInputs: [] };
@@ -257,7 +256,6 @@ export async function fetchSignedAgreementRows(
         start_date,
         end_date,
         location,
-        category,
         price_cents,
         reservation_number,
         transport_mode,
@@ -279,7 +277,7 @@ export async function fetchSignedAgreementRows(
   const byId = new Map((bookings as BookingLite[] | null)?.map((b) => [b.id, b]) ?? []);
 
   const detail: string[][] = [];
-  const summaryInputs: { category: string; participants: number; valuePln: number }[] = [];
+  const summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] = [];
 
   for (const ag of list) {
     const b = byId.get(ag.booking_id);
@@ -298,7 +296,7 @@ export async function fetchSignedAgreementRows(
       ),
     );
     summaryInputs.push({
-      category: trip?.category ?? "",
+      territorialScope: trip?.territorial_scope ?? "",
       participants: n,
       valuePln,
     });
@@ -311,7 +309,7 @@ export async function fetchCancellationRows(
   admin: SupabaseClient,
   startIso: string,
   endIso: string,
-): Promise<{ detail: string[][]; summaryInputs: { category: string; participants: number; valuePln: number }[] }> {
+): Promise<{ detail: string[][]; summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] }> {
   const { data: bookings, error: bErr } = await admin
     .from("bookings")
     .select(
@@ -326,7 +324,6 @@ export async function fetchCancellationRows(
         start_date,
         end_date,
         location,
-        category,
         price_cents,
         reservation_number,
         transport_mode,
@@ -375,7 +372,7 @@ export async function fetchCancellationRows(
   }
 
   const detail: string[][] = [];
-  const summaryInputs: { category: string; participants: number; valuePln: number }[] = [];
+  const summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] = [];
 
   for (const b of blist) {
     const trip = unwrapTrip(b.trips);
@@ -386,7 +383,7 @@ export async function fetchCancellationRows(
       buildDetailRowFromBooking(b, ag, { cancellationDate: b.cancelled_at }),
     );
     summaryInputs.push({
-      category: trip?.category ?? "",
+      territorialScope: trip?.territorial_scope ?? "",
       participants: n,
       valuePln,
     });
@@ -414,7 +411,7 @@ export async function buildXlsxBuffer(opts: {
     const ws2 = wb.addWorksheet("Podsumowanie");
     ws2.addRow([...SUMMARY_HEADERS]);
     for (const r of opts.summaryRows) {
-      ws2.addRow([r.category, r.agreementCount, r.participantSum, formatMoneyPln(r.valueSumPln)]);
+      ws2.addRow([r.territorialScope, r.agreementCount, r.participantSum, formatMoneyPln(r.valueSumPln)]);
     }
   }
 
@@ -476,7 +473,7 @@ export function buildPdfBuffer(opts: {
         startY,
         head: [[...SUMMARY_HEADERS]],
         body: opts.summaryRows.map((r) => [
-          r.category,
+          r.territorialScope,
           String(r.agreementCount),
           String(r.participantSum),
           formatMoneyPln(r.valueSumPln),

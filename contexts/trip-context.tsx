@@ -14,6 +14,7 @@ type Trip = {
   slug: string
   start_date: string | null
   end_date: string | null
+  is_active?: boolean
 }
 
 // Typ dla pojedynczej raty w harmonogramie
@@ -35,7 +36,6 @@ export type TripFullData = {
   seats_total: number | null
   seats_reserved: number | null
   is_active: boolean | null
-  category: string | null
   territorial_scope: string | null
   country: string | null
   locality: string | null
@@ -117,6 +117,8 @@ type TripContextType = {
   isLoadingTripData: boolean
   // Funkcja do invalidacji cache
   invalidateTripCache: () => void
+  // Odśwież listę wycieczek w dropdownie
+  refreshTrips: (options?: { loadProfile?: boolean }) => Promise<void>
 }
 
 const TripContext = React.createContext<TripContextType | undefined>(undefined)
@@ -159,6 +161,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = React.useState<UserRole>(null)
   const [isRoleLoaded, setIsRoleLoaded] = React.useState(false)
   const selectedTripRef = React.useRef<Trip | null>(selectedTrip)
+  const roleRef = React.useRef<UserRole>(null)
+  const allowedTripIdsRef = React.useRef<string[] | null>(null)
   
   // Cache pełnych danych wycieczki
   const [tripFullData, setTripFullData] = React.useState<TripFullData | null>(null)
@@ -253,106 +257,100 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cachedTripId, loadTripData])
 
-  // Wczytaj listę wycieczek (raz, współdzielone między podstronami)
-  React.useEffect(() => {
-    let cancelled = false
+  const refreshTrips = React.useCallback(async (options?: { loadProfile?: boolean }) => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const userId = session?.user?.id ?? null
 
-    const loadTrips = async () => {
-      const supabase = createClient()
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      const userId = session?.user?.id ?? null
-
-      // Pobierz profil (rola + przypisane wyjazdy) zanim pokażemy listę,
-      // żeby koordynator ani przez moment nie widział cudzych wycieczek.
-      let userRole: UserRole = null
-      let allowedTripIds: string[] | null = null
-      if (userId) {
-        try {
-          const res = await fetch("/api/profile")
-          if (res.ok) {
-            const profile = (await res.json()) as {
-              role?: string
-              allowed_trip_ids?: string[] | null
-            }
-            userRole =
-              profile.role === "admin" || profile.role === "coordinator"
-                ? profile.role
-                : null
-            allowedTripIds = profile.allowed_trip_ids ?? null
+    if (options?.loadProfile !== false && userId) {
+      try {
+        const res = await fetch("/api/profile")
+        if (res.ok) {
+          const profile = (await res.json()) as {
+            role?: string
+            allowed_trip_ids?: string[] | null
           }
-        } catch {
-          // brak profilu — traktujemy jak brak roli
+          const userRole: UserRole =
+            profile.role === "admin" || profile.role === "coordinator"
+              ? profile.role
+              : null
+          const allowedTripIds = profile.allowed_trip_ids ?? null
+          roleRef.current = userRole
+          allowedTripIdsRef.current = allowedTripIds
+          setRole(userRole)
+          setIsRoleLoaded(true)
         }
+      } catch {
+        // brak profilu — traktujemy jak brak roli
       }
-      if (cancelled) return
-      setRole(userRole)
-      setIsRoleLoaded(true)
+    }
 
-      const filterByRole = (list: Trip[]): Trip[] => {
-        if (userRole !== "coordinator") return list
-        const allowed = new Set((allowedTripIds ?? []).map(String))
-        return list.filter((t) => allowed.has(String(t.id)))
-      }
+    const userRole = roleRef.current
+    const allowedTripIds = allowedTripIdsRef.current
 
-      if (!cancelled && userId) {
-        const cached = readTripsListCache(userId)
-        if (cached && cached.length > 0) {
-          const list = filterByRole(cached as Trip[])
-          setTrips(list)
-          const tripToSelect = pickTripFromList(list, selectedTripRef.current)
-          if (tripToSelect) {
-            setSelectedTripState(tripToSelect)
-            selectedTripRef.current = tripToSelect
-          } else {
-            setSelectedTripState(null)
-            selectedTripRef.current = null
-          }
-        }
-      }
+    const filterByRole = (list: Trip[]): Trip[] => {
+      if (userRole !== "coordinator") return list
+      const allowed = new Set((allowedTripIds ?? []).map(String))
+      return list.filter((t) => allowed.has(String(t.id)))
+    }
 
-      const { data, error } = await supabase
-        .from("trips")
-        .select("id, title, slug, start_date, end_date")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-
-      if (cancelled) return
-
-      if (!error && data) {
-        if (userId) {
-          writeTripsListCache(userId, data as TripsListCacheTrip[])
-        }
-
-        const filtered = filterByRole(data as Trip[])
-        setTrips(filtered)
-
-        const tripToSelect = pickTripFromList(filtered, selectedTripRef.current)
-
+    if (options?.loadProfile !== false && userId) {
+      const cached = readTripsListCache(userId)
+      if (cached && cached.length > 0) {
+        const list = filterByRole(cached as Trip[]).filter(
+          (trip) => trip.is_active !== false,
+        )
+        setTrips(list)
+        const tripToSelect = pickTripFromList(list, selectedTripRef.current)
         if (tripToSelect) {
-          const sameAsCurrent = selectedTripRef.current?.id === tripToSelect.id
-          if (sameAsCurrent) {
-            setSelectedTripState(tripToSelect)
-            selectedTripRef.current = tripToSelect
-            if (typeof window !== "undefined") {
-              localStorage.setItem("selectedTripId", tripToSelect.id)
-              localStorage.setItem("selectedTrip", JSON.stringify(tripToSelect))
-            }
-          } else {
-            setSelectedTrip(tripToSelect)
+          setSelectedTripState(tripToSelect)
+          selectedTripRef.current = tripToSelect
+        } else {
+          setSelectedTripState(null)
+          selectedTripRef.current = null
+        }
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("trips")
+      .select("id, title, slug, start_date, end_date, is_active")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+
+    if (!error && data) {
+      if (userId) {
+        writeTripsListCache(userId, data as TripsListCacheTrip[])
+      }
+
+      const filtered = filterByRole(data as Trip[])
+      setTrips(filtered)
+
+      const tripToSelect = pickTripFromList(filtered, selectedTripRef.current)
+
+      if (tripToSelect) {
+        const sameAsCurrent = selectedTripRef.current?.id === tripToSelect.id
+        if (sameAsCurrent) {
+          setSelectedTripState(tripToSelect)
+          selectedTripRef.current = tripToSelect
+          if (typeof window !== "undefined") {
+            localStorage.setItem("selectedTripId", tripToSelect.id)
+            localStorage.setItem("selectedTrip", JSON.stringify(tripToSelect))
           }
         } else {
-          setSelectedTrip(null)
+          setSelectedTrip(tripToSelect)
         }
+      } else {
+        setSelectedTrip(null)
       }
     }
-
-    void loadTrips()
-    return () => {
-      cancelled = true
-    }
   }, [setSelectedTrip])
+
+  React.useEffect(() => {
+    void refreshTrips()
+  }, [refreshTrips])
 
   // Załaduj dane wycieczki jeśli selectedTrip istnieje, ale cache nie jest jeszcze załadowany
   React.useEffect(() => {
@@ -375,6 +373,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         tripContentData,
         isLoadingTripData,
         invalidateTripCache,
+        refreshTrips,
       }}
     >
       {children}

@@ -83,8 +83,7 @@ test.describe('Trip Dashboard - Tworzenie i edycja wycieczki', () => {
     await page.getByLabel(/data rozpoczęcia/i).fill(startDate.toISOString().split('T')[0]);
     await page.getByLabel(/data zakończenia/i).fill(endDate.toISOString().split('T')[0]);
     
-    // Wypełnij kategorię i miejsce
-    await page.getByLabel(/kategoria/i).fill('Wycieczki górskie');
+    // Wypełnij lokalizację
     await page.getByLabel(/trasa|kraj/i).fill('Islandia');
     
     // Wypełnij cenę i miejsca
@@ -93,8 +92,7 @@ test.describe('Trip Dashboard - Tworzenie i edycja wycieczki', () => {
     
     // Włącz publiczną podstronę
     await page.getByLabel(/publiczna strona wycieczki/i).check();
-    await page.getByPlaceholder(/np\. magicka-wycieczka-wlochy/i).fill(`public-${tripSlug}`);
-    
+
     // Zapisz i przejdź dalej
     await page.getByRole('button', { name: /zapisz i przejdź dalej/i }).click();
     
@@ -131,7 +129,6 @@ test.describe('Trip Dashboard - Tworzenie i edycja wycieczki', () => {
       seats_total: 15,
       is_active: true,
       is_public: false,
-      category: 'Test',
       location: 'Test Location',
     });
     

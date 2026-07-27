@@ -21,6 +21,7 @@ const pageTitles: Record<string, string> = {
   "/trip-dashboard/dokumenty": "Dokumenty zgód",
   "/trip-dashboard/ubezpieczenia-globalne": "Panel ubezpieczeń",
   "/trip-dashboard/dodaj-wycieczke": "Dodaj wycieczkę",
+  "/trip-dashboard/wycieczki": "Zarządzanie wycieczkami",
 }
 
 // Wzorce ścieżek z dynamicznymi segmentami

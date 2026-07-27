@@ -17,7 +17,6 @@ export type TripData = {
   is_active: boolean | null
   location: string | null
   description: string | null
-  category?: string | null
 }
 
 export type DragHandlers = {

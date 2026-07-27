@@ -19,7 +19,6 @@ export function createMockTrip(overrides?: Partial<any>): any {
     is_active: true,
     is_public: true,
     public_slug: "testowa-wycieczka",
-    category: "test",
     location: "Test Location",
     registration_mode: "both",
     require_pesel: true,

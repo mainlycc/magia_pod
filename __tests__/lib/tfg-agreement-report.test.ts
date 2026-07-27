@@ -194,7 +194,6 @@ describe("lib/reports/tfg-agreement-report", () => {
             start_date: "2026-07-10",
             end_date: "2026-07-15",
             location: "Nieuzywane",
-            category: "ABC",
             price_cents: 123456,
             reservation_number: "12",
             transport_mode: "LOTNCZART",
