@@ -69,6 +69,41 @@ import {
 
 const DEFAULT_TEMPLATE = DEFAULT_AGREEMENT_TEMPLATE_HTML;
 
+const ADDITIONAL_SERVICE_SECTION_COPY = {
+  touristInsurance: {
+    title: "Ubezpieczenia Turystyczne",
+    description:
+      "Nikt nie planuje chorować na wyjeździe, ale warto być przygotowanym na każdą niespodziankę. Wybierając dodatkowe ubezpieczenie turystyczne, zyskujesz wsparcie w nagłych wypadkach bez dodatkowych kosztów. Wybierz pakiet dopasowany do Twoich potrzeb i podróżuj bezpiecznie!",
+  },
+  cancellationInsurance: {
+    title: "Ubezpieczenia kosztów rezygnacji",
+    description:
+      "Życie bywa nieprzewidywalne – nagła choroba, wypadki losowe czy inne niespodziewane sytuacje mogą pokrzyżować plany wyjazdowe. Nie pozwól, by oznaczało to utratę pieniędzy. Dodając ubezpieczenie kosztów rezygnacji, zyskujesz gwarancję zwrotu poniesionych kosztów.",
+  },
+  attractions: {
+    title: "Atrakcje dodatkowe",
+    description: "Spraw, by ten wyjazd był niezapomniany! Przygotowaliśmy dla Ciebie dodatkowe atrakcje",
+  },
+  diets: {
+    title: "Diety",
+  },
+} as const;
+
+function AdditionalServiceSectionHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <SectionLabel className={description ? "mb-0" : undefined}>{title}</SectionLabel>
+      {description ? <p className={azureClasses.sectionDesc}>{description}</p> : null}
+    </div>
+  );
+}
+
 const _LEGACY_DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">
 <p style="margin: 0;">ORGANIZATOR IMPREZY TURYSTYCZNEJ:</p>
 <p style="margin: 0; font-weight: bold;">"GRUPA DE-PL" Szymon Kurkiewicz</p>
@@ -811,6 +846,8 @@ type TripConfig = {
     owu_url: string;
     price_cents?: number | null;
     variants?: { id: string; title: string; price_cents: number | null }[];
+    enabled?: boolean;
+    insurance_type?: number | null;
   }[];
   form_required_participant_fields?: {
     pesel?: boolean;
@@ -2971,6 +3008,12 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                           const enabledInsurances = (tripConfig?.extra_insurances || []).filter(
                             (i: any) => i.enabled !== false,
                           );
+                          const touristInsurances = enabledInsurances.filter(
+                            (i: any) => i.insurance_type !== 3,
+                          );
+                          const cancellationInsurances = enabledInsurances.filter(
+                            (i: any) => i.insurance_type === 3,
+                          );
                           const enabledAttractions = (tripConfig?.additional_attractions || []).filter(
                             (a: any) => a.enabled !== false,
                           );
@@ -3013,222 +3056,159 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                       firstName={p?.first_name}
                                       lastName={p?.last_name}
                                     >
-                                      <div className="space-y-6">
-                                      {/* Diety */}
-                                      {enabledDiets.length > 0 && (
-                                        <div className="space-y-3">
-                                          <SectionLabel>Diety</SectionLabel>
-                                          <div className="space-y-3">
-                                            {enabledDiets.map((diet: any) => {
-                                              const idx = allServices.findIndex(
-                                                (s: any) =>
-                                                  s.type === "diet" &&
-                                                  s.service_id === diet.id &&
-                                                  s.participant_index === participantIndex,
-                                              );
-                                              const selected = idx >= 0;
-                                              const service = selected ? allServices[idx] : null;
-                                              const variants = diet.variants && diet.variants.length > 0 ? diet.variants : null;
-                                              return (
-                                                <div
-                                                  key={`diet-${diet.id}`}
-                                                  className={cn(
-                                                    azureClasses.serviceOption,
-                                                    selected && azureClasses.serviceOptionSelected,
-                                                  )}
-                                                >
-                                                  <div className="flex items-start justify-between gap-3">
-                                                    <div className="space-y-1">
-                                                      <div className={azureClasses.serviceTitle}>{diet.title}</div>
-                                                      {diet.description && (
-                                                        <p className={azureClasses.serviceDesc}>
-                                                          {diet.description}
-                                                        </p>
-                                                      )}
-                                                      {diet.price_cents !== null && diet.price_cents > 0 && (
-                                                        <div className={azureClasses.servicePrice}>
-                                                          +{((diet.price_cents || 0) / 100).toFixed(2)} PLN
+                                      <div className={azureClasses.additionalServiceSections}>
+                                      {/* Ubezpieczenia Turystyczne + KR */}
+                                      {(
+                                        [
+                                          {
+                                            key: "tourist",
+                                            items: touristInsurances,
+                                            copy: ADDITIONAL_SERVICE_SECTION_COPY.touristInsurance,
+                                          },
+                                          {
+                                            key: "cancellation",
+                                            items: cancellationInsurances,
+                                            copy: ADDITIONAL_SERVICE_SECTION_COPY.cancellationInsurance,
+                                          },
+                                        ] as const
+                                      ).map(({ key, items, copy }) =>
+                                        items.length > 0 ? (
+                                          <div key={key} className="space-y-3">
+                                            <AdditionalServiceSectionHeader
+                                              title={copy.title}
+                                              description={copy.description}
+                                            />
+                                            <div className="space-y-3">
+                                              {items.map((insurance: any) => {
+                                                const idx = allServices.findIndex(
+                                                  (s: any) =>
+                                                    s.type === "insurance" &&
+                                                    s.service_id === insurance.id &&
+                                                    s.participant_index === participantIndex,
+                                                );
+                                                const selected = idx >= 0;
+                                                const service = selected ? allServices[idx] : null;
+                                                const variants =
+                                                  insurance.variants && insurance.variants.length > 0
+                                                    ? insurance.variants
+                                                    : null;
+                                                return (
+                                                  <div
+                                                    key={`ins-${insurance.id}`}
+                                                    className={cn(
+                                                      azureClasses.serviceOption,
+                                                      selected && azureClasses.serviceOptionSelected,
+                                                    )}
+                                                  >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                      <div className="space-y-1">
+                                                        <div className={azureClasses.serviceTitle}>
+                                                          {insurance.title}
                                                         </div>
-                                                      )}
-                                                    </div>
-                                                    {selected ? (
-                                                      <AzureBtnGhost
-                                                        type="button"
-                                                        className="px-2 py-1.5"
-                                                        onClick={() => removeAtIndex(idx)}
-                                                      >
-                                                        <X className="h-4 w-4" />
-                                                      </AzureBtnGhost>
-                                                    ) : (
-                                                      <AzureBtnOutline
-                                                        type="button"
-                                                        className="px-3 py-1.5 text-xs"
-                                                        onClick={() => {
-                                                          const currentServices = form.getValues("participant_services") || [];
-                                                          const v0 = variants?.[0] ?? null;
-                                                          form.setValue("participant_services", [
-                                                            ...currentServices,
-                                                            {
-                                                              type: "diet",
-                                                              service_id: diet.id,
-                                                              participant_index: participantIndex,
-                                                              variant_id: v0?.id,
-                                                              price_cents: v0?.price_cents ?? diet.price_cents ?? null,
-                                                              currency: "PLN",
-                                                            },
-                                                          ]);
-                                                        }}
-                                                      >
-                                                        Dodaj
-                                                      </AzureBtnOutline>
-                                                    )}
-                                                  </div>
-
-                                                  {selected && variants && (
-                                                    <div className="mt-3 space-y-1">
-                                                      <Label className={azureClasses.label}>Wariant</Label>
-                                                      <Select
-                                                        value={service?.variant_id ?? variants[0]?.id ?? ""}
-                                                        onValueChange={(value) => {
-                                                          const v = variants.find((x: any) => x.id === value);
-                                                          setVariantForIndex(idx, value, v?.price_cents ?? null);
-                                                        }}
-                                                      >
-                                                        <SelectTrigger className="h-8 text-xs">
-                                                          <SelectValue placeholder="Wybierz wariant" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                          {variants.map((v: any) => (
-                                                            <SelectItem key={v.id} value={v.id}>
-                                                              {v.title}
-                                                              {v.price_cents !== null && v.price_cents > 0
-                                                                ? ` (+${((v.price_cents || 0) / 100).toFixed(2)} PLN)`
-                                                                : " (bezpłatna)"}
-                                                            </SelectItem>
-                                                          ))}
-                                                        </SelectContent>
-                                                      </Select>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {/* Ubezpieczenia */}
-                                      {enabledInsurances.length > 0 && (
-                                        <div className="space-y-3">
-                                          <SectionLabel>Ubezpieczenia dodatkowe</SectionLabel>
-                                          <div className="space-y-3">
-                                            {enabledInsurances.map((insurance: any) => {
-                                              const idx = allServices.findIndex(
-                                                (s: any) =>
-                                                  s.type === "insurance" &&
-                                                  s.service_id === insurance.id &&
-                                                  s.participant_index === participantIndex,
-                                              );
-                                              const selected = idx >= 0;
-                                              const service = selected ? allServices[idx] : null;
-                                              const variants =
-                                                insurance.variants && insurance.variants.length > 0 ? insurance.variants : null;
-                                              return (
-                                                <div
-                                                  key={`ins-${insurance.id}`}
-                                                  className={cn(
-                                                    azureClasses.serviceOption,
-                                                    selected && azureClasses.serviceOptionSelected,
-                                                  )}
-                                                >
-                                                  <div className="flex items-start justify-between gap-3">
-                                                    <div className="space-y-1">
-                                                      <div className={azureClasses.serviceTitle}>{insurance.title}</div>
-                                                      {insurance.description && (
-                                                        <p className={azureClasses.serviceDesc}>
-                                                          {insurance.description}
-                                                        </p>
-                                                      )}
-                                                      {!variants &&
-                                                        insurance.price_cents !== null &&
-                                                        insurance.price_cents !== undefined &&
-                                                        insurance.price_cents > 0 && (
-                                                          <div className={azureClasses.servicePrice}>
-                                                            +{((insurance.price_cents || 0) / 100).toFixed(2)} PLN
-                                                          </div>
+                                                        {insurance.description && (
+                                                          <p className={azureClasses.serviceDesc}>
+                                                            {insurance.description}
+                                                          </p>
                                                         )}
+                                                        {!variants &&
+                                                          insurance.price_cents !== null &&
+                                                          insurance.price_cents !== undefined &&
+                                                          insurance.price_cents > 0 && (
+                                                            <div className={azureClasses.servicePrice}>
+                                                              +
+                                                              {((insurance.price_cents || 0) / 100).toFixed(2)}{" "}
+                                                              PLN
+                                                            </div>
+                                                          )}
+                                                      </div>
+                                                      {selected ? (
+                                                        <AzureBtnGhost
+                                                          type="button"
+                                                          className="px-2 py-1.5"
+                                                          onClick={() => removeAtIndex(idx)}
+                                                        >
+                                                          <X className="h-4 w-4" />
+                                                        </AzureBtnGhost>
+                                                      ) : (
+                                                        <AzureBtnOutline
+                                                          type="button"
+                                                          className="px-3 py-1.5 text-xs"
+                                                          onClick={() => {
+                                                            const currentServices =
+                                                              form.getValues("participant_services") || [];
+                                                            const v0 = variants?.[0] ?? null;
+                                                            form.setValue("participant_services", [
+                                                              ...currentServices,
+                                                              {
+                                                                type: "insurance",
+                                                                service_id: insurance.id,
+                                                                participant_index: participantIndex,
+                                                                variant_id: v0?.id,
+                                                                price_cents: (v0?.price_cents ??
+                                                                  insurance.price_cents ??
+                                                                  null) as number | null,
+                                                                currency: "PLN",
+                                                              },
+                                                            ]);
+                                                          }}
+                                                        >
+                                                          Dodaj
+                                                        </AzureBtnOutline>
+                                                      )}
                                                     </div>
-                                                    {selected ? (
-                                                      <AzureBtnGhost
-                                                        type="button"
-                                                        className="px-2 py-1.5"
-                                                        onClick={() => removeAtIndex(idx)}
-                                                      >
-                                                        <X className="h-4 w-4" />
-                                                      </AzureBtnGhost>
-                                                    ) : (
-                                                      <AzureBtnOutline
-                                                        type="button"
-                                                        className="px-3 py-1.5 text-xs"
-                                                        onClick={() => {
-                                                          const currentServices = form.getValues("participant_services") || [];
-                                                          const v0 = variants?.[0] ?? null;
-                                                          form.setValue("participant_services", [
-                                                            ...currentServices,
-                                                            {
-                                                              type: "insurance",
-                                                              service_id: insurance.id,
-                                                              participant_index: participantIndex,
-                                                              variant_id: v0?.id,
-                                                              price_cents:
-                                                                (v0?.price_cents ?? insurance.price_cents ?? null) as number | null,
-                                                              currency: "PLN",
-                                                            },
-                                                          ]);
-                                                        }}
-                                                      >
-                                                        Dodaj
-                                                      </AzureBtnOutline>
+
+                                                    {selected && variants && (
+                                                      <div className="mt-3 space-y-1">
+                                                        <Label className={azureClasses.label}>Wariant</Label>
+                                                        <Select
+                                                          value={
+                                                            service?.variant_id ?? variants[0]?.id ?? ""
+                                                          }
+                                                          onValueChange={(value) => {
+                                                            const v = variants.find(
+                                                              (x: any) => x.id === value,
+                                                            );
+                                                            setVariantForIndex(
+                                                              idx,
+                                                              value,
+                                                              v?.price_cents ?? null,
+                                                            );
+                                                          }}
+                                                        >
+                                                          <SelectTrigger className="h-8 text-xs">
+                                                            <SelectValue placeholder="Wybierz wariant" />
+                                                          </SelectTrigger>
+                                                          <SelectContent>
+                                                            {variants.map((v: any) => (
+                                                              <SelectItem key={v.id} value={v.id}>
+                                                                {v.title}
+                                                                {v.price_cents !== null &&
+                                                                v.price_cents > 0
+                                                                  ? ` (+${((v.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                  : ""}
+                                                              </SelectItem>
+                                                            ))}
+                                                          </SelectContent>
+                                                        </Select>
+                                                      </div>
                                                     )}
                                                   </div>
-
-                                                  {selected && variants && (
-                                                    <div className="mt-3 space-y-1">
-                                                      <Label className={azureClasses.label}>Wariant</Label>
-                                                      <Select
-                                                        value={service?.variant_id ?? variants[0]?.id ?? ""}
-                                                        onValueChange={(value) => {
-                                                          const v = variants.find((x: any) => x.id === value);
-                                                          setVariantForIndex(idx, value, v?.price_cents ?? null);
-                                                        }}
-                                                      >
-                                                        <SelectTrigger className="h-8 text-xs">
-                                                          <SelectValue placeholder="Wybierz wariant" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                          {variants.map((v: any) => (
-                                                            <SelectItem key={v.id} value={v.id}>
-                                                              {v.title}
-                                                              {v.price_cents !== null && v.price_cents > 0
-                                                                ? ` (+${((v.price_cents || 0) / 100).toFixed(2)} PLN)`
-                                                                : ""}
-                                                            </SelectItem>
-                                                          ))}
-                                                        </SelectContent>
-                                                      </Select>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              );
-                                            })}
+                                                );
+                                              })}
+                                            </div>
                                           </div>
-                                        </div>
+                                        ) : null,
                                       )}
 
                                       {/* Atrakcje */}
                                       {enabledAttractions.length > 0 && (
                                         <div className="space-y-3">
-                                          <SectionLabel>Atrakcje dodatkowe</SectionLabel>
+                                          <AdditionalServiceSectionHeader
+                                            title={ADDITIONAL_SERVICE_SECTION_COPY.attractions.title}
+                                            description={
+                                              ADDITIONAL_SERVICE_SECTION_COPY.attractions.description
+                                            }
+                                          />
                                           <div className="space-y-3">
                                             {enabledAttractions.map((attraction: any) => {
                                               const idx = allServices.findIndex(
@@ -3248,21 +3228,28 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                 >
                                                   <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1">
-                                                      <div className={azureClasses.serviceTitle}>{attraction.title}</div>
+                                                      <div className={azureClasses.serviceTitle}>
+                                                        {attraction.title}
+                                                      </div>
                                                       {attraction.description && (
                                                         <p className={azureClasses.serviceDesc}>
                                                           {attraction.description}
                                                         </p>
                                                       )}
-                                                      {attraction.price_cents !== null && attraction.price_cents > 0 && (
-                                                        <div className={azureClasses.servicePrice}>
-                                                          +{((attraction.price_cents || 0) / 100).toFixed(2)}{" "}
-                                                          {attraction.currency || "PLN"}
-                                                          {attraction.currency && attraction.currency !== "PLN"
-                                                            ? " (nie wlicza się do umowy)"
-                                                            : ""}
-                                                        </div>
-                                                      )}
+                                                      {attraction.price_cents !== null &&
+                                                        attraction.price_cents > 0 && (
+                                                          <div className={azureClasses.servicePrice}>
+                                                            +
+                                                            {((attraction.price_cents || 0) / 100).toFixed(
+                                                              2,
+                                                            )}{" "}
+                                                            {attraction.currency || "PLN"}
+                                                            {attraction.currency &&
+                                                            attraction.currency !== "PLN"
+                                                              ? " (nie wlicza się do umowy)"
+                                                              : ""}
+                                                          </div>
+                                                        )}
                                                     </div>
                                                     {selected ? (
                                                       <AzureBtnGhost
@@ -3277,7 +3264,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                         type="button"
                                                         className="px-3 py-1.5 text-xs"
                                                         onClick={() => {
-                                                          const currentServices = form.getValues("participant_services") || [];
+                                                          const currentServices =
+                                                            form.getValues("participant_services") || [];
                                                           form.setValue("participant_services", [
                                                             ...currentServices,
                                                             {
@@ -3286,7 +3274,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                               participant_index: participantIndex,
                                                               price_cents: attraction.price_cents ?? null,
                                                               currency: attraction.currency || "PLN",
-                                                              include_in_contract: attraction.include_in_contract ?? true,
+                                                              include_in_contract:
+                                                                attraction.include_in_contract ?? true,
                                                             },
                                                           ]);
                                                         }}
@@ -3295,6 +3284,131 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                                       </AzureBtnOutline>
                                                     )}
                                                   </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Diety */}
+                                      {enabledDiets.length > 0 && (
+                                        <div className="space-y-3">
+                                          <AdditionalServiceSectionHeader
+                                            title={ADDITIONAL_SERVICE_SECTION_COPY.diets.title}
+                                          />
+                                          <div className="space-y-3">
+                                            {enabledDiets.map((diet: any) => {
+                                              const idx = allServices.findIndex(
+                                                (s: any) =>
+                                                  s.type === "diet" &&
+                                                  s.service_id === diet.id &&
+                                                  s.participant_index === participantIndex,
+                                              );
+                                              const selected = idx >= 0;
+                                              const service = selected ? allServices[idx] : null;
+                                              const variants =
+                                                diet.variants && diet.variants.length > 0
+                                                  ? diet.variants
+                                                  : null;
+                                              return (
+                                                <div
+                                                  key={`diet-${diet.id}`}
+                                                  className={cn(
+                                                    azureClasses.serviceOption,
+                                                    selected && azureClasses.serviceOptionSelected,
+                                                  )}
+                                                >
+                                                  <div className="flex items-start justify-between gap-3">
+                                                    <div className="space-y-1">
+                                                      <div className={azureClasses.serviceTitle}>
+                                                        {diet.title}
+                                                      </div>
+                                                      {diet.description && (
+                                                        <p className={azureClasses.serviceDesc}>
+                                                          {diet.description}
+                                                        </p>
+                                                      )}
+                                                      {diet.price_cents !== null &&
+                                                        diet.price_cents > 0 && (
+                                                          <div className={azureClasses.servicePrice}>
+                                                            +{((diet.price_cents || 0) / 100).toFixed(2)}{" "}
+                                                            PLN
+                                                          </div>
+                                                        )}
+                                                    </div>
+                                                    {selected ? (
+                                                      <AzureBtnGhost
+                                                        type="button"
+                                                        className="px-2 py-1.5"
+                                                        onClick={() => removeAtIndex(idx)}
+                                                      >
+                                                        <X className="h-4 w-4" />
+                                                      </AzureBtnGhost>
+                                                    ) : (
+                                                      <AzureBtnOutline
+                                                        type="button"
+                                                        className="px-3 py-1.5 text-xs"
+                                                        onClick={() => {
+                                                          const currentServices =
+                                                            form.getValues("participant_services") || [];
+                                                          const v0 = variants?.[0] ?? null;
+                                                          form.setValue("participant_services", [
+                                                            ...currentServices,
+                                                            {
+                                                              type: "diet",
+                                                              service_id: diet.id,
+                                                              participant_index: participantIndex,
+                                                              variant_id: v0?.id,
+                                                              price_cents:
+                                                                v0?.price_cents ??
+                                                                diet.price_cents ??
+                                                                null,
+                                                              currency: "PLN",
+                                                            },
+                                                          ]);
+                                                        }}
+                                                      >
+                                                        Dodaj
+                                                      </AzureBtnOutline>
+                                                    )}
+                                                  </div>
+
+                                                  {selected && variants && (
+                                                    <div className="mt-3 space-y-1">
+                                                      <Label className={azureClasses.label}>Wariant</Label>
+                                                      <Select
+                                                        value={
+                                                          service?.variant_id ?? variants[0]?.id ?? ""
+                                                        }
+                                                        onValueChange={(value) => {
+                                                          const v = variants.find(
+                                                            (x: any) => x.id === value,
+                                                          );
+                                                          setVariantForIndex(
+                                                            idx,
+                                                            value,
+                                                            v?.price_cents ?? null,
+                                                          );
+                                                        }}
+                                                      >
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                          <SelectValue placeholder="Wybierz wariant" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                          {variants.map((v: any) => (
+                                                            <SelectItem key={v.id} value={v.id}>
+                                                              {v.title}
+                                                              {v.price_cents !== null &&
+                                                              v.price_cents > 0
+                                                                ? ` (+${((v.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                : " (bezpłatna)"}
+                                                            </SelectItem>
+                                                          ))}
+                                                        </SelectContent>
+                                                      </Select>
+                                                    </div>
+                                                  )}
                                                 </div>
                                               );
                                             })}
@@ -3311,14 +3425,357 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
                           // Dla firmy zostaw dotychczasowy układ (per-usługa, z ręcznym wskazaniem osoby).
                           return (
-                            <div className="space-y-6">
+                            <div className={azureClasses.additionalServiceSections}>
+                              {/* Ubezpieczenia Turystyczne + KR */}
+                              {(
+                                [
+                                  {
+                                    key: "tourist",
+                                    items: touristInsurances,
+                                    copy: ADDITIONAL_SERVICE_SECTION_COPY.touristInsurance,
+                                  },
+                                  {
+                                    key: "cancellation",
+                                    items: cancellationInsurances,
+                                    copy: ADDITIONAL_SERVICE_SECTION_COPY.cancellationInsurance,
+                                  },
+                                ] as const
+                              ).map(({ key, items, copy }) =>
+                                items.length > 0 ? (
+                                  <div key={key} className="space-y-4">
+                                    <AdditionalServiceSectionHeader
+                                      title={copy.title}
+                                      description={copy.description}
+                                    />
+                                    {items.map((insurance: any) => {
+                                        const insuranceServices = allServices.filter(
+                                          (s: any) => s.type === "insurance" && s.service_id === insurance.id,
+                                        );
+
+                                        return (
+                                          <div key={insurance.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                  <div className={azureClasses.serviceTitle}>{insurance.title}</div>
+                                                  {(!insurance.variants || insurance.variants.length === 0) &&
+                                                    insurance.price_cents !== null &&
+                                                    insurance.price_cents !== undefined &&
+                                                    insurance.price_cents > 0 && (
+                                                      <span className={azureClasses.servicePrice}>
+                                                        (+{((insurance.price_cents || 0) / 100).toFixed(2)} PLN)
+                                                      </span>
+                                                    )}
+                                                </div>
+                                                {insurance.description && (
+                                                  <p className={cn(azureClasses.serviceDesc, "mt-1")}>
+                                                    {insurance.description}
+                                                  </p>
+                                                )}
+                                                {insurance.owu_url && (
+                                                  <a
+                                                    href={insurance.owu_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="mt-1 flex items-center gap-1 text-xs font-medium text-[#1e90ff] hover:underline"
+                                                  >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    OWU
+                                                  </a>
+                                                )}
+                                              </div>
+                                              <AzureBtnOutline
+                                                type="button"
+                                                className="px-3 py-1.5 text-xs"
+                                                onClick={() => {
+                                                  const currentServices = form.getValues("participant_services") || [];
+                                                  const newService: any = {
+                                                    type: "insurance",
+                                                    service_id: insurance.id,
+                                                    price_cents: null,
+                                                    currency: "PLN",
+                                                  };
+
+                                                  if (insurance.variants && insurance.variants.length > 0) {
+                                                    newService.variant_id = insurance.variants[0].id;
+                                                    newService.price_cents = insurance.variants[0].price_cents ?? null;
+                                                  } else {
+                                                    // Jeśli nie ma wariantów, użyj głównej ceny ubezpieczenia
+                                                    newService.price_cents = insurance.price_cents ?? null;
+                                                  }
+
+                                                  form.setValue("participant_services", [...currentServices, newService]);
+                                                }}
+                                              >
+                                                Dodaj ubezpieczenie
+                                              </AzureBtnOutline>
+                                            </div>
+
+                                            {insuranceServices.map((service: any, serviceIndex: number) => {
+                                              // Znajdź indeks usługi w tablicy wszystkich usług
+                                              const serviceArrayIndex = allServices.findIndex((s: any) => {
+                                                if (s.type !== "insurance" || s.service_id !== insurance.id) return false;
+                                                return (
+                                                  s.participant_first_name === service.participant_first_name &&
+                                                  s.participant_last_name === service.participant_last_name
+                                                );
+                                              });
+
+                                              if (serviceArrayIndex === -1) return null;
+
+                                              return (
+                                                <div
+                                                  key={serviceArrayIndex}
+                                                  className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
+                                                >
+                                                  <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1 space-y-2">
+                                                      <div className="grid grid-cols-2 gap-2">
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                          render={({ field: firstNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className={azureClasses.label}>Imię uczestnika</Label>
+                                                              <Input
+                                                                {...firstNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Imię"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                          render={({ field: lastNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                              <Input
+                                                                {...lastNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Nazwisko"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                      </div>
+
+                                                      {insurance.variants && insurance.variants.length > 0 && (
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.variant_id`}
+                                                          render={({ field: variantField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className={azureClasses.label}>Wariant ubezpieczenia</Label>
+                                                              <Select
+                                                                value={variantField.value || ""}
+                                                                onValueChange={(value) => {
+                                                                  variantField.onChange(value);
+                                                                  const selectedVariant = insurance.variants?.find(
+                                                                    (v: { id: string; title: string; price_cents: number | null }) =>
+                                                                      v.id === value,
+                                                                  );
+                                                                  const currentServices = form.getValues(
+                                                                    "participant_services",
+                                                                  ) || [];
+                                                                  const updatedServices = currentServices.map(
+                                                                    (s: any, idx: number) => {
+                                                                      if (idx === serviceArrayIndex) {
+                                                                        return {
+                                                                          ...s,
+                                                                          variant_id: value,
+                                                                          price_cents: selectedVariant?.price_cents ?? null,
+                                                                        };
+                                                                      }
+                                                                      return s;
+                                                                    },
+                                                                  );
+                                                                  form.setValue("participant_services", updatedServices);
+                                                                }}
+                                                              >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                  <SelectValue placeholder="Wybierz wariant" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                  {insurance.variants?.map(
+                                                                    (variant: {
+                                                                      id: string;
+                                                                      title: string;
+                                                                      price_cents: number | null;
+                                                                    }) => (
+                                                                      <SelectItem key={variant.id} value={variant.id}>
+                                                                        {variant.title}
+                                                                        {variant.price_cents !== null &&
+                                                                        variant.price_cents > 0
+                                                                          ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
+                                                                          : ""}
+                                                                      </SelectItem>
+                                                                    ),
+                                                                  ) || []}
+                                                                </SelectContent>
+                                                              </Select>
+                                                            </div>
+                                                          )}
+                                                        />
+                                                      )}
+                                                    </div>
+                                                    <AzureBtnGhost
+                                                      type="button"
+                                                      className="px-2 py-1.5"
+                                                      onClick={() => {
+                                                        const currentServices = form.getValues("participant_services") || [];
+                                                        const updatedServices = currentServices.filter(
+                                                          (_: any, idx: number) => idx !== serviceArrayIndex,
+                                                        );
+                                                        form.setValue("participant_services", updatedServices);
+                                                      }}
+                                                    >
+                                                      <X className="h-4 w-4" />
+                                                    </AzureBtnGhost>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                ) : null,
+                              )}
+                              {/* Atrakcje dodatkowe */}
+                              {enabledAttractions.length > 0 && (
+                                  <div className="space-y-4">
+                                    <AdditionalServiceSectionHeader
+                                      title={ADDITIONAL_SERVICE_SECTION_COPY.attractions.title}
+                                      description={ADDITIONAL_SERVICE_SECTION_COPY.attractions.description}
+                                    />
+                                    {enabledAttractions.map((attraction) => {
+                                        const attractionServices = allServices.filter(
+                                          (s: any) => s.type === "attraction" && s.service_id === attraction.id,
+                                        );
+
+                                        return (
+                                          <div key={attraction.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1">
+                                                <div className={azureClasses.serviceTitle}>{attraction.title}</div>
+                                                {attraction.description && (
+                                                  <p className={cn(azureClasses.serviceDesc, "mt-1")}>
+                                                    {attraction.description}
+                                                  </p>
+                                                )}
+                                                <div className="mt-1 flex items-center gap-2">
+                                                  {attraction.price_cents !== null && attraction.price_cents > 0 && (
+                                                    <span className={azureClasses.servicePrice}>
+                                                      {(attraction.price_cents / 100).toFixed(2)}{" "}
+                                                      {attraction.currency || "PLN"}
+                                                    </span>
+                                                  )}
+                                                  {attraction.currency && attraction.currency !== "PLN" && (
+                                                    <span className={azureClasses.serviceDesc}>
+                                                      (nie wlicza się do umowy)
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <AzureBtnOutline
+                                                type="button"
+                                                className="px-3 py-1.5 text-xs"
+                                                onClick={() => {
+                                                  const currentServices = form.getValues("participant_services") || [];
+                                                  const newService: any = {
+                                                    type: "attraction",
+                                                    service_id: attraction.id,
+                                                    price_cents: attraction.price_cents ?? null,
+                                                    currency: attraction.currency || "PLN",
+                                                    include_in_contract: attraction.include_in_contract ?? true,
+                                                  };
+                                                  form.setValue("participant_services", [...currentServices, newService]);
+                                                }}
+                                              >
+                                                Dodaj atrakcję
+                                              </AzureBtnOutline>
+                                            </div>
+
+                                            {attractionServices.map((service: any, serviceIndex: number) => {
+                                              const serviceArrayIndex = allServices.findIndex((s: any) => {
+                                                if (s.type !== "attraction" || s.service_id !== attraction.id) return false;
+                                                return (
+                                                  s.participant_first_name === service.participant_first_name &&
+                                                  s.participant_last_name === service.participant_last_name
+                                                );
+                                              });
+
+                                              if (serviceArrayIndex === -1) return null;
+
+                                              return (
+                                                <div
+                                                  key={serviceArrayIndex}
+                                                  className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
+                                                >
+                                                  <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1">
+                                                      <div className="grid grid-cols-2 gap-2">
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_first_name`}
+                                                          render={({ field: firstNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className={azureClasses.label}>Imię uczestnika</Label>
+                                                              <Input
+                                                                {...firstNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Imię"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                        <FormField
+                                                          control={control}
+                                                          name={`participant_services.${serviceArrayIndex}.participant_last_name`}
+                                                          render={({ field: lastNameField }) => (
+                                                            <div className="space-y-1">
+                                                              <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
+                                                              <Input
+                                                                {...lastNameField}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Nazwisko"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                    <AzureBtnGhost
+                                                      type="button"
+                                                      className="px-2 py-1.5"
+                                                      onClick={() => {
+                                                        const currentServices = form.getValues("participant_services") || [];
+                                                        const updatedServices = currentServices.filter(
+                                                          (_: any, idx: number) => idx !== serviceArrayIndex,
+                                                        );
+                                                        form.setValue("participant_services", updatedServices);
+                                                      }}
+                                                    >
+                                                      <X className="h-4 w-4" />
+                                                    </AzureBtnGhost>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                )}
                               {/* Diety */}
-                              {tripConfig?.diets && tripConfig.diets.filter((d: any) => d.enabled !== false).length > 0 && (
+                              {enabledDiets.length > 0 && (
                                 <div className="space-y-4">
-                                  <SectionLabel>Diety</SectionLabel>
-                                  {tripConfig.diets
-                                    .filter((d: any) => d.enabled !== false)
-                                    .map((diet) => {
+                                  <AdditionalServiceSectionHeader
+                                    title={ADDITIONAL_SERVICE_SECTION_COPY.diets.title}
+                                  />
+                                  {enabledDiets.map((diet) => {
                                       const dietServices = allServices.filter(
                                         (s: any) => s.type === "diet" && s.service_id === diet.id,
                                       );
@@ -3473,327 +3930,6 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                                 </div>
                               )}
 
-                              {/* Ubezpieczenia */}
-                              {tripConfig?.extra_insurances &&
-                                tripConfig.extra_insurances.filter((i: any) => i.enabled !== false).length > 0 && (
-                                  <div className="space-y-4">
-                                    <SectionLabel>Ubezpieczenia dodatkowe</SectionLabel>
-                                    {tripConfig.extra_insurances
-                                      .filter((i: any) => i.enabled !== false)
-                                      .map((insurance) => {
-                                        const insuranceServices = allServices.filter(
-                                          (s: any) => s.type === "insurance" && s.service_id === insurance.id,
-                                        );
-
-                                        return (
-                                          <div key={insurance.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
-                                            <div className="flex items-start justify-between gap-2">
-                                              <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                  <div className={azureClasses.serviceTitle}>{insurance.title}</div>
-                                                  {(!insurance.variants || insurance.variants.length === 0) &&
-                                                    insurance.price_cents !== null &&
-                                                    insurance.price_cents !== undefined &&
-                                                    insurance.price_cents > 0 && (
-                                                      <span className={azureClasses.servicePrice}>
-                                                        (+{((insurance.price_cents || 0) / 100).toFixed(2)} PLN)
-                                                      </span>
-                                                    )}
-                                                </div>
-                                                {insurance.description && (
-                                                  <p className={cn(azureClasses.serviceDesc, "mt-1")}>
-                                                    {insurance.description}
-                                                  </p>
-                                                )}
-                                                {insurance.owu_url && (
-                                                  <a
-                                                    href={insurance.owu_url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="mt-1 flex items-center gap-1 text-xs font-medium text-[#1e90ff] hover:underline"
-                                                  >
-                                                    <ExternalLink className="h-3 w-3" />
-                                                    OWU
-                                                  </a>
-                                                )}
-                                              </div>
-                                              <AzureBtnOutline
-                                                type="button"
-                                                className="px-3 py-1.5 text-xs"
-                                                onClick={() => {
-                                                  const currentServices = form.getValues("participant_services") || [];
-                                                  const newService: any = {
-                                                    type: "insurance",
-                                                    service_id: insurance.id,
-                                                    price_cents: null,
-                                                    currency: "PLN",
-                                                  };
-
-                                                  if (insurance.variants && insurance.variants.length > 0) {
-                                                    newService.variant_id = insurance.variants[0].id;
-                                                    newService.price_cents = insurance.variants[0].price_cents ?? null;
-                                                  } else {
-                                                    // Jeśli nie ma wariantów, użyj głównej ceny ubezpieczenia
-                                                    newService.price_cents = insurance.price_cents ?? null;
-                                                  }
-
-                                                  form.setValue("participant_services", [...currentServices, newService]);
-                                                }}
-                                              >
-                                                Dodaj ubezpieczenie
-                                              </AzureBtnOutline>
-                                            </div>
-
-                                            {insuranceServices.map((service: any, serviceIndex: number) => {
-                                              // Znajdź indeks usługi w tablicy wszystkich usług
-                                              const serviceArrayIndex = allServices.findIndex((s: any) => {
-                                                if (s.type !== "insurance" || s.service_id !== insurance.id) return false;
-                                                return (
-                                                  s.participant_first_name === service.participant_first_name &&
-                                                  s.participant_last_name === service.participant_last_name
-                                                );
-                                              });
-
-                                              if (serviceArrayIndex === -1) return null;
-
-                                              return (
-                                                <div
-                                                  key={serviceArrayIndex}
-                                                  className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
-                                                >
-                                                  <div className="flex items-start justify-between gap-2">
-                                                    <div className="flex-1 space-y-2">
-                                                      <div className="grid grid-cols-2 gap-2">
-                                                        <FormField
-                                                          control={control}
-                                                          name={`participant_services.${serviceArrayIndex}.participant_first_name`}
-                                                          render={({ field: firstNameField }) => (
-                                                            <div className="space-y-1">
-                                                              <Label className={azureClasses.label}>Imię uczestnika</Label>
-                                                              <Input
-                                                                {...firstNameField}
-                                                                className="h-8 text-xs"
-                                                                placeholder="Imię"
-                                                              />
-                                                            </div>
-                                                          )}
-                                                        />
-                                                        <FormField
-                                                          control={control}
-                                                          name={`participant_services.${serviceArrayIndex}.participant_last_name`}
-                                                          render={({ field: lastNameField }) => (
-                                                            <div className="space-y-1">
-                                                              <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
-                                                              <Input
-                                                                {...lastNameField}
-                                                                className="h-8 text-xs"
-                                                                placeholder="Nazwisko"
-                                                              />
-                                                            </div>
-                                                          )}
-                                                        />
-                                                      </div>
-
-                                                      {insurance.variants && insurance.variants.length > 0 && (
-                                                        <FormField
-                                                          control={control}
-                                                          name={`participant_services.${serviceArrayIndex}.variant_id`}
-                                                          render={({ field: variantField }) => (
-                                                            <div className="space-y-1">
-                                                              <Label className={azureClasses.label}>Wariant ubezpieczenia</Label>
-                                                              <Select
-                                                                value={variantField.value || ""}
-                                                                onValueChange={(value) => {
-                                                                  variantField.onChange(value);
-                                                                  const selectedVariant = insurance.variants?.find(
-                                                                    (v) => v.id === value,
-                                                                  );
-                                                                  const currentServices = form.getValues(
-                                                                    "participant_services",
-                                                                  ) || [];
-                                                                  const updatedServices = currentServices.map(
-                                                                    (s: any, idx: number) => {
-                                                                      if (idx === serviceArrayIndex) {
-                                                                        return {
-                                                                          ...s,
-                                                                          variant_id: value,
-                                                                          price_cents: selectedVariant?.price_cents ?? null,
-                                                                        };
-                                                                      }
-                                                                      return s;
-                                                                    },
-                                                                  );
-                                                                  form.setValue("participant_services", updatedServices);
-                                                                }}
-                                                              >
-                                                                <SelectTrigger className="h-8 text-xs">
-                                                                  <SelectValue placeholder="Wybierz wariant" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                  {insurance.variants?.map((variant) => (
-                                                                    <SelectItem key={variant.id} value={variant.id}>
-                                                                      {variant.title}
-                                                                      {variant.price_cents !== null && variant.price_cents > 0
-                                                                        ? ` (+${((variant.price_cents || 0) / 100).toFixed(2)} PLN)`
-                                                                        : ""}
-                                                                    </SelectItem>
-                                                                  )) || []}
-                                                                </SelectContent>
-                                                              </Select>
-                                                            </div>
-                                                          )}
-                                                        />
-                                                      )}
-                                                    </div>
-                                                    <AzureBtnGhost
-                                                      type="button"
-                                                      className="px-2 py-1.5"
-                                                      onClick={() => {
-                                                        const currentServices = form.getValues("participant_services") || [];
-                                                        const updatedServices = currentServices.filter(
-                                                          (_: any, idx: number) => idx !== serviceArrayIndex,
-                                                        );
-                                                        form.setValue("participant_services", updatedServices);
-                                                      }}
-                                                    >
-                                                      <X className="h-4 w-4" />
-                                                    </AzureBtnGhost>
-                                                  </div>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        );
-                                      })}
-                                  </div>
-                                )}
-
-                              {/* Atrakcje dodatkowe */}
-                              {tripConfig?.additional_attractions &&
-                                tripConfig.additional_attractions.filter((a: any) => a.enabled !== false).length > 0 && (
-                                  <div className="space-y-4">
-                                    <SectionLabel>Atrakcje dodatkowe</SectionLabel>
-                                    {tripConfig.additional_attractions
-                                      .filter((a: any) => a.enabled !== false)
-                                      .map((attraction) => {
-                                        const attractionServices = allServices.filter(
-                                          (s: any) => s.type === "attraction" && s.service_id === attraction.id,
-                                        );
-
-                                        return (
-                                          <div key={attraction.id} className={cn(azureClasses.serviceGroup, "space-y-3")}>
-                                            <div className="flex items-start justify-between gap-2">
-                                              <div className="flex-1">
-                                                <div className={azureClasses.serviceTitle}>{attraction.title}</div>
-                                                {attraction.description && (
-                                                  <p className={cn(azureClasses.serviceDesc, "mt-1")}>
-                                                    {attraction.description}
-                                                  </p>
-                                                )}
-                                                <div className="mt-1 flex items-center gap-2">
-                                                  {attraction.price_cents !== null && attraction.price_cents > 0 && (
-                                                    <span className={azureClasses.servicePrice}>
-                                                      {(attraction.price_cents / 100).toFixed(2)}{" "}
-                                                      {attraction.currency || "PLN"}
-                                                    </span>
-                                                  )}
-                                                  {attraction.currency && attraction.currency !== "PLN" && (
-                                                    <span className={azureClasses.serviceDesc}>
-                                                      (nie wlicza się do umowy)
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              </div>
-                                              <AzureBtnOutline
-                                                type="button"
-                                                className="px-3 py-1.5 text-xs"
-                                                onClick={() => {
-                                                  const currentServices = form.getValues("participant_services") || [];
-                                                  const newService: any = {
-                                                    type: "attraction",
-                                                    service_id: attraction.id,
-                                                    price_cents: attraction.price_cents ?? null,
-                                                    currency: attraction.currency || "PLN",
-                                                    include_in_contract: attraction.include_in_contract ?? true,
-                                                  };
-                                                  form.setValue("participant_services", [...currentServices, newService]);
-                                                }}
-                                              >
-                                                Dodaj atrakcję
-                                              </AzureBtnOutline>
-                                            </div>
-
-                                            {attractionServices.map((service: any, serviceIndex: number) => {
-                                              const serviceArrayIndex = allServices.findIndex((s: any) => {
-                                                if (s.type !== "attraction" || s.service_id !== attraction.id) return false;
-                                                return (
-                                                  s.participant_first_name === service.participant_first_name &&
-                                                  s.participant_last_name === service.participant_last_name
-                                                );
-                                              });
-
-                                              if (serviceArrayIndex === -1) return null;
-
-                                              return (
-                                                <div
-                                                  key={serviceArrayIndex}
-                                                  className={cn(azureClasses.serviceOption, azureClasses.serviceOptionSelected, "space-y-2")}
-                                                >
-                                                  <div className="flex items-start justify-between gap-2">
-                                                    <div className="flex-1">
-                                                      <div className="grid grid-cols-2 gap-2">
-                                                        <FormField
-                                                          control={control}
-                                                          name={`participant_services.${serviceArrayIndex}.participant_first_name`}
-                                                          render={({ field: firstNameField }) => (
-                                                            <div className="space-y-1">
-                                                              <Label className={azureClasses.label}>Imię uczestnika</Label>
-                                                              <Input
-                                                                {...firstNameField}
-                                                                className="h-8 text-xs"
-                                                                placeholder="Imię"
-                                                              />
-                                                            </div>
-                                                          )}
-                                                        />
-                                                        <FormField
-                                                          control={control}
-                                                          name={`participant_services.${serviceArrayIndex}.participant_last_name`}
-                                                          render={({ field: lastNameField }) => (
-                                                            <div className="space-y-1">
-                                                              <Label className={azureClasses.label}>{serviceArrayIndex + 1}. Nazwisko uczestnika</Label>
-                                                              <Input
-                                                                {...lastNameField}
-                                                                className="h-8 text-xs"
-                                                                placeholder="Nazwisko"
-                                                              />
-                                                            </div>
-                                                          )}
-                                                        />
-                                                      </div>
-                                                    </div>
-                                                    <AzureBtnGhost
-                                                      type="button"
-                                                      className="px-2 py-1.5"
-                                                      onClick={() => {
-                                                        const currentServices = form.getValues("participant_services") || [];
-                                                        const updatedServices = currentServices.filter(
-                                                          (_: any, idx: number) => idx !== serviceArrayIndex,
-                                                        );
-                                                        form.setValue("participant_services", updatedServices);
-                                                      }}
-                                                    >
-                                                      <X className="h-4 w-4" />
-                                                    </AzureBtnGhost>
-                                                  </div>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        );
-                                      })}
-                                  </div>
-                                )}
                             </div>
                           );
                         })()}

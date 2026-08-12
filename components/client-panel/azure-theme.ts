@@ -38,6 +38,8 @@ export const azureClasses = {
   sectionLabel:
     "mb-3 flex items-center gap-2 text-[11.5px] font-semibold tracking-wide text-[#3f3f46]",
   sectionLabelDot: "h-1 w-1 rounded-full bg-[#1e90ff]",
+  sectionDesc: "text-sm leading-relaxed text-[#3f3f46]",
+  additionalServiceSections: "space-y-8 divide-y divide-[#dadce3] [&>div]:pt-6 [&>div:first-child]:pt-0",
   btnPrimary:
     "rounded-xl bg-[#1e90ff] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_22px_-10px_#1e90ff] hover:bg-[#1574d6] focus-visible:ring-[#cee4fc]",
   btnOutline:
