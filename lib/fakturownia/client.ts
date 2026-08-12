@@ -25,8 +25,8 @@ export interface FakturowniaInvoiceItem {
   quantity: number;
   price_net: number;
   total_price_gross: number;
-  tax: string; // "np" (nie podlega), "disabled" (marża), "0", "5", "8", "23", "zw"
-  /** Stawka VAT od marży (dla pozycji marżowych `tax: "disabled"`), np. "23". */
+  tax: string; // "np" (nie podlega), "zw", "0", "5", "8", "23" — NIE "disabled" na zamówieniach/zaliczkach (KSeF)
+  /** Stawka VAT od marży (tylko faktury kind=vat_margin z pozycjami marżowymi). */
   vat_margin_tax?: string | number;
 }
 
@@ -607,6 +607,79 @@ export async function getInvoice(
       viewUrl: responseData.view_url,
       rawResponse: responseData,
     };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Nieznany błąd",
+    };
+  }
+}
+
+/**
+ * KSeF blokuje zaliczki z zamówień ze stawką „nie wyświetlaj” (API: tax=disabled).
+ * Aktualizuje pozycje zamówienia (estimate) na stawkę KSeF-safe (domyślnie np).
+ */
+export async function fixOrderHiddenVatRates(
+  config: FakturowniaConfig,
+  orderId: number | string,
+  tax: string = "np"
+): Promise<{ success: boolean; error?: string; updated?: number }> {
+  try {
+    const details = await getInvoice(config, orderId);
+    if (!details.success || !details.rawResponse) {
+      return {
+        success: false,
+        error: details.error || "Nie udało się odczytać zamówienia",
+      };
+    }
+
+    const raw = details.rawResponse as Record<string, unknown>;
+    const positions = raw.positions;
+    if (!Array.isArray(positions) || positions.length === 0) {
+      return { success: false, error: "Zamówienie nie ma pozycji do poprawy VAT" };
+    }
+
+    const isHidden = (value: unknown): boolean => {
+      const t = String(value ?? "").toLowerCase().trim();
+      return t === "disabled" || t === "nie wyświetlaj" || t === "nie wyswietlaj";
+    };
+
+    const toUpdate = positions
+      .filter((p: any) => p?.id != null && isHidden(p.tax))
+      .map((p: any) => ({ id: p.id, tax }));
+
+    if (toUpdate.length === 0) {
+      return { success: true, updated: 0 };
+    }
+
+    const baseUrl = getBaseUrl(config);
+    const response = await fetch(`${baseUrl}/invoices/${orderId}.json`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        api_token: config.apiToken,
+        invoice: { positions: toUpdate },
+      }),
+    });
+
+    if (!response.ok) {
+      const responseData = await response.json().catch(() => null);
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${serializeError(responseData)}`,
+      };
+    }
+
+    console.log("[Fakturownia Client] Fixed order hidden VAT rates:", {
+      orderId,
+      updated: toUpdate.length,
+      tax,
+    });
+
+    return { success: true, updated: toUpdate.length };
   } catch (error) {
     return {
       success: false,

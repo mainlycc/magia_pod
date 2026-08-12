@@ -1,9 +1,6 @@
 import { LoginForm } from "@/components/login-form";
-import { ThemeSwitcher } from "@/components/theme-switcher";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -12,7 +9,7 @@ export default async function Home() {
 
   // Jeśli użytkownik jest zalogowany, przekieruj go do panelu trip-dashboard
   if (user) {
-    redirect("/trip-dashboard");
+    redirect("/trip-dashboard/wycieczki");
   }
 
   return (
@@ -23,15 +20,8 @@ export default async function Home() {
             <h1 className="text-3xl font-bold mb-2">Witamy!</h1>
             <p className="text-muted-foreground">Zaloguj się, aby uzyskać dostęp do panelu</p>
           </div>
-          <Button asChild variant="outline" className="w-full mb-4">
-            <Link href="/trip">Zobacz wycieczki</Link>
-          </Button>
           <LoginForm />
         </div>
-
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <ThemeSwitcher />
-        </footer>
       </div>
     </main>
   );

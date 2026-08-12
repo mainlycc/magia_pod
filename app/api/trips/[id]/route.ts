@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
 import { TRIP_TERRITORIAL_SCOPES } from "@/lib/trip-territorial-scope";
 import { canManageTrip } from "@/lib/trips/can-manage-trip";
+import { derivePaymentSplitFromSchedule } from "@/lib/utils/payment-calculator";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
@@ -201,8 +202,16 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       payload.payment_reminder_enabled = Boolean(body.payment_reminder_enabled);
     if ("payment_reminder_days_before" in body)
       payload.payment_reminder_days_before = body.payment_reminder_days_before ?? null;
-    if ("payment_schedule" in body)
+    if ("payment_schedule" in body) {
       payload.payment_schedule = body.payment_schedule ?? null;
+      // Synchronizuj legacy payment_split_* z harmonogramem (1 rata 100% → brak zaliczki 30%)
+      if (Array.isArray(body.payment_schedule) && !("payment_split_first_percent" in body)) {
+        const split = derivePaymentSplitFromSchedule(body.payment_schedule);
+        payload.payment_split_enabled = split.payment_split_enabled;
+        payload.payment_split_first_percent = split.payment_split_first_percent;
+        payload.payment_split_second_percent = split.payment_split_second_percent;
+      }
+    }
 
     const supabase = await createClient();
 

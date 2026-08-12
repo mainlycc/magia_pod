@@ -149,6 +149,7 @@ export function ParticipantAdditionalServicesEditor({
         const genRes = await fetch(`/api/bookings/${bookingId}/agreement`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force: true }),
         })
         const genData = (await genRes.json().catch(() => null)) as {
           success?: boolean

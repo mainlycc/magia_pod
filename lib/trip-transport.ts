@@ -2,8 +2,8 @@
 export const TRANSPORT_NONE = "__transport_none__" as const
 
 export const TRIP_TRANSPORT_OPTIONS = [
-  "LOTNCZART",
   "NLOT",
+  "LOTNCZART",
   "BRAK",
   "LOTCZART",
 ] as const

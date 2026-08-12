@@ -24,6 +24,7 @@ import type {
   ExtraInsurance,
 } from "@/components/trip-form/types"
 import { transportModeToApi } from "@/lib/trip-transport"
+import { derivePaymentSplitFromSchedule } from "@/lib/utils/payment-calculator"
 
 function TripFormContent() {
   const router = useRouter()
@@ -241,6 +242,11 @@ function TripFormContent() {
         const step1Data = JSON.parse(step1DataStr)
         const step2Data = JSON.parse(step2DataStr)
 
+        const paymentSchedule = Array.isArray(step1Data.paymentSchedule)
+          ? step1Data.paymentSchedule
+          : null
+        const paymentSplit = derivePaymentSplitFromSchedule(paymentSchedule)
+
         // 1. Utwórz wycieczkę z danymi z kroku 1
         const tripRes = await fetch("/api/trips", {
           method: "POST",
@@ -284,13 +290,10 @@ function TripFormContent() {
               step1Data.airportCodes.trim()
                 ? step1Data.airportCodes.trim()
                 : null,
-            payment_split_enabled: step1Data.paymentSplitEnabled !== undefined ? step1Data.paymentSplitEnabled : true,
-            payment_split_first_percent: step1Data.paymentSplitEnabled
-              ? parseInt(step1Data.paymentSplitFirstPercent || "30", 10)
-              : null,
-            payment_split_second_percent: step1Data.paymentSplitEnabled
-              ? parseInt(step1Data.paymentSplitSecondPercent || "70", 10)
-              : null,
+            payment_schedule: paymentSchedule,
+            payment_split_enabled: paymentSplit.payment_split_enabled,
+            payment_split_first_percent: paymentSplit.payment_split_first_percent,
+            payment_split_second_percent: paymentSplit.payment_split_second_percent,
             payment_reminder_enabled: step1Data.paymentReminderEnabled || false,
             payment_reminder_days_before: step1Data.paymentReminderEnabled
               ? (step1Data.paymentReminderDaysBefore?.trim()

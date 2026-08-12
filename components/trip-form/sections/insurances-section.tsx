@@ -392,7 +392,7 @@ export function InsurancesSection({
                 <Link href="/trip-dashboard/ubezpieczenia" className="underline underline-offset-2">
                   Ubezpieczenia → Typ 2
                 </Link>
-                . Dodanie pozycji tutaj kopiuje ją do listy ubezpieczeń w formularzu publicznym (możesz potem uzupełnić OWU i opis).
+                . Dodanie pozycji tutaj kopiuje ją do listy ubezpieczeń w formularzu publicznym (możesz potem uzupełnić OWU).
               </p>
               {loadingTripInsurances ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">

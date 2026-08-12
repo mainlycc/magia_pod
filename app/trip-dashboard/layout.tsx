@@ -7,7 +7,6 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
-import { cn } from "@/lib/utils"
 
 export default function TripDashboardLayout({
   children,
@@ -18,14 +17,7 @@ export default function TripDashboardLayout({
     <TripProvider>
       <SidebarProvider>
         <TripSidebar />
-        <SidebarInset
-          className={cn(
-            "transition-[margin] duration-200 ease-linear min-h-0 h-svh overflow-hidden",
-            "md:ml-[var(--sidebar-width)]",
-            "md:group-data-[collapsible=icon]/sidebar-wrapper:ml-[var(--sidebar-width-icon)]",
-            "md:group-data-[collapsible=offcanvas]/sidebar-wrapper:ml-0"
-          )}
-        >
+        <SidebarInset className="transition-[margin] duration-200 ease-linear min-h-0 h-svh overflow-hidden">
           <div className="flex flex-1 flex-col gap-4 p-4 min-w-0 min-h-0 h-full overflow-hidden">
             <Card className="flex-1 flex flex-col min-w-0 min-h-0">
               <CardHeader

@@ -1,17 +1,42 @@
-// jest.setup.js globalnie mockuje jspdf — tutaj potrzebujemy prawdziwej implementacji,
-// żeby zweryfikować faktyczne generowanie PDF.
-jest.unmock("jspdf");
+import { describe, it, expect, jest } from "@jest/globals";
 
-import {
+jest.mock("exceljs", () => {
+  class MockWorkbook {
+    addWorksheet() {
+      return {
+        addRow: jest.fn(() => ({
+          font: {},
+          fill: {},
+        })),
+        getColumn: jest.fn(() => ({ width: 0 })),
+      };
+    }
+    xlsx = {
+      // Minimalny „ZIP” (XLSX) — nagłówek PK
+      writeBuffer: jest.fn(async () => {
+        const buf = new Uint8Array(1200);
+        buf[0] = 0x50; // P
+        buf[1] = 0x4b; // K
+        return buf.buffer;
+      }),
+    };
+  }
+  return {
+    __esModule: true,
+    default: { Workbook: MockWorkbook },
+  };
+});
+
+const {
   PARTICIPANT_REPORT_TYPES,
-  buildParticipantsReportPdf,
+  buildParticipantsReportXlsx,
   buildReportTable,
   participantsReportFilename,
-  type ParticipantReportType,
-} from "@/lib/reports/participants-report";
+} = require("@/lib/reports/participants-report");
 
 type TripData = Parameters<typeof buildReportTable>[2];
 type ParticipantData = Parameters<typeof buildReportTable>[1][number];
+type ParticipantReportType = (typeof PARTICIPANT_REPORT_TYPES)[number];
 
 const trip: TripData = {
   id: "trip-1",
@@ -164,37 +189,38 @@ describe("buildReportTable", () => {
   });
 });
 
-describe("buildParticipantsReportPdf", () => {
-  it.each(PARTICIPANT_REPORT_TYPES.map((t) => [t] as [ParticipantReportType]))(
-    "generuje poprawny bufor PDF dla raportu %s",
-    (reportType) => {
+describe("buildParticipantsReportXlsx", () => {
+  it.each(PARTICIPANT_REPORT_TYPES.map((t: ParticipantReportType) => [t]))(
+    "generuje poprawny bufor XLSX dla raportu %s",
+    async (reportType: ParticipantReportType) => {
       const table = buildReportTable(reportType, participants, trip);
-      const buffer = buildParticipantsReportPdf({
+      const buffer = await buildParticipantsReportXlsx({
         reportType,
         table,
         tripTitle: trip.title ?? "Wycieczka",
       });
       expect(buffer.length).toBeGreaterThan(1000);
-      expect(buffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+      // XLSX to ZIP (PK..)
+      expect(buffer.subarray(0, 2).toString("ascii")).toBe("PK");
     },
   );
 
-  it("generuje PDF z komunikatem przy braku uczestników", () => {
+  it("generuje XLSX przy braku uczestników", async () => {
     const table = buildReportTable("participants_list", [], trip);
-    const buffer = buildParticipantsReportPdf({
+    const buffer = await buildParticipantsReportXlsx({
       reportType: "participants_list",
       table,
       tripTitle: "Pusta wycieczka",
     });
-    expect(buffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    expect(buffer.subarray(0, 2).toString("ascii")).toBe("PK");
   });
 });
 
 describe("participantsReportFilename", () => {
   it("buduje slug z tytułu wycieczki i typu raportu", () => {
     expect(participantsReportFilename("diets", "Magiczna Łotwa – Zośka 2026")).toBe(
-      "raport-diety-magiczna-lotwa-zoska-2026.pdf",
+      "raport-diety-magiczna-lotwa-zoska-2026.xlsx",
     );
-    expect(participantsReportFilename("global", "")).toBe("raport-lista-globalna-wycieczka.pdf");
+    expect(participantsReportFilename("global", "")).toBe("raport-lista-globalna-wycieczka.xlsx");
   });
 });

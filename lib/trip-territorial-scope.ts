@@ -6,9 +6,9 @@ export const TRIP_TERRITORIAL_SCOPES = ["PLISAS", "EUR", "POZAEUR"] as const
 export type TripTerritorialScope = (typeof TRIP_TERRITORIAL_SCOPES)[number]
 
 export const TRIP_TERRITORIAL_SCOPE_LABELS: Record<TripTerritorialScope, string> = {
-  PLISAS: "PLISAS",
-  EUR: "EUR",
-  POZAEUR: "POZAEUR",
+  PLISAS: "Polska i kraje sąsiadujące",
+  EUR: "Europa",
+  POZAEUR: "Poza Europą",
 }
 
 export const TRIP_TERRITORIAL_SCOPE_OPTIONS = TRIP_TERRITORIAL_SCOPES.map(

@@ -14,7 +14,7 @@ test.describe('Performance', () => {
     await page.goto('/');
     
     const startTime = Date.now();
-    await page.getByRole('link', { name: 'Zobacz wycieczki' }).click();
+    await page.goto('/trip');
     await page.waitForURL('/trip');
     const navigationTime = Date.now() - startTime;
     

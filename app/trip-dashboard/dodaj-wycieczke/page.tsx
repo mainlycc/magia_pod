@@ -32,6 +32,7 @@ import {
   TRANSPORT_NONE,
   normalizeTransportMode,
 } from "@/lib/trip-transport"
+import { TRIP_TERRITORIAL_SCOPE_OPTIONS } from "@/lib/trip-territorial-scope"
 
 type Coordinator = {
   id: string
@@ -406,9 +407,11 @@ export default function DodajWycieczkePage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="BRAK">Brak</SelectItem>
-                  <SelectItem value="PLISAS">Polska i strefa Schengen</SelectItem>
-                  <SelectItem value="EUR">Europa</SelectItem>
-                  <SelectItem value="POZAEUR">Poza Europą</SelectItem>
+                  {TRIP_TERRITORIAL_SCOPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -477,9 +480,11 @@ export default function DodajWycieczkePage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="BRAK">Brak</SelectItem>
-                      <SelectItem value="PLISAS">Polska i strefa Schengen</SelectItem>
-                      <SelectItem value="EUR">Europa</SelectItem>
-                      <SelectItem value="POZAEUR">Poza Europą</SelectItem>
+                      {TRIP_TERRITORIAL_SCOPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

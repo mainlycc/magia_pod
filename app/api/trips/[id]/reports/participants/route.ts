@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   PARTICIPANT_REPORT_TYPES,
-  buildParticipantsReportPdf,
+  buildParticipantsReportXlsx,
   buildReportTable,
   fetchParticipantsForReport,
   fetchTripReportData,
@@ -64,7 +64,7 @@ export async function POST(
     const table = buildReportTable(body.reportType, participants, trip);
     const tripTitle = trip.title ?? "Wycieczka";
 
-    const buffer = buildParticipantsReportPdf({
+    const buffer = await buildParticipantsReportXlsx({
       reportType: body.reportType,
       table,
       tripTitle,
@@ -75,7 +75,7 @@ export async function POST(
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${fname}"`,
       },
     });

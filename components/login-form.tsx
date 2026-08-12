@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { getPostAuthRedirectPath } from "@/lib/auth/redirect";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -41,7 +42,8 @@ export function LoginForm({
       });
       if (error) throw error;
 
-      router.push("/trip-dashboard");
+      const redirectPath = await getPostAuthRedirectPath();
+      router.push(redirectPath);
     } catch (error: unknown) {
       if (error instanceof Error) {
         // Sprawdź czy to błąd sieciowy

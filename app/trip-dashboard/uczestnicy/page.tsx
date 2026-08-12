@@ -45,7 +45,7 @@ import {
 import { ParticipantAdditionalServicesEditor } from "./participant-additional-services-editor"
 
 // Wartości muszą odpowiadać PARTICIPANT_REPORT_TYPES z lib/reports/participants-report.ts
-// (nie importujemy stamtąd — moduł używa jsPDF/fs i jest przeznaczony na serwer).
+// (nie importujemy stamtąd — moduł używa ExcelJS i jest przeznaczony na serwer).
 const PARTICIPANT_REPORT_OPTIONS = [
   { value: "participants_list", label: "Lista uczestników" },
   { value: "diets", label: "Raport diet" },
@@ -308,7 +308,7 @@ export default function UczestnicyPage() {
 
       const blob = await res.blob()
       const disposition = res.headers.get("Content-Disposition")
-      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? `raport-${reportType}.pdf`
+      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? `raport-${reportType}.xlsx`
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -530,6 +530,7 @@ export default function UczestnicyPage() {
       const res = await fetch(`/api/bookings/${bookingId}/agreement`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
       })
       const data = await res.json().catch(() => null as any)
 

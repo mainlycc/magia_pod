@@ -45,7 +45,10 @@ import {
   getFieldsToValidate,
   type StepValidationContext,
 } from "@/components/booking-form/utils/booking-form-utils";
-import { calculateBookingTotalCents } from "@/lib/utils/payment-calculator";
+import {
+  calculateBookingTotalCents,
+  getFirstInstallmentPercent,
+} from "@/lib/utils/payment-calculator";
 import { resolveAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
 import {
   ApplicantTypeToggle,
@@ -966,7 +969,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_schedule,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total,seats_reserved,reservation_info_text")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
           .maybeSingle<any>();
 
@@ -1013,12 +1016,17 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
             setApplicantType("individual");
           }
 
-          // Zapisz cenę i procent zaliczki
+          // Zapisz cenę i procent zaliczki (priorytet: payment_schedule, np. 1 rata = 100%)
           setTripPrice(trip.price_cents);
-          const splitEnabled = trip.payment_split_enabled ?? true;
-          if (splitEnabled) {
-            setPaymentSplitFirstPercent(trip.payment_split_first_percent ?? 30);
-          }
+          setPaymentSplitFirstPercent(
+            getFirstInstallmentPercent({
+              payment_schedule: Array.isArray(trip.payment_schedule)
+                ? trip.payment_schedule
+                : null,
+              payment_split_enabled: trip.payment_split_enabled ?? null,
+              payment_split_first_percent: trip.payment_split_first_percent ?? null,
+            }),
+          );
 
           // Pobierz dokumenty dla wycieczki
           try {
@@ -1057,15 +1065,20 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
             // Nie przerywamy - dokumenty są opcjonalne
           }
 
-          // Pobierz pełne dane wycieczki dla umowy
+          // Pobierz pełne dane wycieczki dla umowy (w tym harmonogram płatności)
           try {
             const { data: fullTripData } = await supabase
               .from("trips")
-              .select("id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,location,transport_mode,airport_codes,is_public,public_slug,registration_mode")
+              .select("id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_schedule")
               .eq("id", trip.id)
               .maybeSingle();
 
             if (fullTripData) {
+              const paymentSchedule = Array.isArray(fullTripData.payment_schedule)
+                ? fullTripData.payment_schedule
+                : Array.isArray(trip.payment_schedule)
+                  ? trip.payment_schedule
+                  : null;
               const fullData: TripFullData = {
                 id: fullTripData.id,
                 title: fullTripData.title,
@@ -1097,12 +1110,21 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                 form_extra_insurances: null,
                 form_required_participant_fields: null,
                 form_required_contact_fields: null,
-                payment_split_enabled: null,
-                payment_split_first_percent: null,
-                payment_split_second_percent: null,
+                payment_split_enabled:
+                  typeof fullTripData.payment_split_enabled === "boolean"
+                    ? fullTripData.payment_split_enabled
+                    : trip.payment_split_enabled ?? null,
+                payment_split_first_percent:
+                  typeof fullTripData.payment_split_first_percent === "number"
+                    ? fullTripData.payment_split_first_percent
+                    : trip.payment_split_first_percent ?? null,
+                payment_split_second_percent:
+                  typeof fullTripData.payment_split_second_percent === "number"
+                    ? fullTripData.payment_split_second_percent
+                    : trip.payment_split_second_percent ?? null,
                 payment_reminder_enabled: null,
                 payment_reminder_days_before: null,
-                payment_schedule: null,
+                payment_schedule: paymentSchedule,
               };
               setTripFullData(fullData);
 
@@ -1986,14 +2008,15 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
           </AlertDescription>
         </Alert>
       )}
-      <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="w-full">
+      <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="relative w-full min-w-0 max-w-full">
         <BookingStepper
           steps={stepperSteps}
           currentStepId={currentStep.id}
           maxAvailableIndex={maxAvailableStep}
           onStepClick={handleTabsChange}
         />
-        <TabsList className="sr-only">
+        {/* absolute + clip: domyślne style TabsList (inline-flex w-fit) nadpisują sr-only i rozpychają layout na mobile */}
+        <TabsList className="sr-only absolute h-px w-px overflow-hidden p-0">
           {visibleSteps.map((step, index) => {
             const originalIndex = steps.findIndex((s) => s.id === step.id);
             const stepLabel =
@@ -3790,9 +3813,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
               </TabsContent>
             )}
 
-            <TabsContent value="summary" className="mt-6 space-y-6">
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] xl:items-start">
-                <div className="space-y-6">
+            <TabsContent value="summary" className="mt-6 min-w-0 max-w-full space-y-6 overflow-x-hidden">
               <AzureCard
                 accent="blue"
                 kicker={getStepKicker(
@@ -4261,21 +4282,17 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
                 </div>
               </AzureCard>
-                </div>
 
-                {priceSummary && (
-                  <div className="min-w-0 xl:sticky xl:top-6">
-                    <AzurePricePanel
-                      depositCents={priceSummary.depositCents}
-                      totalCents={priceSummary.totalCents}
-                      firstPercent={paymentSplitFirstPercent}
-                      tripBaseCents={priceSummary.tripBaseCents}
-                      addonsCents={priceSummary.addonsCents}
-                      participantLines={priceSummary.participantLines}
-                    />
-                  </div>
-                )}
-              </div>
+              {priceSummary && (
+                <AzurePricePanel
+                  depositCents={priceSummary.depositCents}
+                  totalCents={priceSummary.totalCents}
+                  firstPercent={paymentSplitFirstPercent}
+                  tripBaseCents={priceSummary.tripBaseCents}
+                  addonsCents={priceSummary.addonsCents}
+                  participantLines={priceSummary.participantLines}
+                />
+              )}
 
               <AzureFormFooter className="flex-col sm:flex-row">
                 <AzureBtnOutline type="button" onClick={goToPrevStep} className="w-full sm:w-auto">

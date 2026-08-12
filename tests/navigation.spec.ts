@@ -6,9 +6,6 @@ test.describe('Nawigacja publiczna', () => {
     
     // Sprawdź czy strona się załadowała
     await expect(page.getByLabel(/email/i)).toBeVisible();
-    
-    // Sprawdź link do wycieczek
-    await expect(page.getByRole('link', { name: 'Zobacz wycieczki' })).toBeVisible();
   });
 
   test('strona rejestracji powinna być dostępna', async ({ page }) => {

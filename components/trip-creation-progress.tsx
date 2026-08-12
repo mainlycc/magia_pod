@@ -10,7 +10,7 @@ type Step = {
 }
 
 const steps: Step[] = [
-  { number: 1, label: "Informacje ogólne", path: "/trip-dashboard/dodaj-wycieczke" },
+  { number: 1, label: "Ustawienia wycieczki", path: "/trip-dashboard/dodaj-wycieczke" },
   { number: 2, label: "Publiczny wygląd", path: "/trip-dashboard/publiczny-wyglad" },
   { number: 3, label: "Formularz", path: "/trip-dashboard/informacje/formularz" },
 ]

@@ -7,7 +7,7 @@ test.describe('Integracja - Flow użytkownika niezalogowanego', () => {
     await expect(page.getByRole('heading', { name: 'Witamy!' })).toBeVisible();
     
     // 2. Przejście do wycieczek
-    await page.getByRole('link', { name: 'Zobacz wycieczki' }).click();
+    await page.goto('/trip');
     await expect(page).toHaveURL('/trip');
     
     // 3. Powrót do strony głównej (poprzez nawigację przeglądarki)
@@ -37,18 +37,11 @@ test.describe('Integracja - Flow użytkownika niezalogowanego', () => {
 });
 
 test.describe('Integracja - Multiple tabs', () => {
-  test('otwarcie linku w nowej karcie', async ({ page, context }) => {
+  test('otwarcie /trip w nowej karcie', async ({ page, context }) => {
     await page.goto('/');
     
-    // Znajdź link do wycieczek
-    const tripLink = page.getByRole('link', { name: 'Zobacz wycieczki' });
-    
-    // Otwórz w nowej karcie (Ctrl+Click)
-    const [newPage] = await Promise.all([
-      context.waitForEvent('page'),
-      tripLink.click({ modifiers: ['Control'] })
-    ]);
-    
+    const newPage = await context.newPage();
+    await newPage.goto('/trip');
     await newPage.waitForLoadState();
     expect(newPage.url()).toContain('/trip');
     

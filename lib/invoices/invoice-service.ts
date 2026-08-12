@@ -28,6 +28,7 @@ import {
   downloadPdf,
   downloadInvoicePdfViaBrowser,
   extractOrderIdFromInvoiceJson,
+  fixOrderHiddenVatRates,
   getInvoice,
   sendInvoiceToKsef,
   getInvoiceKsefStatus,
@@ -111,10 +112,11 @@ function validateFakturowniaConfig(config: FakturowniaConfig): boolean {
 interface MarginSettings {
   /** Tryb VAT marża (KSeF) włączony przez VAT_MARGIN_MODE. */
   vatMarginMode: boolean;
-  /** Stawka pozycji: "disabled" (mechanizm marży) lub "np" (nie podlega). */
+  /**
+   * Stawka pozycji zamówienia/zaliczki.
+   * KSeF odrzuca `disabled` („nie wyświetlaj”) — używamy `np` (zalecenie Fakturowni: zw/np).
+   */
   positionTax: string;
-  /** Stawka VAT od marży (env VAT_MARGIN_TAX) — tylko w trybie VAT marża. */
-  vatMarginTax?: string;
   /** Pola dokumentu dot. marży do wstrzyknięcia w fakturę. */
   invoiceFields: {
     margin_procedure?: boolean;
@@ -126,9 +128,9 @@ interface MarginSettings {
 /**
  * Ustawienia procedury marży (biuro podróży, art. 119) sterowane flagami env.
  *
- * - `VAT_MARGIN_MODE=true` → pełny tryb KSeF marży: pozycje `tax: "disabled"`,
- *   `vat_margin_tax` (env `VAT_MARGIN_TAX`, domyślnie "23"),
+ * - `VAT_MARGIN_MODE=true` → oznaczenia KSeF na dokumencie:
  *   `procedure_vat_margin` + `procedure_designations: ["MR_T"]` + `margin_procedure`.
+ *   Pozycje zamówienia/zaliczki: `tax: "np"` (nie `disabled` — KSeF blokuje „nie wyświetlaj”).
  * - `FAKTUROWNIA_MARGIN_PROCEDURE=true` (legacy) → tylko `margin_procedure: true`.
  *
  * Domyślnie wyłączone (pozycje `tax: "np"`).
@@ -137,12 +139,13 @@ function getMarginSettings(): MarginSettings {
   const vatMarginMode = process.env.VAT_MARGIN_MODE === "true";
   const legacyMargin = process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true";
 
+  // KSeF: stawka „nie wyświetlaj” (API: disabled) na zamówieniu blokuje wystawienie zaliczki.
+  const positionTax = "np";
+
   if (vatMarginMode) {
-    const vatMarginTax = (process.env.VAT_MARGIN_TAX || "23").trim();
     return {
       vatMarginMode: true,
-      positionTax: "disabled",
-      vatMarginTax,
+      positionTax,
       invoiceFields: {
         margin_procedure: true,
         procedure_vat_margin: "procedura marży dla biur podróży",
@@ -153,14 +156,13 @@ function getMarginSettings(): MarginSettings {
 
   return {
     vatMarginMode: false,
-    positionTax: "np",
+    positionTax,
     invoiceFields: legacyMargin ? { margin_procedure: true } : {},
   };
 }
 
 /**
- * Buduje pozycję „wycieczka" dla zamówienia/faktury, z uwzględnieniem trybu marży
- * (tax "disabled" + vat_margin_tax, gdy VAT_MARGIN_MODE).
+ * Buduje pozycję wycieczki dla zamówienia/zaliczki (stawka KSeF-safe: np).
  */
 function buildTripPosition(
   name: string,
@@ -168,15 +170,25 @@ function buildTripPosition(
   totalGrossZloty: number
 ): FakturowniaInvoiceItem {
   const m = getMarginSettings();
-  const position: FakturowniaInvoiceItem = {
+  return {
     name,
     quantity,
     price_net: totalGrossZloty / quantity,
     total_price_gross: totalGrossZloty,
     tax: m.positionTax,
   };
-  if (m.vatMarginTax) position.vat_margin_tax = m.vatMarginTax;
-  return position;
+}
+
+/** HTTP 422 Fakturowni: zamówienie ze stawką „nie wyświetlaj” / disabled. */
+function isHiddenVatRateOrderError(error: string | undefined | null): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return (
+    e.includes("nie wyświetlaj") ||
+    e.includes("stawką vat ukrytą") ||
+    e.includes("stawka vat ukryta") ||
+    (e.includes("disabled") && (e.includes("zalicz") || e.includes("zamówien")))
+  );
 }
 
 // ===================== HELPERS =====================
@@ -690,7 +702,25 @@ export async function processPaymentInvoice(
     });
 
     // ─── 10. Wystaw fakturę w Fakturownia ───
-    const fakturowniaResponse = await createInvoice(fakturowniaConfig, invoiceData);
+    let fakturowniaResponse = await createInvoice(fakturowniaConfig, invoiceData);
+
+    // KSeF: stare zamówienia z tax=disabled („nie wyświetlaj”) blokują zaliczkę — popraw i ponów.
+    if (
+      !fakturowniaResponse.success &&
+      fakturowniaOrderId &&
+      isHiddenVatRateOrderError(fakturowniaResponse.error)
+    ) {
+      console.warn(
+        "[InvoiceService] Order has hidden VAT rate (nie wyświetlaj) — fixing to np and retrying",
+        { orderId: fakturowniaOrderId, error: fakturowniaResponse.error }
+      );
+      const fix = await fixOrderHiddenVatRates(fakturowniaConfig, fakturowniaOrderId, "np");
+      if (fix.success) {
+        fakturowniaResponse = await createInvoice(fakturowniaConfig, invoiceData);
+      } else {
+        console.error("[InvoiceService] Failed to fix order VAT rate:", fix.error);
+      }
+    }
 
     console.log("[InvoiceService] Fakturownia response:", {
       success: fakturowniaResponse.success,

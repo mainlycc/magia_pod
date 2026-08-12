@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Eye, Download, Loader2 } from "lucide-react";
@@ -9,6 +9,10 @@ import { templateToHtml, type AgreementTemplate } from "@/lib/agreement-template
 import { replaceTripPlaceholders, replaceBookingPlaceholders, removeCompanySectionFromAgreementHtml } from "@/lib/agreement-placeholder-replacer";
 import { getFirstInstallmentPercent } from "@/lib/utils/payment-calculator";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
+
+/** Wymiary strony A4 w px przy 96 DPI — stały layout jak w PDF. */
+const A4_WIDTH_PX = Math.round((210 / 25.4) * 96);
+const A4_HEIGHT_PX = Math.round((297 / 25.4) * 96);
 
 interface AgreementPreviewProps {
   template: AgreementTemplate;
@@ -118,6 +122,36 @@ export function AgreementPreview({
 
   const [pages, setPages] = useState<string[]>([htmlWithData]);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [unscaledHeight, setUnscaledHeight] = useState(A4_HEIGHT_PX);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Na wąskich ekranach skaluj całą stronę A4 proporcjonalnie (jak podgląd PDF),
+  // zamiast zwężać layout i przełamywać treść. Wrapper ma dokładny rozmiar
+  // po skalowaniu, żeby reszta formularza nie była ucięta / rozpychana.
+  useLayoutEffect(() => {
+    const viewportEl = viewportRef.current;
+    const containerEl = containerRef.current;
+    if (!viewportEl || !containerEl) return;
+
+    const updateScale = () => {
+      const available = viewportEl.clientWidth;
+      if (available <= 0) return;
+      const nextScale = Math.min(1, available / A4_WIDTH_PX);
+      const nextHeight = containerEl.offsetHeight;
+      setPreviewScale((prev) => (Math.abs(prev - nextScale) < 0.001 ? prev : nextScale));
+      setUnscaledHeight((prev) => (Math.abs(prev - nextHeight) < 1 ? prev : nextHeight));
+    };
+
+    updateScale();
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(updateScale);
+    });
+    ro.observe(viewportEl);
+    ro.observe(containerEl);
+    return () => ro.disconnect();
+  }, [pages.length]);
 
   const handleGeneratePdf = async () => {
     try {
@@ -323,18 +357,22 @@ export function AgreementPreview({
     }
   }, [htmlWithData]);
 
+  const scaledWidth = A4_WIDTH_PX * previewScale;
+  const scaledHeight = unscaledHeight * previewScale;
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4" />
-            <CardTitle>Podgląd dokumentu</CardTitle>
+    <Card className="min-w-0 max-w-full overflow-hidden">
+      <CardHeader className="space-y-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <Eye className="h-4 w-4 shrink-0" />
+            <CardTitle className="truncate">Podgląd dokumentu</CardTitle>
           </div>
           <Button
             onClick={handleGeneratePdf}
             disabled={generatingPdf}
             variant="default"
+            className="w-full shrink-0 sm:w-auto"
           >
             {generatingPdf ? (
               <>
@@ -350,31 +388,38 @@ export function AgreementPreview({
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0 overflow-x-hidden">
         <style dangerouslySetInnerHTML={{ __html: `
           @media screen {
-            .agreement-scroll {
-              overflow-x: hidden;
+            .agreement-viewport {
+              width: 100%;
               max-width: 100%;
+              min-width: 0;
+            }
+            .agreement-scale-shell {
+              margin-left: auto;
+              margin-right: auto;
+              overflow: hidden;
             }
             .agreement-container {
               display: flex;
               flex-direction: column;
               gap: 1rem;
-              width: 100%;
-              max-width: 210mm;
-              margin: 0 auto;
+              width: ${A4_WIDTH_PX}px;
+              max-width: none;
+              transform-origin: top left;
             }
             .agreement-page {
-              width: 100%;
-              min-height: 297mm;
-              padding: 20mm;
-              margin: 0 auto 1rem;
+              width: ${A4_WIDTH_PX}px;
+              min-height: ${A4_HEIGHT_PX}px;
+              padding: ${Math.round((20 / 25.4) * 96)}px;
+              margin: 0;
               background: white;
               box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
               border: 1px solid #e5e7eb;
               box-sizing: border-box;
-              overflow-x: hidden;
+              overflow: visible;
+              flex-shrink: 0;
               page-break-after: always;
               break-after: page;
             }
@@ -384,13 +429,20 @@ export function AgreementPreview({
               size: A4;
               margin: 20mm;
             }
+            .agreement-scale-shell {
+              width: auto !important;
+              height: auto !important;
+              overflow: visible !important;
+            }
             .agreement-container {
               display: block;
               width: auto;
+              transform: none !important;
             }
             .agreement-page {
               width: 100%;
               min-height: 100vh;
+              height: auto;
               padding: 0;
               margin: 0;
               box-shadow: none;
@@ -442,6 +494,7 @@ export function AgreementPreview({
             width: 100%;
             border-collapse: collapse;
             margin: 1rem 0;
+            table-layout: fixed;
           }
           .agreement-content td {
             padding: 0.75rem;
@@ -491,16 +544,30 @@ export function AgreementPreview({
             break-before: page;
           }
         ` }} />
-        <div className="agreement-scroll">
-          <div className="agreement-container">
-            {pages.map((pageHtml, index) => (
-              <div key={index} className="agreement-page">
-                <div
-                  className="agreement-content"
-                  dangerouslySetInnerHTML={{ __html: pageHtml }}
-                />
-              </div>
-            ))}
+        <div className="agreement-viewport" ref={viewportRef}>
+          <div
+            className="agreement-scale-shell"
+            style={{
+              width: scaledWidth,
+              height: scaledHeight,
+            }}
+          >
+            <div
+              className="agreement-container"
+              ref={containerRef}
+              style={{
+                transform: previewScale < 1 ? `scale(${previewScale})` : undefined,
+              }}
+            >
+              {pages.map((pageHtml, index) => (
+                <div key={index} className="agreement-page">
+                  <div
+                    className="agreement-content"
+                    dangerouslySetInnerHTML={{ __html: pageHtml }}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
         {!formData && (

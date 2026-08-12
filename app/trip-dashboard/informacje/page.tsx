@@ -35,7 +35,7 @@ import {
 import { DatePicker } from "@/components/ui/date-picker"
 import { CountryCombobox } from "@/components/ui/country-combobox"
 import { AirportCombobox } from "@/components/ui/airport-combobox"
-import { getDefaultPaymentDueDates } from "@/lib/utils/payment-calculator"
+import { getDefaultPaymentDueDates, derivePaymentSplitFromSchedule } from "@/lib/utils/payment-calculator"
 
 type Coordinator = {
   id: string
@@ -224,6 +224,8 @@ export default function TripGeneralInfoPage() {
         return
       }
 
+      const paymentSplit = derivePaymentSplitFromSchedule(paymentSchedule)
+
       const res = await fetch(`/api/trips/${selectedTrip.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -254,6 +256,9 @@ export default function TripGeneralInfoPage() {
           airport_codes: airportCodes.trim() ? airportCodes.trim() : null,
           territorial_scope: territorialScopeToApi(territorialScope),
           payment_schedule: paymentSchedule,
+          payment_split_enabled: paymentSplit.payment_split_enabled,
+          payment_split_first_percent: paymentSplit.payment_split_first_percent,
+          payment_split_second_percent: paymentSplit.payment_split_second_percent,
           payment_reminder_enabled: paymentReminderEnabled,
           payment_reminder_days_before: paymentReminderEnabled
             ? (paymentReminderDaysBefore.trim()

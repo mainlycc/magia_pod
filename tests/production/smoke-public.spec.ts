@@ -8,7 +8,6 @@ test.describe("Produkcja — strony publiczne", () => {
     await expect(
       page.getByText("Zaloguj się, aby uzyskać dostęp do panelu"),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Zobacz wycieczki" })).toBeVisible();
     await expect(page.getByLabel(/email/i)).toBeVisible();
     await expect(page.locator("input#password")).toBeVisible();
     await expect(page.getByRole("button", { name: /zaloguj/i })).toBeVisible();
@@ -17,13 +16,6 @@ test.describe("Produkcja — strony publiczne", () => {
   test("lista wycieczek /trip ładuje się (HTTP 200)", async ({ page }) => {
     const response = await page.goto("/trip");
     expect(response?.status()).toBeLessThan(400);
-    await expect(page).toHaveURL(/\/trip/);
-  });
-
-  test('link "Zobacz wycieczki" prowadzi do /trip', async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: "Zobacz wycieczki" }).click();
-    await page.waitForURL(/\/trip/, { timeout: 15_000 });
     await expect(page).toHaveURL(/\/trip/);
   });
 

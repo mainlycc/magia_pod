@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  IconDashboard,
   IconFileDescription,
   IconMail,
   IconReceipt,
@@ -89,7 +90,12 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
 
   const allTripNavItems = [
     {
-      title: "Informacje ogólne",
+      title: "Panel wycieczki",
+      url: "/trip-dashboard",
+      icon: IconDashboard,
+    },
+    {
+      title: "Ustawienia wycieczki",
       url: "/trip-dashboard/informacje",
       icon: IconSettings,
     },
@@ -178,7 +184,7 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="px-2 pt-4 pb-2">
-              <Link href="/trip-dashboard">
+              <Link href="/trip-dashboard/wycieczki">
                 <h2 className="text-base font-semibold text-center hover:underline">
                   Magia podróżowania
                 </h2>

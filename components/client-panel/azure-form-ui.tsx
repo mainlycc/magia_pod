@@ -103,7 +103,7 @@ function getHeroAmountTextClass(formattedAmount: string) {
   return "text-[40px] sm:text-[52px]";
 }
 
-const priceAmountClass = cn(azureClasses.mono, "shrink-0 whitespace-nowrap tabular-nums");
+const priceAmountClass = "shrink-0 whitespace-nowrap tabular-nums";
 
 export function AzurePricePanel({
   depositCents,
@@ -121,82 +121,100 @@ export function AzurePricePanel({
   return (
     <div className={azureClasses.pricePanel}>
       <div className={azureClasses.pricePanelBar} aria-hidden />
-      <div className="p-6 sm:p-[28px_26px]">
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#0a0a0a] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-white">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#1e90ff]" aria-hidden />
-          Do zapłaty teraz
+      <div className="grid gap-6 p-6 sm:p-7 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-8 lg:p-8">
+        <div className="min-w-0">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#0a0a0a] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#1e90ff]" aria-hidden />
+            Całkowita kwota
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span
+              className={cn(
+                getHeroAmountTextClass(totalFormatted),
+                "max-w-full font-semibold leading-none tabular-nums",
+              )}
+            >
+              {totalFormatted}
+            </span>
+            <span className="shrink-0 text-[20px] font-medium text-white/80 sm:text-[22px]">PLN</span>
+          </div>
+
+          <div className="mt-4 rounded-xl bg-[#0a0a0a]/25 px-3.5 py-3">
+            <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span className="text-[13px] font-medium text-white/85">
+                {firstPercent >= 100
+                  ? "Do zapłaty teraz · pełna kwota"
+                  : `Do zapłaty teraz · zaliczka ${firstPercent}%`}
+              </span>
+              <span className={cn(priceAmountClass, "text-[15px] font-semibold")}>
+                {depositFormatted} PLN
+              </span>
+            </div>
+          </div>
+
+          {participantLines.length > 0 && (
+            <div className="mt-5 flex flex-col gap-2 border-t border-white/20 pt-4">
+              {participantLines.map((line) => (
+                <div key={line.label} className="flex min-w-0 items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-[13px] font-medium text-white/90">
+                    {line.label}
+                  </span>
+                  <span className={cn(priceAmountClass, "text-[13px] font-semibold text-white")}>
+                    {formatPln(line.amountCents)} PLN
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
-          <span
-            className={cn(
-              azureClasses.mono,
-              getHeroAmountTextClass(depositFormatted),
-              "max-w-full font-semibold leading-none",
-            )}
-          >
-            {depositFormatted}
-          </span>
-          <span className="shrink-0 text-[20px] font-medium text-white/80 sm:text-[22px]">PLN</span>
-        </div>
-        <div className="mt-1.5 space-y-0.5 text-[13px] font-medium text-white/85">
-          <p>Zaliczka {firstPercent}% z</p>
-          <p className={cn(azureClasses.mono, "font-semibold text-white")}>{totalFormatted} PLN</p>
-        </div>
+        <div className="flex min-w-0 flex-col gap-4 border-t border-white/20 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+          {remainingCents > 0 && (
+            <div className="flex min-w-0 justify-between gap-3 text-sm font-medium text-white/85">
+              <span className="shrink-0">Pozostałe do zapłaty</span>
+              <span className={cn(priceAmountClass, "font-semibold text-white")}>
+                {remainingFormatted} PLN
+              </span>
+            </div>
+          )}
 
-        {participantLines.length > 0 && (
-          <div className="mt-5 flex flex-col gap-2.5 border-t border-white/20 pt-4">
-            {participantLines.map((line) => (
-              <div key={line.label} className="flex min-w-0 items-center justify-between gap-3">
-                <span className="min-w-0 truncate text-[13px] font-medium text-white/90">{line.label}</span>
-                <span className={cn(priceAmountClass, "text-[13px] font-semibold text-white")}>
-                  {formatPln(line.amountCents)} PLN
+          <div className="rounded-xl border-l-[3px] border-white bg-[#0a0a0a] p-3.5">
+            <div className="mb-2.5 text-[10.5px] font-semibold tracking-wide text-white/70">
+              HARMONOGRAM
+            </div>
+            <div className="mb-2 flex min-w-0 items-center gap-2.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-[#1e90ff]" aria-hidden />
+              <span className="min-w-0 flex-1 text-xs font-medium">
+                {firstPercent >= 100 ? "Dziś · pełna płatność" : "Dziś · zaliczka"}
+              </span>
+              <span className={cn(priceAmountClass, "text-xs font-semibold")}>
+                {depositFormatted} PLN
+              </span>
+            </div>
+            {remainingCents > 0 && (
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-[#1e90ff] bg-transparent"
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 text-xs font-medium text-white/70">Pozostała kwota</span>
+                <span className={cn(priceAmountClass, "text-xs font-medium text-white/70")}>
+                  {remainingFormatted} PLN
                 </span>
               </div>
-            ))}
+            )}
           </div>
-        )}
 
-        <div className="mt-4 border-t border-white/20 pt-3.5">
-          <div className="mb-2 flex min-w-0 items-baseline justify-between gap-3">
-            <span className="shrink-0 text-sm font-semibold">Wartość rezerwacji</span>
-            <span className={cn(priceAmountClass, "text-[17px] font-semibold")}>{totalFormatted} PLN</span>
-          </div>
-          <div className="flex min-w-0 justify-between gap-3 text-xs font-medium text-white/80">
-            <span className="shrink-0">Pozostałe do zapłaty</span>
-            <span className={priceAmountClass}>{remainingFormatted} PLN</span>
-          </div>
-        </div>
-
-        <div className="mt-5 rounded-xl border-l-[3px] border-white bg-[#0a0a0a] p-3.5">
-          <div className="mb-2.5 text-[10.5px] font-semibold tracking-wide text-white/70">
-            HARMONOGRAM
-          </div>
-          <div className="mb-2 flex min-w-0 items-center gap-2.5">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-[#1e90ff]" aria-hidden />
-            <span className="min-w-0 flex-1 text-xs font-medium">Dziś · zaliczka</span>
-            <span className={cn(priceAmountClass, "text-xs font-semibold")}>{depositFormatted} PLN</span>
-          </div>
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span
-              className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-[#1e90ff] bg-transparent"
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1 text-xs font-medium text-white/70">Pozostała kwota</span>
-            <span className={cn(priceAmountClass, "text-xs font-medium text-white/70")}>
-              {remainingFormatted} PLN
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-1 text-xs text-white/75">
-          <div className="flex min-w-0 justify-between gap-3">
-            <span className="shrink-0">Cena wycieczki</span>
-            <span className={priceAmountClass}>{formatPln(tripBaseCents)} PLN</span>
-          </div>
-          <div className="flex min-w-0 justify-between gap-3">
-            <span className="shrink-0">Usługi dodatkowe</span>
-            <span className={priceAmountClass}>{formatPln(addonsCents)} PLN</span>
+          <div className="space-y-1 text-xs text-white/75">
+            <div className="flex min-w-0 justify-between gap-3">
+              <span className="shrink-0">Cena wycieczki</span>
+              <span className={priceAmountClass}>{formatPln(tripBaseCents)} PLN</span>
+            </div>
+            <div className="flex min-w-0 justify-between gap-3">
+              <span className="shrink-0">Usługi dodatkowe</span>
+              <span className={priceAmountClass}>{formatPln(addonsCents)} PLN</span>
+            </div>
           </div>
         </div>
       </div>

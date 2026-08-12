@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation"
 const pageTitles: Record<string, string> = {
   "/coord": "Moje wyjazdy",
   // Trip dashboard
-  "/trip-dashboard": "Dashboard wycieczki",
-  "/trip-dashboard/informacje": "Informacje",
+  "/trip-dashboard": "Panel wycieczki",
+  "/trip-dashboard/informacje": "Ustawienia wycieczki",
   "/trip-dashboard/informacje/formularz": "Formularz zgłoszeń",
   "/trip-dashboard/publiczny-wyglad": "Publiczny wygląd",
   "/trip-dashboard/rezerwacje": "Rezerwacje i umowy",
@@ -50,7 +50,7 @@ export function PageTitle() {
     return <h1 className="text-2xl font-semibold">Panel koordynatora</h1>
   }
   if (pathname.startsWith("/trip-dashboard")) {
-    return <h1 className="text-2xl font-semibold">Dashboard wycieczki</h1>
+    return <h1 className="text-2xl font-semibold">Panel wycieczki</h1>
   }
 
   return <h1 className="text-2xl font-semibold">Panel administracyjny</h1>

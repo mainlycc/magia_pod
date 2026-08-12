@@ -33,10 +33,57 @@ export function calculateBookingTotalCents(
   return base + addons;
 }
 
+/** Sortuje harmonogram po numerze raty (bezpieczne przy nieuporządkowanej tablicy). */
+export function sortPaymentSchedule<T extends PaymentScheduleEntry>(
+  schedule: T[],
+): T[] {
+  return schedule
+    .slice()
+    .sort(
+      (a, b) => (a.installment_number ?? 0) - (b.installment_number ?? 0),
+    );
+}
+
+/**
+ * Synchronizuje legacy pola `payment_split_*` z harmonogramem rat.
+ * Przy 1 racie (100%) wyłącza podział — zaliczka = cała kwota.
+ */
+export function derivePaymentSplitFromSchedule(
+  schedule: PaymentScheduleEntry[] | null | undefined,
+): {
+  payment_split_enabled: boolean;
+  payment_split_first_percent: number;
+  payment_split_second_percent: number;
+} {
+  const sorted =
+    schedule && schedule.length > 0 ? sortPaymentSchedule(schedule) : null;
+
+  if (!sorted || sorted.length === 0) {
+    return {
+      payment_split_enabled: true,
+      payment_split_first_percent: 30,
+      payment_split_second_percent: 70,
+    };
+  }
+
+  const firstPercent = sorted[0].percent;
+  const secondPercent =
+    sorted.length > 1
+      ? sorted.slice(1).reduce((sum, item) => sum + (item.percent || 0), 0)
+      : 0;
+
+  return {
+    payment_split_enabled: sorted.length > 1,
+    payment_split_first_percent: firstPercent,
+    payment_split_second_percent: secondPercent,
+  };
+}
+
 /** Procent pierwszej raty / zaliczki z harmonogramu lub ustawień wycieczki. */
 export function getFirstInstallmentPercent(config: TripPaymentConfig): number {
   if (config.payment_schedule && config.payment_schedule.length > 0) {
-    return config.payment_schedule[0].percent;
+    const sorted = sortPaymentSchedule(config.payment_schedule);
+    return sorted[0].percent;
   }
   if (config.payment_split_enabled === false) {
     return 100;
@@ -58,11 +105,12 @@ export function calculateInstallmentAmounts(
       : null;
 
   if (paymentSchedule) {
-    const firstPercent = paymentSchedule[0].percent;
+    const sorted = sortPaymentSchedule(paymentSchedule);
+    const firstPercent = sorted[0].percent;
     const firstPaymentCents = Math.round((totalCents * firstPercent) / 100);
     const secondPaymentCents =
-      paymentSchedule.length > 1
-        ? Math.round((totalCents * paymentSchedule[1].percent) / 100)
+      sorted.length > 1
+        ? Math.round((totalCents * sorted[1].percent) / 100)
         : 0;
     return { firstPaymentCents, secondPaymentCents, firstPercent };
   }

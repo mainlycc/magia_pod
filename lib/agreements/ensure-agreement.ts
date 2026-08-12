@@ -83,7 +83,11 @@ export async function persistAgreementSeq(
 
 export async function ensureAgreementForBooking(
   bookingId: string,
-  opts: { baseUrl: string },
+  opts: {
+    baseUrl: string;
+    /** Gdy true — przebuduj PDF nawet jeśli umowa już istnieje (np. po zmianie usług). */
+    force?: boolean;
+  },
 ): Promise<EnsureAgreementResult> {
   const supabaseAdmin = createAdminClient();
 
@@ -158,7 +162,7 @@ export async function ensureAgreementForBooking(
       ? existingAgreement.agreement_seq
       : null;
 
-  if (existingSeq && hasPdf) {
+  if (existingSeq && hasPdf && !opts.force) {
     return {
       ok: true,
       agreement_seq: existingSeq,

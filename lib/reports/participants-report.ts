@@ -1,7 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import { NOTO_SANS_FAMILY, registerNotoFonts } from "@/lib/pdf/register-noto-fonts";
+import ExcelJS from "exceljs";
 import { format } from "date-fns/format";
 import { parseISO } from "date-fns/parseISO";
 import { pl } from "date-fns/locale";
@@ -385,56 +383,57 @@ export function buildReportTable(
   }
 }
 
-export function buildParticipantsReportPdf(opts: {
+export async function buildParticipantsReportXlsx(opts: {
   reportType: ParticipantReportType;
   table: ParticipantReportTable;
   tripTitle: string;
-}): Buffer {
-  const doc = new jsPDF({ orientation: opts.table.orientation, unit: "mm", format: "a4" });
-  let pdfFont: "NotoSans" | "helvetica" = "helvetica";
-  try {
-    registerNotoFonts(doc);
-    pdfFont = NOTO_SANS_FAMILY;
-  } catch (e) {
-    console.warn("[participants-report PDF] Brak Noto Sans (pnpm run download-fonts):", e);
-  }
+}): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  const sheetName = PARTICIPANT_REPORT_TITLES[opts.reportType].slice(0, 31);
+  const ws = wb.addWorksheet(sheetName);
 
   const title = `${PARTICIPANT_REPORT_TITLES[opts.reportType]} — ${opts.tripTitle}`;
   const generatedAt = format(new Date(), "dd.MM.yyyy HH:mm", { locale: pl });
 
-  doc.setFont(pdfFont, "bold");
-  doc.setFontSize(12);
-  doc.text(title, 14, 12);
-  doc.setFont(pdfFont, "normal");
-  doc.setFontSize(8);
-  doc.text(`Wygenerowano: ${generatedAt} • Liczba uczestników: ${opts.table.rows.length}`, 14, 17);
+  const titleRow = ws.addRow([title]);
+  titleRow.font = { bold: true, size: 12 };
+
+  ws.addRow([
+    `Wygenerowano: ${generatedAt}`,
+    `Liczba uczestników: ${opts.table.rows.length}`,
+  ]);
+  ws.addRow([]);
+
+  const headerRow = ws.addRow(opts.table.headers);
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF424242" },
+  };
 
   if (opts.table.rows.length > 0) {
-    const isGlobal = opts.reportType === "global";
-    autoTable(doc, {
-      startY: 22,
-      head: [opts.table.headers],
-      body: opts.table.rows,
-      styles: {
-        font: pdfFont,
-        fontStyle: "normal",
-        fontSize: isGlobal ? 6 : 8,
-        cellPadding: isGlobal ? 0.8 : 1.5,
-      },
-      headStyles: {
-        font: pdfFont,
-        fontStyle: "bold",
-        fillColor: [66, 66, 66],
-      },
-      margin: { left: 10, right: 10 },
-    });
+    for (const row of opts.table.rows) {
+      ws.addRow(row);
+    }
   } else {
-    doc.setFont(pdfFont, "normal");
-    doc.setFontSize(10);
-    doc.text("Brak uczestników na tej wycieczce.", 14, 26);
+    ws.addRow(["Brak uczestników na tej wycieczce."]);
   }
 
-  return Buffer.from(doc.output("arraybuffer"));
+  // Auto-szerokość kolumn na podstawie nagłówków i kilku pierwszych wierszy
+  const colCount = opts.table.headers.length;
+  for (let col = 1; col <= colCount; col++) {
+    const header = opts.table.headers[col - 1] ?? "";
+    let maxLen = header.length;
+    for (const row of opts.table.rows.slice(0, 50)) {
+      const cell = row[col - 1] ?? "";
+      maxLen = Math.max(maxLen, String(cell).length);
+    }
+    ws.getColumn(col).width = Math.min(40, Math.max(10, maxLen + 2));
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
 }
 
 function slugify(value: string): string {
@@ -460,5 +459,5 @@ export function participantsReportFilename(
     global: "lista-globalna",
   };
   const tripSlug = slugify(tripTitle) || "wycieczka";
-  return `raport-${typeSlug[reportType]}-${tripSlug}.pdf`;
+  return `raport-${typeSlug[reportType]}-${tripSlug}.xlsx`;
 }

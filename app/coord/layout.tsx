@@ -7,18 +7,12 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { cn } from "@/lib/utils"
 
 export default function CoordLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <CoordSidebar />
-      <SidebarInset className={cn(
-        "transition-[margin] duration-200 ease-linear",
-        "md:ml-[var(--sidebar-width)]",
-        "md:group-data-[collapsible=icon]/sidebar-wrapper:ml-[var(--sidebar-width-icon)]",
-        "md:group-data-[collapsible=offcanvas]/sidebar-wrapper:ml-0"
-      )}>
+      <SidebarInset className="transition-[margin] duration-200 ease-linear">
         <div className="flex flex-1 flex-col gap-4 p-4">
           <Card className="flex-1 flex flex-col">
             <CardHeader className="flex flex-row items-center gap-2 pb-4">

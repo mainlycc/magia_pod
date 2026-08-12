@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { seedDefaultInsuranceForTrip } from "@/lib/insurance-local/seed-trip-defaults";
 import { TRIP_TRANSPORT_OPTIONS } from "@/lib/trip-transport";
+import { derivePaymentSplitFromSchedule } from "@/lib/utils/payment-calculator";
 
 // Helper do sprawdzenia czy użytkownik to admin
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
@@ -71,10 +72,31 @@ export async function POST(req: Request) {
       require_pesel,
       company_participants_info,
       payment_schedule,
+      payment_split_enabled,
+      payment_split_first_percent,
+      payment_split_second_percent,
+      payment_reminder_enabled,
+      payment_reminder_days_before,
       transport_mode,
       airport_codes,
     } = body ?? {};
     if (!title) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+
+    const resolvedSchedule =
+      payment_schedule && Array.isArray(payment_schedule) ? payment_schedule : null;
+    const derivedSplit = derivePaymentSplitFromSchedule(resolvedSchedule);
+    const resolvedSplitEnabled =
+      typeof payment_split_enabled === "boolean"
+        ? payment_split_enabled
+        : derivedSplit.payment_split_enabled;
+    const resolvedFirstPercent =
+      typeof payment_split_first_percent === "number"
+        ? payment_split_first_percent
+        : derivedSplit.payment_split_first_percent;
+    const resolvedSecondPercent =
+      typeof payment_split_second_percent === "number"
+        ? payment_split_second_percent
+        : derivedSplit.payment_split_second_percent;
 
     const supabase = await createClient();
     
@@ -188,7 +210,15 @@ export async function POST(req: Request) {
         registration_mode: registration_mode ?? "both",
         require_pesel: typeof require_pesel === "boolean" ? require_pesel : true,
         company_participants_info: company_participants_info ?? null,
-        payment_schedule: payment_schedule && Array.isArray(payment_schedule) ? payment_schedule : null,
+        payment_schedule: resolvedSchedule,
+        payment_split_enabled: resolvedSplitEnabled,
+        payment_split_first_percent: resolvedFirstPercent,
+        payment_split_second_percent: resolvedSecondPercent,
+        payment_reminder_enabled: Boolean(payment_reminder_enabled),
+        payment_reminder_days_before:
+          typeof payment_reminder_days_before === "number"
+            ? payment_reminder_days_before
+            : null,
         transport_mode: transportModeResolved,
         airport_codes:
           typeof airport_codes === "string" && airport_codes.trim()

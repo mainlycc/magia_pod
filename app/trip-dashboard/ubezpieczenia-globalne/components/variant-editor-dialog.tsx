@@ -52,7 +52,6 @@ const emptyCreateForm = () => ({
   type: "" as "" | "1" | "2" | "3",
   name: "",
   provider: "",
-  description: "",
   coverage_scope: "",
   is_default: false,
   is_active: true,
@@ -67,7 +66,6 @@ export function VariantEditorDialog({ open, mode, initial, onOpenChange, onSaved
   const [editForm, setEditForm] = useState({
     name: "",
     provider: "",
-    description: "",
     coverage_scope: "",
     is_default: false,
     is_active: true,
@@ -84,7 +82,6 @@ export function VariantEditorDialog({ open, mode, initial, onOpenChange, onSaved
       setEditForm({
         name: initial.name,
         provider: initial.provider,
-        description: initial.description || "",
         coverage_scope: initial.coverage_scope || "",
         is_default: initial.is_default,
         is_active: initial.is_active,
@@ -138,7 +135,6 @@ export function VariantEditorDialog({ open, mode, initial, onOpenChange, onSaved
             type: parseInt(createForm.type, 10),
             name: createForm.name,
             provider: createForm.provider,
-            description: createForm.description || null,
             coverage_scope: createForm.coverage_scope || null,
             is_default: createForm.is_default,
           }),
@@ -155,7 +151,6 @@ export function VariantEditorDialog({ open, mode, initial, onOpenChange, onSaved
           body: JSON.stringify({
             name: editForm.name,
             provider: editForm.provider,
-            description: editForm.description || null,
             coverage_scope: editForm.coverage_scope || null,
             is_default: editForm.is_default,
             is_active: editForm.is_active,
@@ -311,20 +306,6 @@ export function VariantEditorDialog({ open, mode, initial, onOpenChange, onSaved
           )}
 
           <div className="space-y-2">
-            <Label>Opis (krótki — formularz rezerwacji)</Label>
-            <Textarea
-              rows={2}
-              value={mode === "create" ? createForm.description : editForm.description}
-              onChange={(e) =>
-                mode === "create"
-                  ? setCreateForm((prev) => ({ ...prev, description: e.target.value }))
-                  : setEditForm((prev) => ({ ...prev, description: e.target.value }))
-              }
-              placeholder="Krótki opis widoczny dla klienta"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label>Zakres i sumy ubezpieczenia</Label>
             <Textarea
               rows={3}
@@ -337,7 +318,7 @@ export function VariantEditorDialog({ open, mode, initial, onOpenChange, onSaved
               placeholder="np. KL 80 000 PLN, NNW 10 000 PLN, CP, OC"
             />
             <p className="text-xs text-muted-foreground">
-              Wyświetlane w umowie (placeholder {"{{insurance_scope}}"}) oraz jako zakres wariantu.
+              Widoczne dla klienta w formularzu zgłoszenia oraz w umowie (placeholder {"{{insurance_scope}}"}).
             </p>
           </div>
 

@@ -210,7 +210,7 @@ function PublicznyWygladContent() {
             onShowChange={setShowWeatherCard}
             text={weatherText}
             onTextChange={setWeatherText}
-            title="Pogoda"
+            title="Zakwaterowanie"
           />
 
           <AdditionalFieldsSection

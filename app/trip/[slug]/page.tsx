@@ -531,9 +531,9 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
               </TripSectionCard>
             )}
 
-            {/* Pogoda */}
+            {/* Zakwaterowanie */}
             {trip.weather_text && trip.weather_text.trim() && trip.show_weather_card !== false && (
-              <TripSectionCard title="Pogoda">
+              <TripSectionCard title="Zakwaterowanie">
                 <div 
                   className="prose prose-sm max-w-none text-sm text-[#3f3f46]"
                   dangerouslySetInnerHTML={{ __html: trip.weather_text }}

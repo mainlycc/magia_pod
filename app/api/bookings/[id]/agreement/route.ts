@@ -16,9 +16,17 @@ export async function POST(
     const { id } = await context.params;
     await createClient();
 
+    let force = false;
+    try {
+      const body = (await request.json()) as { force?: unknown } | null;
+      force = body?.force === true;
+    } catch {
+      // Brak body (np. POST bez JSON) — zachowaj semantykę ensure
+    }
+
     const { origin } = new URL(request.url);
     const baseUrl = resolvePdfBaseUrl(origin);
-    const result = await ensureAgreementForBooking(id, { baseUrl });
+    const result = await ensureAgreementForBooking(id, { baseUrl, force });
 
     if (!result.ok) {
       return NextResponse.json(
