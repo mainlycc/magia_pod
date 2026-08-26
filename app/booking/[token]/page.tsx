@@ -21,6 +21,7 @@ import {
   getFirstInstallmentPercent,
 } from "@/lib/utils/payment-calculator";
 import {
+  collectForeignCurrencyAttractionLines,
   resolveAdditionalServicesCents,
   sumAdditionalServicesCentsUsingCatalogs,
 } from "@/lib/sum-additional-services-cents";
@@ -241,6 +242,11 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
     undefined,
     addonsCentsFromCatalogs,
   );
+  const foreignCurrencyLines = collectForeignCurrencyAttractionLines(booking.participants, {
+    form_diets: booking.trip.form_diets,
+    form_extra_insurances: booking.trip.form_extra_insurances,
+    form_additional_attractions: booking.trip.form_additional_attractions,
+  });
   const totalPrice = tripBaseCents + addonsCents;
 
   const firstPercent = getFirstInstallmentPercent({
@@ -380,33 +386,52 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
                 <div className="grid gap-1 text-sm">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-[#3f3f46]">Cena wycieczki</span>
-                    <span className={cn(azureClasses.mono, "font-semibold")}>
+                    <span className="font-semibold">
                       {(tripBaseCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-[#3f3f46]">Usługi dodatkowe</span>
-                    <span className={cn(azureClasses.mono, "font-semibold")}>
+                    <span className="font-semibold">
                       {(addonsCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
+                  {foreignCurrencyLines.map((line, idx) => (
+                    <div key={`fx-${idx}-${line.service_id ?? line.currency}`} className="flex items-center justify-between gap-4">
+                      <span className="text-[#3f3f46]">
+                        {line.title ? `${line.title} (poza umową)` : `Usługa w ${line.currency} (poza umową)`}
+                      </span>
+                      <span className="font-semibold">
+                        {(line.price_cents / 100).toLocaleString("pl-PL", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        {line.currency}
+                      </span>
+                    </div>
+                  ))}
                   <Separator className="my-1 bg-[#eceef3]" />
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-medium text-[#3f3f46]">Łączna cena</span>
-                    <span className={cn(azureClasses.mono, "text-lg font-semibold text-[#1e90ff]")}>
+                    <span className="text-lg font-semibold text-[#1e90ff]">
                       {(totalPrice / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-[#3f3f46]">Zaliczka ({firstPercent}%)</span>
-                    <span className={cn(azureClasses.mono, "font-semibold")}>
+                    <span className="font-semibold">
                       {(depositCents / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
                 </div>
-                {addonsCents > 0 && (
+                {(addonsCents > 0 || foreignCurrencyLines.length > 0) && (
                   <p className="text-xs text-[#a1a1aa]">
-                    * Cena końcowa zawiera wybrane usługi dodatkowe.
+                    {addonsCents > 0
+                      ? "* Cena końcowa zawiera wybrane usługi dodatkowe w PLN."
+                      : null}
+                    {foreignCurrencyLines.length > 0
+                      ? `${addonsCents > 0 ? " " : ""}* Usługi w walucie obcej są płatne osobno i nie wchodzą do kwoty umowy.`
+                      : null}
                   </p>
                 )}
               </div>

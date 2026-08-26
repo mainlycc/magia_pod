@@ -83,9 +83,8 @@ type AzurePricePanelProps = {
   depositCents: number;
   totalCents: number;
   firstPercent: number;
-  tripBaseCents: number;
-  addonsCents: number;
-  participantLines?: Array<{ label: string; amountCents: number }>;
+  /** Data drugiego terminu płatności (np. „26.08.2026”); pokazywana gdy jest reszta do zapłaty */
+  secondDueDateLabel?: string | null;
 };
 
 function formatPln(cents: number) {
@@ -109,9 +108,7 @@ export function AzurePricePanel({
   depositCents,
   totalCents,
   firstPercent,
-  tripBaseCents,
-  addonsCents,
-  participantLines = [],
+  secondDueDateLabel = null,
 }: AzurePricePanelProps) {
   const remainingCents = Math.max(0, totalCents - depositCents);
   const depositFormatted = formatPln(depositCents);
@@ -121,10 +118,10 @@ export function AzurePricePanel({
   return (
     <div className={azureClasses.pricePanel}>
       <div className={azureClasses.pricePanelBar} aria-hidden />
-      <div className="grid gap-6 p-6 sm:p-7 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-8 lg:p-8">
+      <div className="p-6 sm:p-7 lg:p-8">
         <div className="min-w-0">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#0a0a0a] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-white">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#1e90ff]" aria-hidden />
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-white" aria-hidden />
             Całkowita kwota
           </div>
 
@@ -140,9 +137,9 @@ export function AzurePricePanel({
             <span className="shrink-0 text-[20px] font-medium text-white/80 sm:text-[22px]">PLN</span>
           </div>
 
-          <div className="mt-4 rounded-xl bg-[#0a0a0a]/25 px-3.5 py-3">
+          <div className="mt-4 rounded-xl border border-white/20 bg-white/15 px-3.5 py-3 backdrop-blur-[2px]">
             <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <span className="text-[13px] font-medium text-white/85">
+              <span className="text-[13px] font-medium text-white/90">
                 {firstPercent >= 100
                   ? "Do zapłaty teraz · pełna kwota"
                   : `Do zapłaty teraz · zaliczka ${firstPercent}%`}
@@ -153,69 +150,19 @@ export function AzurePricePanel({
             </div>
           </div>
 
-          {participantLines.length > 0 && (
-            <div className="mt-5 flex flex-col gap-2 border-t border-white/20 pt-4">
-              {participantLines.map((line) => (
-                <div key={line.label} className="flex min-w-0 items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-[13px] font-medium text-white/90">
-                    {line.label}
-                  </span>
-                  <span className={cn(priceAmountClass, "text-[13px] font-semibold text-white")}>
-                    {formatPln(line.amountCents)} PLN
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-4 border-t border-white/20 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
           {remainingCents > 0 && (
-            <div className="flex min-w-0 justify-between gap-3 text-sm font-medium text-white/85">
-              <span className="shrink-0">Pozostałe do zapłaty</span>
-              <span className={cn(priceAmountClass, "font-semibold text-white")}>
-                {remainingFormatted} PLN
-              </span>
-            </div>
-          )}
-
-          <div className="rounded-xl border-l-[3px] border-white bg-[#0a0a0a] p-3.5">
-            <div className="mb-2.5 text-[10.5px] font-semibold tracking-wide text-white/70">
-              HARMONOGRAM
-            </div>
-            <div className="mb-2 flex min-w-0 items-center gap-2.5">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-[#1e90ff]" aria-hidden />
-              <span className="min-w-0 flex-1 text-xs font-medium">
-                {firstPercent >= 100 ? "Dziś · pełna płatność" : "Dziś · zaliczka"}
-              </span>
-              <span className={cn(priceAmountClass, "text-xs font-semibold")}>
-                {depositFormatted} PLN
-              </span>
-            </div>
-            {remainingCents > 0 && (
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-[#1e90ff] bg-transparent"
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 text-xs font-medium text-white/70">Pozostała kwota</span>
-                <span className={cn(priceAmountClass, "text-xs font-medium text-white/70")}>
+            <div className="mt-3 rounded-xl border border-white/20 bg-white/15 px-3.5 py-3 backdrop-blur-[2px]">
+              <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-[13px] font-medium text-white/90">
+                  Do zapłaty w 2 terminie
+                  {secondDueDateLabel ? `: ${secondDueDateLabel}` : ""}
+                </span>
+                <span className={cn(priceAmountClass, "text-[15px] font-semibold")}>
                   {remainingFormatted} PLN
                 </span>
               </div>
-            )}
-          </div>
-
-          <div className="space-y-1 text-xs text-white/75">
-            <div className="flex min-w-0 justify-between gap-3">
-              <span className="shrink-0">Cena wycieczki</span>
-              <span className={priceAmountClass}>{formatPln(tripBaseCents)} PLN</span>
             </div>
-            <div className="flex min-w-0 justify-between gap-3">
-              <span className="shrink-0">Usługi dodatkowe</span>
-              <span className={priceAmountClass}>{formatPln(addonsCents)} PLN</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

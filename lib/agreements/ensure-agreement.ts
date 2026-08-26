@@ -87,6 +87,11 @@ export async function ensureAgreementForBooking(
     baseUrl: string;
     /** Gdy true — przebuduj PDF nawet jeśli umowa już istnieje (np. po zmianie usług). */
     force?: boolean;
+    /**
+     * Świeże selected_services tuż po zapisie (omija ewentualny rozjazd odczytu z DB).
+     * Klucz = participants.id
+     */
+    selectedServicesByParticipantId?: Record<string, unknown>;
   },
 ): Promise<EnsureAgreementResult> {
   const supabaseAdmin = createAdminClient();
@@ -112,17 +117,25 @@ export async function ensureAgreementForBooking(
     return { ok: false, error: "Trip not found", status: 404 };
   }
 
+  const overrides = opts.selectedServicesByParticipantId;
   const participants = Array.isArray(booking.participants)
-    ? booking.participants.map((p: Record<string, unknown>) => ({
-        first_name: p.first_name,
-        last_name: p.last_name,
-        pesel: p.pesel ? String(p.pesel) : "",
-        email: p.email || undefined,
-        phone: p.phone || undefined,
-        document_type: p.document_type || undefined,
-        document_number: p.document_number || undefined,
-        selected_services: p.selected_services,
-      }))
+    ? booking.participants.map((p: Record<string, unknown>) => {
+        const id = typeof p.id === "string" ? p.id : null;
+        const fromOverride =
+          id && overrides && Object.prototype.hasOwnProperty.call(overrides, id)
+            ? overrides[id]
+            : undefined;
+        return {
+          first_name: p.first_name,
+          last_name: p.last_name,
+          pesel: p.pesel ? String(p.pesel) : "",
+          email: p.email || undefined,
+          phone: p.phone || undefined,
+          document_type: p.document_type || undefined,
+          document_number: p.document_number || undefined,
+          selected_services: fromOverride !== undefined ? fromOverride : p.selected_services,
+        };
+      })
     : [];
 
   if (participants.length === 0) {
@@ -273,8 +286,14 @@ export async function ensureAgreementForBooking(
     };
   }
 
-  const { base64, filename } = pdfResult;
+  const { base64, filename: baseFilename } = pdfResult;
   const generatedAt = new Date().toISOString();
+
+  // Przy force zawsze nowa ścieżka — upsert pod tą samą nazwą bywa serwowany ze stale CDN Storage.
+  const filename =
+    opts.force && baseFilename
+      ? baseFilename.replace(/\.pdf$/i, `-${Date.now()}.pdf`)
+      : baseFilename;
 
   // Zawsze zapisuj PDF w Storage — /api/pdf może zwrócić base64 bez udanego uploadu (warning).
   try {
@@ -287,9 +306,11 @@ export async function ensureAgreementForBooking(
         status: 500,
       };
     }
-    const { error: upErr } = await supabaseAdmin.storage
-      .from("agreements")
-      .upload(filename, buf, { contentType: "application/pdf", upsert: true });
+    const { error: upErr } = await supabaseAdmin.storage.from("agreements").upload(filename, buf, {
+      contentType: "application/pdf",
+      upsert: true,
+      cacheControl: "0",
+    });
     if (upErr) {
       return {
         ok: false,

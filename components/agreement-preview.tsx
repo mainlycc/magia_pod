@@ -89,13 +89,15 @@ export function AgreementPreview({
   if (hideCompanySection) {
     html = removeCompanySectionFromAgreementHtml(html);
   }
-  // Ważne: najpierw dane rezerwacji (poprawna cena = baza × osoby + usługi dodatkowe),
-  // dopiero potem fallbacki z danych wycieczki. Odwrotna kolejność powodowała,
-  // że {{trip_total_price}} / {{trip_deposit_amount}} / {{trip_price_breakdown}}
-  // były podstawiane wartościami dla 1 osoby bez dopłat.
+  // Przy danych rezerwacji: najpierw wycieczka bez cen, potem booking (cena + usługi).
+  // Bez formData: pełne placeholdery wycieczki (podgląd 1 osoba).
   let htmlWithData = html;
 
   if (formData) {
+    htmlWithData = replaceTripPlaceholders(htmlWithData, tripFullData, tripContentData, {
+      insuranceScope,
+      skipFinancialPlaceholders: true,
+    });
     htmlWithData = replaceBookingPlaceholders(
       htmlWithData,
       formData,
@@ -112,9 +114,11 @@ export function AgreementPreview({
         paymentSchedule: tripFullData?.payment_schedule ?? null,
       },
     );
+  } else {
+    htmlWithData = replaceTripPlaceholders(htmlWithData, tripFullData, tripContentData, {
+      insuranceScope,
+    });
   }
-
-  htmlWithData = replaceTripPlaceholders(htmlWithData, tripFullData, tripContentData, { insuranceScope });
 
   if (!formData && insuranceScope) {
     htmlWithData = htmlWithData.replace(/\{\{insurance_scope\}\}/g, insuranceScope);

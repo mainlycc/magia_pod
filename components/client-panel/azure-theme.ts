@@ -50,13 +50,13 @@ export const azureClasses = {
   input:
     "h-auto rounded-[14px] border-[#dadce3] bg-white px-[18px] py-3 text-[15px] shadow-none focus-visible:border-[#1e90ff] focus-visible:ring-[#cee4fc]",
   label: "text-[11px] font-semibold uppercase tracking-wide text-[#3f3f46]",
-  mono: "font-mono tabular-nums tracking-tight",
+  mono: "tabular-nums tracking-tight",
   badgeSuccess:
     "inline-flex items-center gap-2 rounded-full border border-[#dadce3] bg-white px-3.5 py-2 text-xs font-medium text-[#3f3f46]",
   badgeSuccessDot: "h-1.5 w-1.5 rounded-full bg-[#16a34a] shadow-[0_0_0_3px_rgba(22,163,74,0.13)]",
   pricePanel:
-    "relative overflow-hidden rounded-[22px] border border-[#1e90ff] bg-[#1e90ff] text-white shadow-[0_20px_50px_-24px_#1e90ff]",
-  pricePanelBar: "h-1 bg-[#0a0a0a]",
+    "relative overflow-hidden rounded-[22px] border border-[#1574d6] bg-[#1e90ff] text-white shadow-[0_20px_50px_-24px_#1e90ff]",
+  pricePanelBar: "h-1 bg-white/35",
   participantCard:
     "relative mb-3 rounded-2xl border border-[#dadce3] bg-white p-5 shadow-[0_1px_0_#eceef3] sm:p-[22px_26px]",
   typeToggleActive:

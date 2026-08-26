@@ -1,4 +1,10 @@
-import { sumAdditionalServicesCents, sumFormParticipantServicesCents, resolveAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import {
+  sumAdditionalServicesCents,
+  sumFormParticipantServicesCents,
+  resolveAdditionalServicesCents,
+  sumAdditionalServicesCentsUsingCatalogs,
+  collectForeignCurrencyAttractionLines,
+} from "@/lib/sum-additional-services-cents";
 
 describe("sumAdditionalServicesCents", () => {
   it("sumuje dietę, ubezpieczenie i atrakcję z wyłączeniem include_in_contract=false", () => {
@@ -17,9 +23,71 @@ describe("sumAdditionalServicesCents", () => {
     expect(sumAdditionalServicesCents(participants)).toBe(6000);
   });
 
+  it("pomija atrakcje w walucie obcej (EUR) w sumie PLN", () => {
+    const participants = [
+      {
+        selected_services: {
+          diets: [{ price_cents: 1000 }],
+          attractions: [
+            { price_cents: 5000, currency: "EUR", include_in_contract: true },
+            { price_cents: 2000, currency: "PLN", include_in_contract: true },
+          ],
+        },
+      },
+    ];
+    expect(sumAdditionalServicesCents(participants)).toBe(3000);
+  });
+
   it("zwraca 0 dla pustej tablicy lub braku cen", () => {
     expect(sumAdditionalServicesCents([])).toBe(0);
     expect(sumAdditionalServicesCents([{}])).toBe(0);
+  });
+});
+
+describe("sumAdditionalServicesCentsUsingCatalogs", () => {
+  it("pomija atrakcje EUR nawet gdy snapshot nie ma currency (bierze z katalogu)", () => {
+    const catalogs = {
+      form_additional_attractions: [
+        { id: "attr-eur", title: "Rejs", price_cents: 5000, currency: "EUR" },
+        { id: "attr-pln", title: "Muzeum", price_cents: 1500, currency: "PLN" },
+      ],
+    };
+    const participants = [
+      {
+        selected_services: {
+          attractions: [
+            { service_id: "attr-eur", include_in_contract: true },
+            { service_id: "attr-pln", include_in_contract: true },
+          ],
+        },
+      },
+    ];
+    expect(sumAdditionalServicesCentsUsingCatalogs(participants, catalogs)).toBe(1500);
+  });
+});
+
+describe("collectForeignCurrencyAttractionLines", () => {
+  it("zbiera atrakcje nie-PLN do osobnego wyświetlenia", () => {
+    const catalogs = {
+      form_additional_attractions: [
+        { id: "attr-eur", title: "Rejs", price_cents: 5000, currency: "EUR" },
+      ],
+    };
+    const participants = [
+      {
+        selected_services: {
+          attractions: [{ service_id: "attr-eur", price_cents: 5000, currency: "EUR" }],
+        },
+      },
+    ];
+    expect(collectForeignCurrencyAttractionLines(participants, catalogs)).toEqual([
+      {
+        price_cents: 5000,
+        currency: "EUR",
+        service_id: "attr-eur",
+        title: "Rejs",
+      },
+    ]);
   });
 });
 

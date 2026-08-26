@@ -21,15 +21,27 @@ export type TripPaymentConfig = {
   payment_schedule?: PaymentScheduleEntry[] | null;
 };
 
-/** Kwota rezerwacji: cena za osobę × liczba osób + dopłaty za usługi dodatkowe. */
+type ServiceCatalogsLike = {
+  form_diets?: unknown;
+  form_extra_insurances?: unknown;
+  form_additional_attractions?: unknown;
+};
+
+/** Kwota rezerwacji: cena za osobę × liczba osób + dopłaty za usługi dodatkowe (tylko PLN). */
 export function calculateBookingTotalCents(
   unitPriceCents: number,
   participantsCount: number,
   participants?: readonly ParticipantLike[],
   participantServices?: readonly FormParticipantServiceLike[],
+  catalogs?: ServiceCatalogsLike | null,
 ): number {
   const base = Math.max(0, unitPriceCents || 0) * Math.max(0, participantsCount);
-  const addons = resolveAdditionalServicesCents(participants, participantServices);
+  const addons = resolveAdditionalServicesCents(
+    participants,
+    participantServices,
+    undefined,
+    catalogs,
+  );
   return base + addons;
 }
 

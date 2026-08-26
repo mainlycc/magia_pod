@@ -134,10 +134,11 @@ export function ParticipantAdditionalServicesEditor({
   const persist = async () => {
     setSaving(true)
     try {
+      const selectedPayload = toPayload(draft)
       const res = await fetch(`/api/participants/${participantId}/selected-services`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_services: toPayload(draft) }),
+        body: JSON.stringify({ selected_services: selectedPayload }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -149,13 +150,19 @@ export function ParticipantAdditionalServicesEditor({
         const genRes = await fetch(`/api/bookings/${bookingId}/agreement`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force: true }),
+          body: JSON.stringify({
+            force: true,
+            selected_services_by_participant_id: {
+              [participantId]: selectedPayload,
+            },
+          }),
         })
         const genData = (await genRes.json().catch(() => null)) as {
           success?: boolean
           error?: string
           details?: string
           message?: string
+          filename?: string | null
         } | null
 
         if (!genRes.ok || !genData?.success) {
@@ -172,6 +179,9 @@ export function ParticipantAdditionalServicesEditor({
         const mailRes = await fetch(`/api/bookings/${bookingId}/send-agreement-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            genData.filename ? { pdf_url: genData.filename } : {},
+          ),
         })
         const mailData = (await mailRes.json().catch(() => null)) as { error?: string } | null
 
@@ -280,9 +290,12 @@ export function ParticipantAdditionalServicesEditor({
     })
   }
 
-  const formatPrice = (cents: number | null | undefined) => {
+  const formatPrice = (cents: number | null | undefined, currency?: string | null) => {
     if (cents === null || cents === undefined) return "—"
-    return `${(cents / 100).toFixed(2)} zł`
+    const code = (currency?.trim() || "PLN").toUpperCase()
+    const amount = (cents / 100).toFixed(2)
+    if (code === "PLN") return `${amount} zł`
+    return `${amount} ${code}`
   }
 
   if (diets.length === 0 && insurances.length === 0 && attractions.length === 0) {
@@ -464,10 +477,14 @@ export function ParticipantAdditionalServicesEditor({
                     </div>
                   </td>
                   <td className="p-2 text-xs text-muted-foreground">
-                    {row?.currency && row.currency !== "PLN" ? `Waluta: ${row.currency}` : "—"}
+                    {(row?.currency || a.currency) && (row?.currency || a.currency) !== "PLN"
+                      ? `Waluta: ${row?.currency || a.currency}`
+                      : "—"}
                   </td>
                   <td className="p-2 text-right whitespace-nowrap">
-                    {selected ? formatPrice(row?.price_cents) : "—"}
+                    {selected
+                      ? formatPrice(row?.price_cents ?? a.price_cents, row?.currency || a.currency)
+                      : formatPrice(a.price_cents, a.currency)}
                   </td>
                 </tr>
               )

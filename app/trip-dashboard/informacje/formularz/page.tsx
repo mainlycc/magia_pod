@@ -342,6 +342,14 @@ function TripFormContent() {
             additional_fields: step2Data.additionalFieldSections || [],
             reservation_info_text: reservationInfoText || "",
             reservation_success_message: reservationSuccessMessage || "",
+            agreement_room_type:
+              typeof step1Data.roomType === "string" && step1Data.roomType.trim()
+                ? step1Data.roomType.trim()
+                : null,
+            agreement_meals_info:
+              typeof step1Data.mealsInfo === "string" && step1Data.mealsInfo.trim()
+                ? step1Data.mealsInfo.trim()
+                : null,
           }),
         })
 

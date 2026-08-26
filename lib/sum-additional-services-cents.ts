@@ -1,6 +1,7 @@
 /**
  * Sumuje dopłaty za diety, ubezpieczenia i atrakcje z pola selected_services uczestników.
  * Logika zgodna z generowaniem PDF (baza × osoby + dopłaty).
+ * Atrakcje w walucie obcej (≠ PLN) nie wchodzą do sumy umowy / płatności PLN.
  */
 export type ParticipantLike = {
   selected_services?: unknown;
@@ -19,6 +20,36 @@ type ServiceCatalogsLike = {
   form_extra_insurances?: unknown;
   form_additional_attractions?: unknown;
 };
+
+function normalizeCurrency(raw: unknown): string {
+  if (typeof raw === "string" && raw.trim()) return raw.trim().toUpperCase();
+  return "PLN";
+}
+
+function findCatalogAttraction(
+  catalogs: ServiceCatalogsLike | null | undefined,
+  serviceId: string | undefined,
+): Record<string, unknown> | null {
+  if (!catalogs || !serviceId) return null;
+  const attrs = Array.isArray(catalogs.form_additional_attractions)
+    ? (catalogs.form_additional_attractions as Array<Record<string, unknown>>)
+    : [];
+  const found = attrs.find((a) => a?.id === serviceId);
+  return found ?? null;
+}
+
+/** Waluta atrakcji: snapshot → katalog → PLN. */
+function resolveAttractionCurrency(
+  entry: Record<string, unknown>,
+  catalogs?: ServiceCatalogsLike | null,
+): string {
+  if (typeof entry.currency === "string" && entry.currency.trim()) {
+    return normalizeCurrency(entry.currency);
+  }
+  const serviceId = typeof entry.service_id === "string" ? entry.service_id : undefined;
+  const fromCatalog = findCatalogAttraction(catalogs, serviceId);
+  return normalizeCurrency(fromCatalog?.currency);
+}
 
 function resolveCatalogPriceCents(params: {
   type?: string;
@@ -51,11 +82,11 @@ function resolveCatalogPriceCents(params: {
     }
 
     if (type === "attraction") {
-      const attrs = Array.isArray(catalogs.form_additional_attractions)
-        ? (catalogs.form_additional_attractions as any[])
-        : [];
-      const attraction = attrs.find((a) => a?.id === service_id);
-      const cents = (attraction?.price_cents ?? 0) as unknown;
+      const attraction = findCatalogAttraction(catalogs, service_id);
+      if (!attraction) return 0;
+      // Ceny z katalogu w walucie obcej nie wolno mieszać z sumą PLN.
+      if (normalizeCurrency(attraction.currency) !== "PLN") return 0;
+      const cents = (attraction.price_cents ?? 0) as unknown;
       return typeof cents === "number" && Number.isFinite(cents) ? Math.round(cents) : 0;
     }
   } catch {
@@ -121,8 +152,7 @@ export function sumAdditionalServicesCentsUsingCatalogs(
 
     for (const a of attractions) {
       if (a.include_in_contract === false) continue;
-      const currency = typeof a.currency === "string" ? a.currency : "PLN";
-      if (currency && currency !== "PLN") continue;
+      if (resolveAttractionCurrency(a, catalogs) !== "PLN") continue;
 
       const centsRaw = a.price_cents;
       let cents =
@@ -141,6 +171,67 @@ export function sumAdditionalServicesCentsUsingCatalogs(
   }
 
   return sum;
+}
+
+export type ForeignCurrencyAttractionLine = {
+  price_cents: number;
+  currency: string;
+  service_id?: string;
+  title?: string;
+};
+
+/**
+ * Zbiera atrakcje w walucie obcej (nie wliczane do sumy PLN),
+ * do osobnego wyświetlenia w breakdownach.
+ */
+export function collectForeignCurrencyAttractionLines(
+  participants: readonly ParticipantLike[],
+  catalogs?: ServiceCatalogsLike | null,
+): ForeignCurrencyAttractionLine[] {
+  const lines: ForeignCurrencyAttractionLine[] = [];
+  if (!participants?.length) return lines;
+
+  const attrs = Array.isArray(catalogs?.form_additional_attractions)
+    ? (catalogs!.form_additional_attractions as Array<Record<string, unknown>>)
+    : [];
+
+  for (const p of participants) {
+    const s = p.selected_services;
+    if (!s || typeof s !== "object") continue;
+    const o = s as Record<string, unknown>;
+    const attractions = Array.isArray(o.attractions) ? (o.attractions as Array<Record<string, unknown>>) : [];
+
+    for (const a of attractions) {
+      const currency = resolveAttractionCurrency(a, catalogs);
+      if (currency === "PLN") continue;
+
+      let cents =
+        typeof a.price_cents === "number" && Number.isFinite(a.price_cents) && a.price_cents > 0
+          ? Math.round(a.price_cents)
+          : 0;
+      const serviceId = typeof a.service_id === "string" ? a.service_id : undefined;
+      if (!cents && serviceId) {
+        const fromCatalog = findCatalogAttraction(catalogs, serviceId);
+        const catalogCents = fromCatalog?.price_cents;
+        if (typeof catalogCents === "number" && Number.isFinite(catalogCents) && catalogCents > 0) {
+          cents = Math.round(catalogCents);
+        }
+      }
+      if (cents <= 0) continue;
+
+      const catalogTitle =
+        serviceId != null
+          ? (attrs.find((item) => item.id === serviceId)?.title as string | undefined)
+          : undefined;
+      const title =
+        (typeof a.title === "string" && a.title.trim() ? a.title.trim() : undefined) ||
+        (typeof catalogTitle === "string" && catalogTitle.trim() ? catalogTitle.trim() : undefined);
+
+      lines.push({ price_cents: cents, currency, service_id: serviceId, title });
+    }
+  }
+
+  return lines;
 }
 
 /** Sumuje dopłaty z tablicy `participant_services` (jak w podsumowaniu formularza). */
@@ -162,19 +253,25 @@ export function sumFormParticipantServicesCents(
 }
 
 /**
- * Wybiera sumę dopłat: jawna wartość, selected_services uczestników lub participant_services z formularza.
+ * Wybiera sumę dopłat: jawna wartość, selected_services (+ katalogi) lub participant_services z formularza.
  * Math.max między źródłami uczestników i formularza — bez podwójnego liczenia przy pełnych danych.
+ * Gdy podano `catalogs`, waluta atrakcji jest rozwiązywana także z katalogu (ochrona przed starymi snapshotami bez `currency`).
  */
 export function resolveAdditionalServicesCents(
   participants?: readonly ParticipantLike[],
   participantServices?: readonly FormParticipantServiceLike[],
   explicitAddonTotalCents?: number | null,
+  catalogs?: ServiceCatalogsLike | null,
 ): number {
   if (typeof explicitAddonTotalCents === "number" && Number.isFinite(explicitAddonTotalCents)) {
     return Math.round(explicitAddonTotalCents);
   }
 
-  const fromParticipants = participants?.length ? sumAdditionalServicesCents(participants) : 0;
+  const fromParticipants = participants?.length
+    ? catalogs
+      ? sumAdditionalServicesCentsUsingCatalogs(participants, catalogs)
+      : sumAdditionalServicesCents(participants)
+    : 0;
   const fromForm = sumFormParticipantServicesCents(participantServices);
   return Math.max(fromParticipants, fromForm);
 }
@@ -201,6 +298,8 @@ export function sumAdditionalServicesCents(participants: readonly ParticipantLik
     }
     for (const a of attractions) {
       if (a.include_in_contract === false) continue;
+      const currency = normalizeCurrency(a.currency);
+      if (currency !== "PLN") continue;
       const cents = a.price_cents;
       if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) sum += Math.round(cents);
     }

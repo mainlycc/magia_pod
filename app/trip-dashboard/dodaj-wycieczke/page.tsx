@@ -59,6 +59,8 @@ export default function DodajWycieczkePage() {
   const [locality2, setLocality2] = useState("")
   const [transportMode, setTransportMode] = useState<string>(TRANSPORT_NONE)
   const [airportCodes, setAirportCodes] = useState("")
+  const [roomType, setRoomType] = useState("")
+  const [mealsInfo, setMealsInfo] = useState("")
   const [paymentReminderEnabled, setPaymentReminderEnabled] = useState(false)
   const [paymentReminderDaysBefore, setPaymentReminderDaysBefore] = useState("")
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleItem[]>([])
@@ -124,6 +126,8 @@ export default function DodajWycieczkePage() {
                 ? data.airport_codes
                 : ""
           )
+          setRoomType(typeof data.roomType === "string" ? data.roomType : "")
+          setMealsInfo(typeof data.mealsInfo === "string" ? data.mealsInfo : "")
           setIsPublic(data.isPublic || false)
           setPaymentReminderEnabled(data.paymentReminderEnabled || false)
           setPaymentReminderDaysBefore(data.paymentReminderDaysBefore || "")
@@ -304,6 +308,8 @@ export default function DodajWycieczkePage() {
         locality2: hasSecondLocation ? locality2 : "",
         transportMode,
         airportCodes,
+        roomType,
+        mealsInfo,
         isPublic,
         paymentSchedule,
         paymentReminderEnabled,
@@ -531,6 +537,26 @@ export default function DodajWycieczkePage() {
               <AirportCombobox
                 value={airportCodes}
                 onChange={setAirportCodes}
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Rodzaj, typ pokoju</Label>
+              <Input
+                value={roomType}
+                onChange={(e) => setRoomType(e.target.value)}
+                placeholder="np. Pokój 2-osobowy"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label className="text-xs">Ilość, rodzaj posiłków</Label>
+              <Input
+                value={mealsInfo}
+                onChange={(e) => setMealsInfo(e.target.value)}
+                placeholder="np. Śniadania i obiadokolacje (HB)"
+                className="h-8 text-xs"
               />
             </div>
 

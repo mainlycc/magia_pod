@@ -50,7 +50,10 @@ export async function POST(request: NextRequest) {
           payment_split_enabled,
           payment_split_first_percent,
           payment_split_second_percent,
-          payment_schedule
+          payment_schedule,
+          form_diets,
+          form_extra_insurances,
+          form_additional_attractions
         )
       `
       );
@@ -99,6 +102,12 @@ export async function POST(request: NextRequest) {
       unitPrice,
       participantsCount,
       participants ?? [],
+      undefined,
+      {
+        form_diets: trip.form_diets,
+        form_extra_insurances: trip.form_extra_insurances,
+        form_additional_attractions: trip.form_additional_attractions,
+      },
     );
 
     if (totalAmountCents <= 0) {

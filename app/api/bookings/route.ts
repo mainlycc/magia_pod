@@ -159,7 +159,7 @@ export async function POST(req: Request) {
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent, payment_schedule, reservation_number",
+        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent, payment_schedule, reservation_number, form_diets, form_extra_insurances, form_additional_attractions",
       )
       .or(`slug.eq.${payload.slug},public_slug.eq.${payload.slug}`)
       .eq("is_active", true)
@@ -840,6 +840,12 @@ export async function POST(req: Request) {
       unitPrice,
       seatsRequested,
       payload.participants,
+      undefined,
+      {
+        form_diets: trip.form_diets,
+        form_extra_insurances: trip.form_extra_insurances,
+        form_additional_attractions: trip.form_additional_attractions,
+      },
     );
 
     const paymentConfig = {

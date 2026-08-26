@@ -47,6 +47,7 @@ import {
 } from "@/components/booking-form/utils/booking-form-utils";
 import {
   calculateBookingTotalCents,
+  getDefaultPaymentDueDates,
   getFirstInstallmentPercent,
 } from "@/lib/utils/payment-calculator";
 import { resolveAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
@@ -1983,12 +1984,6 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
   );
 
   const priceSummary = useMemo(() => {
-    const toPln = (cents: number) =>
-      (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-
     if (tripPrice === null) return null;
 
     const allServices = form.watch("participant_services") || [];
@@ -2004,25 +1999,46 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
         : participantsSummary.length;
 
     const tripBaseCents = (tripPrice ?? 0) * Math.max(0, participantsCount || 0);
-    const addonsCents = resolveAdditionalServicesCents(previewParticipants, allServices);
+    const addonsCents = resolveAdditionalServicesCents(
+      previewParticipants,
+      allServices,
+      undefined,
+      {
+        form_diets: tripConfig?.diets,
+        form_extra_insurances: tripConfig?.extra_insurances,
+        form_additional_attractions: tripConfig?.additional_attractions,
+      },
+    );
     const totalCents = tripBaseCents + addonsCents;
     const depositCents = Math.round((totalCents * paymentSplitFirstPercent) / 100);
 
-    const participantLines =
-      applicantType === "individual"
-        ? participantsSummary.map((participant) => ({
-            label: `${participant.first_name} ${participant.last_name}`.trim() || "Uczestnik",
-            amountCents: tripPrice ?? 0,
-          }))
-        : [];
+    const schedule = Array.isArray(tripFullData?.payment_schedule)
+      ? tripFullData.payment_schedule
+      : [];
+    const scheduleWithDates = schedule
+      .filter((item) => item && item.due_date)
+      .slice()
+      .sort(
+        (a, b) => (a.installment_number ?? 0) - (b.installment_number ?? 0),
+      );
+    let secondDueDateRaw: string | null = null;
+    if (scheduleWithDates.length > 1) {
+      secondDueDateRaw = scheduleWithDates[scheduleWithDates.length - 1].due_date ?? null;
+    } else if (scheduleWithDates.length === 0) {
+      secondDueDateRaw = getDefaultPaymentDueDates(tripFullData?.start_date ?? null).finalDueDate;
+    }
+    const secondDueDateLabel = secondDueDateRaw
+      ? new Date(secondDueDateRaw).toLocaleDateString("pl-PL", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+      : null;
 
     return {
-      toPln,
-      tripBaseCents,
-      addonsCents,
       totalCents,
       depositCents,
-      participantLines,
+      secondDueDateLabel,
     };
   }, [
     tripPrice,
@@ -2032,6 +2048,8 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
     tripConfig?.seats_total,
     paymentSplitFirstPercent,
     watchedParticipantServices,
+    tripFullData?.payment_schedule,
+    tripFullData?.start_date,
   ]);
 
   return (
@@ -4424,9 +4442,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                   depositCents={priceSummary.depositCents}
                   totalCents={priceSummary.totalCents}
                   firstPercent={paymentSplitFirstPercent}
-                  tripBaseCents={priceSummary.tripBaseCents}
-                  addonsCents={priceSummary.addonsCents}
-                  participantLines={priceSummary.participantLines}
+                  secondDueDateLabel={priceSummary.secondDueDateLabel}
                 />
               )}
 

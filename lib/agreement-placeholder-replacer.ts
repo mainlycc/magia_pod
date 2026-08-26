@@ -12,9 +12,11 @@ import {
   getFirstInstallmentPercent,
 } from "@/lib/utils/payment-calculator";
 import {
+  collectForeignCurrencyAttractionLines,
   resolveAdditionalServicesCents,
   sumAdditionalServicesCents,
   type FormParticipantServiceLike,
+  type ForeignCurrencyAttractionLine,
 } from "@/lib/sum-additional-services-cents";
 
 type RequiredContactFields = {
@@ -63,6 +65,16 @@ function calculateNights(startDate: string | null, endDate: string | null): numb
   }
 }
 
+function formatMoneyFromCents(cents: number, currency: string = "PLN"): string {
+  const amount = (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const code = currency.trim() ? currency.trim().toUpperCase() : "PLN";
+  if (code === "PLN") return `${amount} zł`;
+  return `${amount} ${code}`;
+}
+
 function formatPlnFromCents(cents: number): string {
   return (Math.max(0, cents || 0) / 100).toLocaleString("pl-PL", {
     minimumFractionDigits: 2,
@@ -76,14 +88,23 @@ function buildTripPriceBreakdownHtml(params: {
   totalCents: number;
   depositCents?: number | null;
   firstPercent?: number | null;
+  foreignCurrencyLines?: ForeignCurrencyAttractionLine[];
 }): string {
   const { tripBaseCents, addonsCents, totalCents } = params;
   const firstPercent = params.firstPercent ?? null;
   const depositCents = typeof params.depositCents === "number" ? params.depositCents : null;
+  const foreignCurrencyLines = params.foreignCurrencyLines ?? [];
 
+  const noteParts: string[] = [];
+  if (addonsCents > 0) {
+    noteParts.push("Cena końcowa zawiera wybrane usługi dodatkowe w PLN.");
+  }
+  if (foreignCurrencyLines.length > 0) {
+    noteParts.push("Usługi w walucie obcej są płatne osobno i nie wchodzą do kwoty umowy.");
+  }
   const note =
-    addonsCents > 0
-      ? `<div style="margin-top: 6px; font-size: 0.75rem; color: #6b7280;">* Cena końcowa zawiera wybrane usługi dodatkowe.</div>`
+    noteParts.length > 0
+      ? `<div style="margin-top: 6px; font-size: 0.75rem; color: #6b7280;">* ${noteParts.join(" ")}</div>`
       : "";
 
   const depositLine =
@@ -93,6 +114,18 @@ function buildTripPriceBreakdownHtml(params: {
            <strong style="white-space:nowrap;">${formatPlnFromCents(depositCents)} zł</strong>
          </div>`
       : "";
+
+  const foreignLinesHtml = foreignCurrencyLines
+    .map((line) => {
+      const label = line.title
+        ? `${line.title} (poza umową)`
+        : `Usługa w ${line.currency} (poza umową)`;
+      return `<div style="display:flex; justify-content:space-between; gap:12px;">
+    <span>${label}</span>
+    <strong style="white-space:nowrap;">${formatMoneyFromCents(line.price_cents, line.currency)}</strong>
+  </div>`;
+    })
+    .join("\n  ");
 
   return `
 <div style="font-size: 0.875rem; line-height: 1.4;">
@@ -104,6 +137,7 @@ function buildTripPriceBreakdownHtml(params: {
     <span>Usługi dodatkowe</span>
     <strong style="white-space:nowrap;">${formatPlnFromCents(addonsCents)} zł</strong>
   </div>
+  ${foreignLinesHtml}
   <div style="border-top: 1px solid #d1d5db; margin: 10px 0;"></div>
   <div style="display:flex; justify-content:space-between; gap:12px;">
     <span><strong>Łączna cena</strong></span>
@@ -163,7 +197,14 @@ export function replaceTripPlaceholders(
   html: string,
   tripFullData: TripFullData | null,
   tripContentData: TripContentData | null,
-  options?: { insuranceScope?: string | null },
+  options?: {
+    insuranceScope?: string | null;
+    /**
+     * Gdy true — nie wypełniaj cen/zaliczki/rozpiski (zostaw pod replaceBookingPlaceholders).
+     * Używane przy generowaniu PDF rezerwacji, żeby dopłaty za usługi weszły do umowy.
+     */
+    skipFinancialPlaceholders?: boolean;
+  },
 ): string {
   if (!tripFullData) return html;
 
@@ -190,7 +231,7 @@ export function replaceTripPlaceholders(
   // (w praktyce chcemy je wypełniać automatycznie, jeśli mamy dane).
   result = result.replace(/\{\{accommodation_location\}\}/g, tripFullData.location || "-");
   
-  // Cena
+  // Cena za osobę (nie mylić z trip_total_price)
   const price = tripFullData.price_cents ? (tripFullData.price_cents / 100).toFixed(2) : "-";
   result = result.replace(/\{\{trip_price_per_person\}\}/g, price);
   
@@ -255,34 +296,36 @@ export function replaceTripPlaceholders(
     result = result.replace(/\{\{additional_costs\}\}/g, tripContentData.additional_costs_text);
   }
 
-  // Cena całkowita (dla przykładu - 1 osoba, bo nie mamy danych o liczbie uczestników)
-  result = result.replace(/\{\{trip_total_price\}\}/g, price);
-  // Rozpiska ceny (podgląd bez danych rezerwacji: 1 osoba, bez dopłat)
-  if (tripFullData.price_cents) {
-    const totalCents = tripFullData.price_cents;
-    const firstPercent = getFirstInstallmentPercent(tripFullData);
-    const depositCents = Math.round((totalCents * firstPercent) / 100);
-    result = result.replace(
-      /\{\{trip_price_breakdown\}\}/g,
-      buildTripPriceBreakdownHtml({
-        tripBaseCents: totalCents,
-        addonsCents: 0,
-        totalCents,
-        depositCents,
-        firstPercent,
-      }),
-    );
-  } else {
-    result = result.replace(/\{\{trip_price_breakdown\}\}/g, "-");
-  }
+  if (!options?.skipFinancialPlaceholders) {
+    // Cena całkowita (dla przykładu - 1 osoba, bo nie mamy danych o liczbie uczestników)
+    result = result.replace(/\{\{trip_total_price\}\}/g, price);
+    // Rozpiska ceny (podgląd bez danych rezerwacji: 1 osoba, bez dopłat)
+    if (tripFullData.price_cents) {
+      const totalCents = tripFullData.price_cents;
+      const firstPercent = getFirstInstallmentPercent(tripFullData);
+      const depositCents = Math.round((totalCents * firstPercent) / 100);
+      result = result.replace(
+        /\{\{trip_price_breakdown\}\}/g,
+        buildTripPriceBreakdownHtml({
+          tripBaseCents: totalCents,
+          addonsCents: 0,
+          totalCents,
+          depositCents,
+          firstPercent,
+        }),
+      );
+    } else {
+      result = result.replace(/\{\{trip_price_breakdown\}\}/g, "-");
+    }
 
-  // Kwota zaliczki (podgląd bez danych rezerwacji — 1 osoba, bez dopłat)
-  if (tripFullData.price_cents) {
-    const firstPercent = getFirstInstallmentPercent(tripFullData);
-    const depositAmount = formatDepositAmountZloty(tripFullData.price_cents, firstPercent);
-    result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
-  } else {
-    result = result.replace(/\{\{trip_deposit_amount\}\}/g, "-");
+    // Kwota zaliczki (podgląd bez danych rezerwacji — 1 osoba, bez dopłat)
+    if (tripFullData.price_cents) {
+      const firstPercent = getFirstInstallmentPercent(tripFullData);
+      const depositAmount = formatDepositAmountZloty(tripFullData.price_cents, firstPercent);
+      result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
+    } else {
+      result = result.replace(/\{\{trip_deposit_amount\}\}/g, "-");
+    }
   }
 
   return result;
@@ -572,6 +615,10 @@ export function replaceBookingPlaceholders(
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);
 
     const depositCents = Math.round((totalCents * firstPercent) / 100);
+    const foreignCurrencyLines = collectForeignCurrencyAttractionLines(
+      participantRows,
+      formData.service_catalogs ?? null,
+    );
     result = result.replace(
       /\{\{trip_price_breakdown\}\}/g,
       buildTripPriceBreakdownHtml({
@@ -580,6 +627,7 @@ export function replaceBookingPlaceholders(
         totalCents,
         depositCents,
         firstPercent,
+        foreignCurrencyLines,
       }),
     );
   }

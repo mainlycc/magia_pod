@@ -66,7 +66,7 @@
 }
 
 .client-panel .azure-mono {
-  font-family: var(--font-jetbrains-mono, ui-monospace, monospace);
+  font-family: inherit;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }

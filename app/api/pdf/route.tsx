@@ -905,10 +905,15 @@ export async function POST(req: Request) {
         form_additional_attractions: tripRow.form_additional_attractions,
       });
 
-      // Kolejność ma znaczenie: najpierw dane rezerwacji (poprawna cena z dopłatami),
-      // potem fallbacki z wycieczki — inaczej cena/przedpłata liczą się dla 1 osoby bez usług.
-      let filledInnerHtml = replaceBookingPlaceholders(
-        customTemplate,
+      // Kolejność: najpierw dane wycieczki (bez cen finansowych), potem rezerwacja
+      // (cena z dopłatami + {{selected_services}}). Dzięki skipFinancialPlaceholders
+      // trip nie „zjada” placeholderów cen przed bookingiem.
+      let filledInnerHtml = replaceTripPlaceholders(customTemplate, tripFullData, tripContentData, {
+        insuranceScope,
+        skipFinancialPlaceholders: true,
+      });
+      filledInnerHtml = replaceBookingPlaceholders(
+        filledInnerHtml,
         formData,
         tripFullData.price_cents ?? null,
         tripFullData.start_date ?? null,
@@ -931,9 +936,6 @@ export async function POST(req: Request) {
           paymentSchedule: tripFullData.payment_schedule,
         },
       );
-      filledInnerHtml = replaceTripPlaceholders(filledInnerHtml, tripFullData, tripContentData, {
-        insuranceScope,
-      });
       const fullHtml = wrapAgreementHtmlForPdf(filledInnerHtml);
       const withFonts = embedNotoSansIntoHtml(fullHtml);
       console.log("[/api/pdf] embedNotoSansIntoHtml:", withFonts.embedded ? "ok" : "missing");
@@ -965,7 +967,8 @@ export async function POST(req: Request) {
       .from("agreements")
       .upload(filename, buf, { 
         contentType: "application/pdf", 
-        upsert: true 
+        upsert: true,
+        cacheControl: "0",
       });
 
     // Jeśli upload się nie powiódł, zwracamy PDF jako base64 (fallback)

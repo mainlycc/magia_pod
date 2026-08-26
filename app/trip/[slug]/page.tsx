@@ -135,7 +135,7 @@ function TripBookingPanel({
           <div className="text-[10px] font-semibold uppercase tracking-wide text-[#3f3f46]">
             Cena za osobę
           </div>
-          <div className={cn(azureClasses.mono, "text-xl font-semibold leading-none text-[#0a0a0a]")}>
+          <div className="text-xl font-semibold leading-none text-[#0a0a0a]">
             {formattedPrice} <span className="text-sm font-medium text-[#3f3f46]">PLN</span>
           </div>
         </div>
@@ -163,12 +163,7 @@ function TripBookingPanel({
             Cena za osobę
           </div>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span
-              className={cn(
-                azureClasses.mono,
-                "text-[32px] font-semibold leading-none text-white sm:text-[44px]",
-              )}
-            >
+            <span className="text-[32px] font-semibold leading-none text-white sm:text-[44px]">
               {formattedPrice}
             </span>
             <span className="text-base font-medium text-white/85 sm:text-lg">PLN</span>
@@ -177,9 +172,7 @@ function TripBookingPanel({
           {showSeatsLeft && (
             <div className="mt-4 flex items-center justify-between border-t border-white/25 pt-4">
               <span className="text-sm font-medium text-white/90">Pozostało miejsc</span>
-              <span className={cn(azureClasses.mono, "text-base font-semibold text-white")}>
-                {seatsLeft}
-              </span>
+              <span className="text-base font-semibold text-white">{seatsLeft}</span>
             </div>
           )}
         </div>
@@ -371,8 +364,6 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
     <ClientPanelShell containerClassName="max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8 lg:py-6 max-xl:!px-4 max-xl:!py-5">
       <ClientPanelHeader
         title={stripTripNumberFromTitle(trip.title, trip.reservation_number, trip.slug)}
-        backHref="/trip"
-        backLabel="Wróć do wycieczek"
       />
 
       <div className="grid grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-12 xl:items-start">

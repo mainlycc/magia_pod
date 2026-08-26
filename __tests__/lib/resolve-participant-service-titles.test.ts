@@ -45,6 +45,24 @@ describe("buildParticipantServicesFromCatalog", () => {
     const out = buildParticipantServicesFromCatalog(participants, catalogs);
     expect(out).toHaveLength(0);
   });
+
+  it("pomija atrakcje w walucie obcej z listy usług umowy", () => {
+    const catalogsWithEur = {
+      ...catalogs,
+      form_additional_attractions: [{ id: "attr-eur", title: "Rejs", currency: "EUR" }],
+    };
+    const participants = [
+      {
+        selected_services: {
+          attractions: [
+            { service_id: "attr-eur", currency: "EUR", include_in_contract: true },
+          ],
+        },
+      },
+    ];
+
+    expect(buildParticipantServicesFromCatalog(participants, catalogsWithEur)).toHaveLength(0);
+  });
 });
 
 describe("formatSelectedServicesPerParticipant", () => {
@@ -122,5 +140,32 @@ describe("formatSelectedServicesPerParticipant", () => {
     ];
 
     expect(formatSelectedServicesPerParticipant(participants, catalogs)).toBe("brak");
+  });
+
+  it("pokazuje atrakcje EUR z kodem waluty, nie jako zł", () => {
+    const catalogsWithEur = {
+      ...catalogs,
+      form_additional_attractions: [
+        { id: "attr-eur", title: "Rejs EUR", currency: "EUR" },
+      ],
+    };
+    const participants = [
+      {
+        selected_services: {
+          attractions: [
+            {
+              service_id: "attr-eur",
+              price_cents: 5000,
+              currency: "EUR",
+              include_in_contract: true,
+            },
+          ],
+        },
+      },
+    ];
+
+    const text = formatSelectedServicesPerParticipant(participants, catalogsWithEur);
+    expect(text).toContain("Rejs EUR - 50.00 EUR (płatne osobno, poza umową)");
+    expect(text).not.toContain("zł");
   });
 });

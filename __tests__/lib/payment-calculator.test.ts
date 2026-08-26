@@ -18,6 +18,18 @@ describe("calculateBookingTotalCents", () => {
     // 20000 PLN/os. + 433 PLN dopłata
     expect(calculateBookingTotalCents(2000000, 1, participants)).toBe(2043300);
   });
+
+  it("nie dolicza atrakcji EUR do kwoty płatności PLN", () => {
+    const participants = [
+      {
+        selected_services: {
+          diets: [{ price_cents: 1000 }],
+          attractions: [{ price_cents: 9900, currency: "EUR", include_in_contract: true }],
+        },
+      },
+    ];
+    expect(calculateBookingTotalCents(100000, 1, participants)).toBe(101000);
+  });
 });
 
 describe("calculateInstallmentAmounts", () => {

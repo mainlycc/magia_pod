@@ -1,6 +1,7 @@
 type CatalogItem = {
   id: string;
   title?: string;
+  currency?: string;
   variants?: Array<{ id: string; title?: string }>;
 };
 
@@ -9,6 +10,7 @@ type SelectedServiceEntry = {
   variant_id?: string;
   title?: string;
   price_cents?: number | null;
+  currency?: string;
   include_in_contract?: boolean;
 };
 
@@ -18,9 +20,28 @@ export type ServiceCatalogs = {
   form_additional_attractions?: unknown;
 };
 
-function formatServicePrice(priceCents: number | null | undefined): string {
+function formatServicePrice(
+  priceCents: number | null | undefined,
+  currency: string = "PLN",
+): string {
   if (priceCents == null || priceCents === 0) return "bezpłatna";
-  return `${(priceCents / 100).toFixed(2)} zł`;
+  const code = currency.trim() ? currency.trim().toUpperCase() : "PLN";
+  const amount = (priceCents / 100).toFixed(2);
+  // Dla PLN zachowujemy dotychczasowy zapis „zł” (umowy / szablony).
+  if (code === "PLN") return `${amount} zł`;
+  return `${amount} ${code}`;
+}
+
+function resolveAttractionCurrency(
+  entry: SelectedServiceEntry,
+  attractionsCatalog: CatalogItem[],
+): string {
+  if (entry.currency?.trim()) return entry.currency.trim().toUpperCase();
+  if (entry.service_id) {
+    const fromCatalog = attractionsCatalog.find((a) => a.id === entry.service_id);
+    if (fromCatalog?.currency?.trim()) return fromCatalog.currency.trim().toUpperCase();
+  }
+  return "PLN";
 }
 
 function buildParticipantServiceLines(
@@ -61,11 +82,19 @@ function buildParticipantServiceLines(
   }
 
   for (const a of attractionEntries) {
-    if (a.include_in_contract === false) continue;
+    const currency = resolveAttractionCurrency(a, attractions);
+    // Atrakcje poza umową (PLN z odznaczonym checkboxem) — pomijamy.
+    // Atrakcje w walucie obcej: pokazujemy z właściwym kodem waluty + adnotacją.
+    if (a.include_in_contract === false && currency === "PLN") continue;
     const title =
       a.title?.trim() ||
       (a.service_id ? resolveCatalogTitle(attractions, a.service_id, a.variant_id) : null);
-    if (title) lines.push(`${title} - ${formatServicePrice(a.price_cents)}`);
+    if (!title) continue;
+    if (currency !== "PLN") {
+      lines.push(`${title} - ${formatServicePrice(a.price_cents, currency)} (płatne osobno, poza umową)`);
+    } else if (a.include_in_contract !== false) {
+      lines.push(`${title} - ${formatServicePrice(a.price_cents, currency)}`);
+    }
   }
 
   return lines;
@@ -185,7 +214,9 @@ export function buildParticipantServicesFromCatalog(
     }
 
     for (const a of attractionEntries) {
-      if (a.include_in_contract === false) continue;
+      const currency = resolveAttractionCurrency(a, attractions);
+      // Lista usług na umowie (bez cen): tylko pozycje wliczane do umowy (PLN).
+      if (a.include_in_contract === false || currency !== "PLN") continue;
       const title =
         a.title?.trim() ||
         (a.service_id ? resolveCatalogTitle(attractions, a.service_id, a.variant_id) : null);

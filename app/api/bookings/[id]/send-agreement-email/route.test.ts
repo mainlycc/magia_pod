@@ -26,6 +26,7 @@ jest.mock("@/lib/supabase/admin", () => ({
                   booking_ref: "BK-1",
                   contact_email: "x@example.com",
                   access_token: "t",
+                  agreement_pdf_url: "path.pdf",
                   trips: { id: "t1", title: "Trip" },
                 },
                 error: null,
@@ -35,16 +36,17 @@ jest.mock("@/lib/supabase/admin", () => ({
         };
       }
       if (table === "agreements") {
+        const agreementRow = { id: "a1", pdf_url: "path.pdf", status: "generated" };
+        const chain = {
+          order: () => chain,
+          limit: () => ({
+            maybeSingle: async () => ({ data: agreementRow, error: null }),
+          }),
+          maybeSingle: async () => ({ data: agreementRow, error: null }),
+        };
         return {
           select: () => ({
-            eq: () => ({
-              order: () => ({
-                limit: async () => ({
-                  data: [{ id: "a1", pdf_url: "path.pdf", status: "generated" }],
-                  error: null,
-                }),
-              }),
-            }),
+            eq: () => chain,
           }),
           update: () => ({
             eq: async () => ({ error: null }),
@@ -56,7 +58,9 @@ jest.mock("@/lib/supabase/admin", () => ({
     storage: {
       from: () => ({
         download: async () => ({
-          data: new Blob([new Uint8Array(6000)]),
+          data: {
+            arrayBuffer: async () => new Uint8Array(6000).buffer,
+          },
           error: null,
         }),
       }),
@@ -94,6 +98,7 @@ describe("POST /api/bookings/[id]/send-agreement-email", () => {
                     booking_ref: "BK-1",
                     contact_email: "x@example.com",
                     access_token: "t",
+                    agreement_pdf_url: "path.pdf",
                     trips: { id: "t1", title: "Trip" },
                   },
                   error: null,
@@ -103,16 +108,17 @@ describe("POST /api/bookings/[id]/send-agreement-email", () => {
           };
         }
         if (table === "agreements") {
+          const agreementRow = { id: "a1", pdf_url: "path.pdf", status: "generated" };
+          const chain = {
+            order: () => chain,
+            limit: () => ({
+              maybeSingle: async () => ({ data: agreementRow, error: null }),
+            }),
+            maybeSingle: async () => ({ data: agreementRow, error: null }),
+          };
           return {
             select: () => ({
-              eq: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: [{ id: "a1", pdf_url: "path.pdf", status: "generated" }],
-                    error: null,
-                  }),
-                }),
-              }),
+              eq: () => chain,
             }),
           };
         }
@@ -121,7 +127,9 @@ describe("POST /api/bookings/[id]/send-agreement-email", () => {
       storage: {
         from: () => ({
           download: async () => ({
-            data: new Blob([new Uint8Array(100)]),
+            data: {
+              arrayBuffer: async () => new Uint8Array(100).buffer,
+            },
             error: null,
           }),
         }),
