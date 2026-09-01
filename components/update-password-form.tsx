@@ -39,7 +39,27 @@ export function UpdatePasswordForm({
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
 
-        if (code) {
+        // Stare linki (action_link): tokeny w fragmencie URL po weryfikacji Supabase.
+        const hashParams = new URLSearchParams(
+          window.location.hash.replace(/^#/, ""),
+        );
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) {
+            if (!cancelled) {
+              setError(sessionError.message);
+              setHasSession(false);
+            }
+            return;
+          }
+          window.history.replaceState({}, "", "/auth/update-password");
+        } else if (code) {
           const { error: exchangeError } =
             await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {

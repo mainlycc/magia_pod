@@ -16,6 +16,16 @@ export async function GET(request: NextRequest) {
       : "/";
 
   if (!code) {
+    // Stare linki recovery (action_link) zwracają tokeny w #hash — serwer ich nie widzi.
+    // Przekieruj na stronę docelową; klient odczyta hash i ustawi sesję.
+    if (
+      nextParam &&
+      nextParam.startsWith("/") &&
+      !nextParam.startsWith("//")
+    ) {
+      return NextResponse.redirect(`${origin}${nextParam}`);
+    }
+
     return NextResponse.redirect(
       `${origin}/auth/error?error=${encodeURIComponent("Brak kodu autoryzacji")}`,
     );

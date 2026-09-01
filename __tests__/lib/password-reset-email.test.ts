@@ -1,4 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
+import { buildPasswordResetConfirmLink } from "@/lib/auth/send-password-reset-email";
 import {
   generatePasswordResetEmail,
   PASSWORD_RESET_EMAIL_SUBJECT,
@@ -11,9 +12,22 @@ describe("password reset email", () => {
     );
   });
 
+  it("buduje link przez /auth/confirm z token_hash", () => {
+    const link = buildPasswordResetConfirmLink(
+      "https://app.magia-podrozowania.pl",
+      "abc123hash",
+    );
+
+    expect(link).toBe(
+      "https://app.magia-podrozowania.pl/auth/confirm?token_hash=abc123hash&type=recovery&next=%2Fauth%2Fupdate-password",
+    );
+  });
+
   it("zawiera link resetu i branding", () => {
-    const link =
-      "https://app.magia-podrozowania.pl/auth/callback?code=abc&next=/auth/update-password";
+    const link = buildPasswordResetConfirmLink(
+      "https://app.magia-podrozowania.pl",
+      "abc123hash",
+    );
     const html = generatePasswordResetEmail(link);
 
     expect(html).toContain(link);

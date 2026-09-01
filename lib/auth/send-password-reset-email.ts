@@ -10,6 +10,25 @@ type SendPasswordResetResult =
   | { ok: true }
   | { ok: false; error: string };
 
+const UPDATE_PASSWORD_PATH = "/auth/update-password";
+
+/**
+ * Link do /auth/confirm z hashed_token — weryfikacja po stronie serwera (verifyOtp).
+ * Nie używamy action_link z generateLink: po weryfikacji Supabase zwraca tokeny w #hash,
+ * a /auth/callback oczekuje ?code= (PKCE).
+ */
+export function buildPasswordResetConfirmLink(
+  baseUrl: string,
+  hashedToken: string,
+): string {
+  const params = new URLSearchParams({
+    token_hash: hashedToken,
+    type: "recovery",
+    next: UPDATE_PASSWORD_PATH,
+  });
+  return `${baseUrl}/auth/confirm?${params.toString()}`;
+}
+
 /**
  * Generuje link recovery przez Supabase Admin API i wysyła własny mail przez Resend.
  * Nie używa resetPasswordForEmail — Supabase nie wysyła wtedy własnego maila.
@@ -19,13 +38,11 @@ export async function sendPasswordResetEmail(
   requestOrigin?: string,
 ): Promise<SendPasswordResetResult> {
   const baseUrl = resolvePublicBaseUrl(requestOrigin);
-  const redirectTo = `${baseUrl}/auth/callback?next=/auth/update-password`;
 
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.generateLink({
     type: "recovery",
     email,
-    options: { redirectTo },
   });
 
   if (error) {
@@ -34,11 +51,13 @@ export async function sendPasswordResetEmail(
     return { ok: true };
   }
 
-  const resetLink = data.properties?.action_link;
-  if (!resetLink) {
-    console.error("[password-reset] generateLink returned no action_link");
+  const hashedToken = data.properties?.hashed_token;
+  if (!hashedToken) {
+    console.error("[password-reset] generateLink returned no hashed_token");
     return { ok: true };
   }
+
+  const resetLink = buildPasswordResetConfirmLink(baseUrl, hashedToken);
 
   const html = generatePasswordResetEmail(resetLink);
   const sendResult = await sendTransactionalEmail({
