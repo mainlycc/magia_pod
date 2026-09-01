@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import ExcelJS from "exceljs"
 import { Resend } from "resend"
+import { EMAIL_SENDER_NAME } from "@/lib/email/constants"
 import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
 
 // POST /api/insurance-local/send-email/[tripId]/[type]
@@ -85,7 +86,7 @@ export async function POST(
 
     // 5. Wyślij email przez Resend
     const apiKey = process.env.RESEND_API_KEY
-    const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży"
+    const senderName = process.env.RESEND_FROM_NAME || EMAIL_SENDER_NAME
     const from = `${senderName} <noreply@mail.mainly.pl>`
 
     if (!apiKey) {

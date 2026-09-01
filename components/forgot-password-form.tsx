@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -30,14 +29,23 @@ export function ForgotPasswordForm({
     setError(null);
 
     try {
-      const supabase = createClient();
-      
-      // PKCE: link z maila musi przejść przez /auth/callback (exchangeCodeForSession),
-      // a potem na /auth/update-password. URL musi być na liście Redirect URLs w Supabase.
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/auth/update-password`,
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
-      if (error) throw error;
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          data?.error === "email_send_failed"
+            ? "Nie udało się wysłać wiadomości e-mail. Spróbuj ponownie później."
+            : "Wystąpił błąd podczas resetowania hasła.",
+        );
+      }
+
       setSuccess(true);
     } catch (error: unknown) {
       if (error instanceof Error) {
@@ -64,30 +72,29 @@ export function ForgotPasswordForm({
       {success ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Check Your Email</CardTitle>
-            <CardDescription>Password reset instructions sent</CardDescription>
+            <CardTitle className="text-2xl">Sprawdź swoją skrzynkę e-mail</CardTitle>
+            <CardDescription>Instrukcje resetowania hasła zostały wysłane</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              If you registered using your email and password, you will receive
-              a password reset email.
+              Jeśli zarejestrowałeś się za pomocą e-maila i hasła, otrzymasz
+              wiadomość z linkiem do resetowania hasła.
             </p>
           </CardContent>
         </Card>
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Reset Your Password</CardTitle>
+            <CardTitle className="text-2xl">Zresetuj hasło</CardTitle>
             <CardDescription>
-              Type in your email and we&apos;ll send you a link to reset your
-              password
+              Wpisz swój adres e-mail, a wyślemy Ci link do zresetowania hasła
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleForgotPassword}>
               <div className="flex flex-col gap-6">
                 <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">E-mail</Label>
                   <Input
                     id="email"
                     type="email"
@@ -99,16 +106,16 @@ export function ForgotPasswordForm({
                 </div>
                 {error && <p className="text-sm text-red-500">{error}</p>}
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Sending..." : "Send reset email"}
+                  {isLoading ? "Wysyłanie..." : "Wyślij link do resetowania"}
                 </Button>
               </div>
               <div className="mt-4 text-center text-sm">
-                Already have an account?{" "}
+                Masz już konto?{" "}
                 <Link
                   href="/auth/login"
                   className="underline underline-offset-4"
                 >
-                  Login
+                  Zaloguj się
                 </Link>
               </div>
             </form>

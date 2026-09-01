@@ -48,7 +48,7 @@ export const azureClasses = {
   btnSecondary:
     "rounded-xl bg-[#0a0a0a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1c1c1f]",
   input:
-    "h-auto rounded-[14px] border-[#dadce3] bg-white px-[18px] py-3 text-[15px] shadow-none focus-visible:border-[#1e90ff] focus-visible:ring-[#cee4fc]",
+    "h-auto rounded-[14px] border-[#dadce3] bg-white px-[18px] py-3 text-[15px] text-[#0a0a0a] placeholder:text-[#a1a1aa] shadow-none focus-visible:border-[#1e90ff] focus-visible:ring-[#cee4fc]",
   label: "text-[11px] font-semibold uppercase tracking-wide text-[#3f3f46]",
   mono: "tabular-nums tracking-tight",
   badgeSuccess:

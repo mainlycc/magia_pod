@@ -1,25 +1,104 @@
-export function generateBookingConfirmationEmail(
-  bookingRef: string,
-  bookingLink: string,
-  tripTitle: string,
-  tripStartDate: string | null,
-  tripEndDate: string | null,
-  participantsCount: number,
-  paymentLink?: string | null
-): string {
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "—";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("pl-PL", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+import { EMAIL_BRAND, EMAIL_PAYMENT_DETAILS } from "../constants";
+import {
+  type BookingConfirmationEmailParams,
+  formatEmailDateLong,
+} from "../booking-confirmation-data";
+
+function buildGreeting(firstName: string): string {
+  return firstName ? `Dzień dobry ${firstName},` : "Dzień dobry,";
+}
+
+function buildLocationSuffix(location: string | null): string {
+  const trimmed = (location ?? "").trim();
+  return trimmed ? ` (${trimmed})` : "";
+}
+
+function buildAttachmentsSection(filenames: string[]): string {
+  if (filenames.length === 0) return "";
+  const items = filenames
+    .map((name) => `<li style="margin: 4px 0;">📄 ${escapeHtml(name)}</li>`)
+    .join("");
+  return `
+              <div style="margin: 24px 0 0 0;">
+                <p style="margin: 0 0 8px 0; font-size: 15px; color: #111827; font-weight: 600;">
+                  Załączone dokumenty:
+                </p>
+                <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #374151; line-height: 1.7;">
+                  ${items}
+                </ul>
+              </div>`;
+}
+
+function buildAttachmentsText(filenames: string[]): string {
+  if (filenames.length === 0) return "";
+  return (
+    "\n\nZałączone dokumenty:\n" +
+    filenames.map((name) => `• ${name}`).join("\n")
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildPaymentSectionHtml(params: BookingConfirmationEmailParams): string {
+  if (!params.showPaymentInstructions) return "";
+
+  const transferTitle = `Numer umowy: ${params.agreementNumber} + ${params.contactLastName || "—"}`;
+
+  let onlinePayment = "";
+  if (params.paymentLink) {
+    onlinePayment = `
+                <p style="margin: 16px 0 0 0; font-size: 14px; color: #374151; line-height: 1.6;">
+                  Możesz też opłacić rezerwację online:
+                  <a href="${params.paymentLink}" style="color: ${EMAIL_BRAND.primary}; font-weight: 600;">Zapłać teraz</a>
+                </p>`;
+  }
+
+  return `
+              <div style="background-color: ${EMAIL_BRAND.lightBg}; border-left: 4px solid ${EMAIL_BRAND.primary}; padding: 20px; border-radius: 6px; margin: 24px 0;">
+                <p style="margin: 0 0 12px 0; font-size: 16px; color: ${EMAIL_BRAND.text}; font-weight: 600;">
+                  Płatność
+                </p>
+                <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #374151; line-height: 1.8;">
+                  <li>Jeżeli nie dokonałeś płatności, opłać do <strong>${escapeHtml(params.depositDeadline)}</strong></li>
+                  <li>Numer konta: <strong>${EMAIL_PAYMENT_DETAILS.bankAccount}</strong></li>
+                  <li>Odbiorca: <strong>${EMAIL_PAYMENT_DETAILS.recipient}</strong></li>
+                  <li>Adres: ${EMAIL_PAYMENT_DETAILS.address}</li>
+                  <li>Tytuł: <strong>${escapeHtml(transferTitle)}</strong></li>
+                </ul>
+                ${onlinePayment}
+              </div>`;
+}
+
+function buildPaymentSectionText(params: BookingConfirmationEmailParams): string {
+  if (!params.showPaymentInstructions) return "";
+
+  const transferTitle = `Numer umowy: ${params.agreementNumber} + ${params.contactLastName || "—"}`;
+  let text = `\n\nPłatność\n`;
+  text += `• Jeżeli nie dokonałeś płatności, opłać do ${params.depositDeadline}\n`;
+  text += `• Numer konta: ${EMAIL_PAYMENT_DETAILS.bankAccount}\n`;
+  text += `• Odbiorca: ${EMAIL_PAYMENT_DETAILS.recipient}\n`;
+  text += `• Adres: ${EMAIL_PAYMENT_DETAILS.address}\n`;
+  text += `• Tytuł: ${transferTitle}`;
+  if (params.paymentLink) {
+    text += `\n• Płatność online: ${params.paymentLink}`;
+  }
+  return text;
+}
+
+export function generateBookingConfirmationEmail(params: BookingConfirmationEmailParams): string {
+  const greeting = buildGreeting(params.contactFirstName);
+  const startDate = formatEmailDateLong(params.tripStartDate);
+  const endDate = formatEmailDateLong(params.tripEndDate);
+  const dateRange =
+    params.tripEndDate && params.tripStartDate !== params.tripEndDate
+      ? `${startDate} – ${endDate}`
+      : startDate;
 
   return `
 <!DOCTYPE html>
@@ -34,123 +113,57 @@ export function generateBookingConfirmationEmail(
     <tr>
       <td align="center" style="padding: 20px 0;">
         <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 40px 30px; text-align: center;">
+            <td style="background: ${EMAIL_BRAND.gradient}; padding: 40px 30px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">
                 Magia Podróżowania
               </h1>
             </td>
           </tr>
-          
-          <!-- Content -->
           <tr>
             <td style="padding: 40px 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #16a34a; font-size: 24px; font-weight: 600;">
+              <h2 style="margin: 0 0 20px 0; color: ${EMAIL_BRAND.primary}; font-size: 24px; font-weight: 600;">
                 Potwierdzenie rezerwacji
               </h2>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-                Dziękujemy za rezerwację w Magii Podróżowania!
+                ${escapeHtml(greeting)} Dziękujemy za rezerwację w Magii Podróżowania! Twoja rezerwacja została pomyślnie zarejestrowana w naszym systemie.
               </p>
-              
-              <!-- Booking Details -->
+
               <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <div style="margin-bottom: 16px;">
-                  <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Numer umowy
-                  </p>
-                  <p style="margin: 0; font-size: 24px; color: #16a34a; font-weight: 700; font-family: monospace; letter-spacing: 1px;">
-                    ${bookingRef}
-                  </p>
-                </div>
-                
-                <div style="border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 16px;">
-                  <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Wycieczka
-                  </p>
-                  <p style="margin: 0 0 4px 0; font-size: 18px; color: #111827; font-weight: 600;">
-                    ${tripTitle}
-                  </p>
-                  <p style="margin: 4px 0 0 0; font-size: 14px; color: #6b7280;">
-                    ${formatDate(tripStartDate)} ${tripEndDate ? `- ${formatDate(tripEndDate)}` : ""}
-                  </p>
-                </div>
-                
-                <div style="border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 16px;">
-                  <p style="margin: 0; font-size: 14px; color: #6b7280;">
-                    Liczba uczestników: <strong style="color: #111827;">${participantsCount}</strong>
-                  </p>
-                </div>
-              </div>
-              
-              <!-- CTA Buttons -->
-              <table role="presentation" style="width: 100%; margin: 30px 0;">
-                <tr>
-                  <td align="center" style="padding: 0;">
-                    <a href="${bookingLink}" 
-                       style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3); transition: all 0.3s ease;">
-                      Szczegóły rezerwacji
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin: 12px 0 0 0; font-size: 13px; color: #6b7280; text-align: center; line-height: 1.5;">
-                Kliknij powyższy przycisk, aby przejść do szczegółów rezerwacji.
-              </p>
-              ${paymentLink ? `
-              <!-- Payment Link -->
-              <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 6px; margin: 20px 0;">
-                <p style="margin: 0 0 8px 0; font-size: 14px; color: #1e40af; font-weight: 600;">
-                  💳 Płatność
+                <p style="margin: 0 0 12px 0; font-size: 15px; color: #111827; font-weight: 600;">
+                  Szczegóły rezerwacji
                 </p>
-                <p style="margin: 0 0 12px 0; font-size: 14px; color: #1e40af; line-height: 1.5;">
-                  Możesz dokonać płatności za rezerwację klikając w poniższy link:
-                </p>
-                <table role="presentation" style="width: 100%; margin: 12px 0;">
-                  <tr>
-                    <td align="center" style="padding: 0;">
-                      <a href="${paymentLink}" 
-                         style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: all 0.3s ease;">
-                        Zapłać teraz
-                      </a>
-                    </td>
-                  </tr>
-                </table>
+                <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #374151; line-height: 1.8;">
+                  <li>Numer umowy: <strong>${escapeHtml(params.agreementNumber)}</strong></li>
+                  <li>Wycieczka: <strong>${escapeHtml(params.tripTitle)}</strong>${escapeHtml(buildLocationSuffix(params.tripLocation))}</li>
+                  <li>Termin: ${escapeHtml(dateRange)}</li>
+                  <li>Liczba uczestników: <strong>${params.participantsCount}</strong></li>
+                  <li>Cena całkowita: <strong>${escapeHtml(params.tripTotalPricePln)}</strong></li>
+                </ul>
               </div>
-              ` : ''}
-              
-              <!-- Instructions -->
+
+              ${buildPaymentSectionHtml(params)}
+
               <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 6px; margin: 20px 0;">
                 <p style="margin: 0 0 8px 0; font-size: 14px; color: #92400e; font-weight: 600;">
-                  ⚠️ Co dalej?
+                  Co dalej?
                 </p>
-                <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; color: #92400e; line-height: 1.8;">
-                  <li><strong>Dokonaj płatności</strong> (jeśli jeszcze nie została opłacona) — płatność jest potwierdzeniem zawarcia umowy</li>
-                  <li><strong>Zachowaj numer umowy</strong> i ten e-mail na przyszłość</li>
-                  <li><strong>W razie pytań</strong> skontaktuj się z nami, podając numer umowy</li>
-                </ol>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; color: #92400e; line-height: 1.8;">
+                  <li>Dokonaj płatności (jeśli jeszcze nie została opłacona) — płatność jest potwierdzeniem zawarcia umowy</li>
+                  <li>Zachowaj numer umowy i ten e-mail na przyszłość</li>
+                </ul>
               </div>
-              
-              <!-- Alternative Link -->
-              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 6px; margin: 20px 0;">
-                <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280; font-weight: 500;">
-                  Jeśli przycisk nie działa, skopiuj i wklej poniższy link do przeglądarki:
-                </p>
-                <p style="margin: 0; font-size: 12px; color: #22c55e; word-break: break-all; font-family: monospace; background-color: #ffffff; padding: 10px; border-radius: 4px; border: 1px solid #d1d5db;">
-                  ${bookingLink}
-                </p>
-              </div>
+
+              ${buildAttachmentsSection(params.attachmentFilenames)}
             </td>
           </tr>
-          
-          <!-- Footer -->
           <tr>
             <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 10px 0; font-size: 14px; color: #16a34a; font-weight: 600;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: ${EMAIL_BRAND.primary}; font-weight: 600;">
                 Magia Podróżowania
               </p>
               <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">
-                W razie pytań prosimy o kontakt. Twój numer umowy: <strong>${bookingRef}</strong>
+                W razie pytań prosimy o kontakt. Twój numer umowy: <strong>${escapeHtml(params.agreementNumber)}</strong>
               </p>
             </td>
           </tr>
@@ -163,3 +176,30 @@ export function generateBookingConfirmationEmail(
   `.trim();
 }
 
+export function generateBookingConfirmationEmailText(
+  params: BookingConfirmationEmailParams,
+): string {
+  const greeting = buildGreeting(params.contactFirstName);
+  const startDate = formatEmailDateLong(params.tripStartDate);
+  const endDate = formatEmailDateLong(params.tripEndDate);
+  const dateRange =
+    params.tripEndDate && params.tripStartDate !== params.tripEndDate
+      ? `${startDate} – ${endDate}`
+      : startDate;
+
+  let text = `${greeting}\n\n`;
+  text += `Dziękujemy za rezerwację w Magii Podróżowania! Twoja rezerwacja została pomyślnie zarejestrowana w naszym systemie.\n\n`;
+  text += `Szczegóły rezerwacji\n`;
+  text += `• Numer umowy: ${params.agreementNumber}\n`;
+  text += `• Wycieczka: ${params.tripTitle}${buildLocationSuffix(params.tripLocation)}\n`;
+  text += `• Termin: ${dateRange}\n`;
+  text += `• Liczba uczestników: ${params.participantsCount}\n`;
+  text += `• Cena całkowita: ${params.tripTotalPricePln}`;
+  text += buildPaymentSectionText(params);
+  text += `\n\nCo dalej?\n`;
+  text += `• Dokonaj płatności (jeśli jeszcze nie została opłacona) — płatność jest potwierdzeniem zawarcia umowy\n`;
+  text += `• Zachowaj numer umowy i ten e-mail na przyszłość`;
+  text += buildAttachmentsText(params.attachmentFilenames);
+  text += `\n\nMagia Podróżowania`;
+  return text;
+}

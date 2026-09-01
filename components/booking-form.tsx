@@ -2705,15 +2705,15 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                 <div className="space-y-6">
                   {applicantType === "company" ? (
                     <div className="space-y-3">
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-[14px] border border-[#dadce3] bg-[#f7f8fb] p-4">
                         <div className="flex items-center justify-between gap-4">
-                          <span className="text-sm text-muted-foreground">Liczba uczestników</span>
-                          <span className="text-sm font-medium">
+                          <span className="text-sm font-medium text-[#3f3f46]">Liczba uczestników</span>
+                          <span className="text-sm font-semibold text-[#0a0a0a]">
                             {tripConfig?.seats_total ?? "—"}
                           </span>
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-[#3f3f46]">
                         {tripConfig?.company_participants_info ||
                           "Dane uczestników wyjazdu należy przekazać organizatorowi na adres mailowy: office@grupa-depl.com najpóźniej 7 dni przed wyjazdem. Lista powinna zawierać imię i nazwisko oraz datę urodzenia każdego uczestnika."}
                       </p>
@@ -2747,7 +2747,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
                         );
                       })()}
                       {fields.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-[#3f3f46]">
                           Brak uczestników. Dodaj co najmniej jednego uczestnika, aby wysłać rezerwację.
                         </p>
                       )}

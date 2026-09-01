@@ -149,20 +149,24 @@ export function calculateInstallmentAmounts(
 /**
  * Domyślne terminy wymagalności rat, gdy wycieczka nie ma zapisanego
  * harmonogramu płatności. Spójne z edytorem harmonogramu w zakładce „Informacje”:
- *  - 1. rata (zaliczka): dziś + 7 dni
+ *  - 1. rata (zaliczka): data podpisania umowy + 1 dzień (domyślnie: jutro)
  *  - ostatnia rata (dopłata): 14 dni przed wyjazdem (lub dziś + 30 dni, gdy brak daty wyjazdu)
  *
  * Dzięki temu na umowie nie pojawia się dwa razy ta sama data, gdy harmonogram
  * nie został jeszcze zapisany na wycieczce.
  * Zwraca daty w formacie ISO (YYYY-MM-DD).
  */
-export function getDefaultPaymentDueDates(startDate: string | null): {
+export function getDefaultPaymentDueDates(
+  startDate: string | null,
+  signingDate?: string | Date | null,
+): {
   depositDueDate: string;
   finalDueDate: string;
 } {
-  const depositDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split("T")[0];
+  const signingBase = signingDate ? new Date(signingDate) : new Date();
+  const depositDue = new Date(signingBase);
+  depositDue.setDate(depositDue.getDate() + 1);
+  const depositDueDate = depositDue.toISOString().split("T")[0];
 
   let finalDueDate: string;
   if (startDate) {
@@ -235,9 +239,9 @@ export function generatePaymentPlan(
   const plan = [];
   const halfAmount = Math.round(tripPriceCents / 2);
 
-  // Zaliczka - 7 dni po rezerwacji
+  // Zaliczka - 1 dzień po podpisaniu umowy
   const depositDate = new Date();
-  depositDate.setDate(depositDate.getDate() + 7);
+  depositDate.setDate(depositDate.getDate() + 1);
   plan.push({
     dueDate: depositDate.toISOString().split("T")[0],
     amountCents: halfAmount,

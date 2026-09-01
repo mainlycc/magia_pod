@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { EMAIL_SENDER_NAME } from "./constants";
 import { generateInvitationEmail } from "./templates/invitation-email";
 import { logDevEmail } from "./dev-email-log";
 
@@ -7,7 +8,7 @@ import { logDevEmail } from "./dev-email-log";
 // Format zwracany: "Name <email@mail.mainly.pl>" zgodnie z wymaganiami Resend
 function getFromEmail(): string {
   const envFrom = process.env.RESEND_FROM;
-  const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży";
+  const senderName = process.env.RESEND_FROM_NAME || EMAIL_SENDER_NAME;
   
   let emailAddress: string;
   

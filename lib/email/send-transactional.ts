@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { EMAIL_SENDER_NAME } from "./constants";
 import { attachmentSizeFromBase64, logDevEmail } from "./dev-email-log";
 
 export type TransactionalEmailPayload = {
@@ -14,7 +15,7 @@ export type TransactionalEmailPayload = {
 function resolveResendFrom(): { from: string } | { error: string } {
   const apiKey = process.env.RESEND_API_KEY;
   const envFrom = process.env.RESEND_FROM;
-  const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży";
+  const senderName = process.env.RESEND_FROM_NAME || EMAIL_SENDER_NAME;
 
   let emailAddress: string;
   if (envFrom && envFrom.includes("@")) {

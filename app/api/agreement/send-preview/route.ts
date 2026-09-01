@@ -225,10 +225,10 @@ export async function POST(req: Request) {
             <h2>Umowa o udział w imprezie turystycznej</h2>
             <p>W załączniku znajdziesz wygenerowaną umowę w formacie PDF.</p>
             <p>Prosimy o sprawdzenie danych w umowie przed podpisaniem.</p>
-            <p>Pozdrawiamy,<br/>Magia Podróży</p>
+            <p>Pozdrawiamy,<br/>Magia podróżowania</p>
           </div>
         `,
-        text: `W załączniku znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o sprawdzenie danych w umowie przed podpisaniem.\n\nPozdrawiamy,\nMagia Podróży`,
+        text: `W załączniku znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o sprawdzenie danych w umowie przed podpisaniem.\n\nPozdrawiamy,\nMagia podróżowania`,
         attachment: {
           filename,
           base64,

@@ -1,24 +1,28 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendTransactionalEmail } from "@/lib/email/send-transactional";
 import {
+  buildPaymentConfirmedEmailSubject,
+  INVOICE_EMAIL_ATTACHMENT_FILENAME,
+  resolveContactFirstName,
+} from "@/lib/email/payment-confirmation-data";
+import {
   buildPaymentConfirmedEmailHtml,
   buildPaymentConfirmedEmailText,
 } from "@/lib/email/templates/payment-confirmed";
-import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
 
 type SendPaymentConfirmationEmailParams = {
   supabase: SupabaseClient;
   paymentHistoryId: string;
   contactEmail: string;
   publicAgreementNumber: string;
-  accessToken: string | null;
-  bookingRef: string;
-  agreementAttachment?: { filename: string; base64: string };
-  origin?: string;
+  contactFirstName?: string | null;
+  tripTitle: string;
+  invoiceAttachment?: { filename: string; base64: string };
+  invoiceViewUrl?: string | null;
 };
 
 /**
- * Wysyła mail potwierdzający płatność — max raz na wpis payment_history.
+ * Wysyła mail potwierdzający płatność z fakturą — max raz na wpis payment_history.
  * Paynow wysyła webhook wielokrotnie; deduplikacja przez payment_confirmation_sent_at.
  */
 export async function sendPaymentConfirmationEmail(
@@ -29,10 +33,10 @@ export async function sendPaymentConfirmationEmail(
     paymentHistoryId,
     contactEmail,
     publicAgreementNumber,
-    accessToken,
-    bookingRef,
-    agreementAttachment,
-    origin,
+    contactFirstName,
+    tripTitle,
+    invoiceAttachment,
+    invoiceViewUrl,
   } = params;
 
   const { data: claimed, error: claimError } = await supabase
@@ -44,7 +48,6 @@ export async function sendPaymentConfirmationEmail(
     .maybeSingle();
 
   if (claimError) {
-    // Kolumna może jeszcze nie istnieć przed migracją — loguj i kontynuuj bez deduplikacji
     if (claimError.message?.includes("payment_confirmation_sent_at")) {
       console.warn(
         "[PaymentConfirmation] Brak kolumny payment_confirmation_sent_at — uruchom migrację 054. Wysyłka bez deduplikacji.",
@@ -60,35 +63,37 @@ export async function sendPaymentConfirmationEmail(
     return { sent: false, skipped: true };
   }
 
-  const baseUrl = resolvePublicBaseUrl(origin);
-  const successUrl = accessToken
-    ? `${baseUrl}/payments/success?token=${accessToken}&booking_ref=${bookingRef}`
-    : `${baseUrl}/payments/success?booking_ref=${bookingRef}`;
-
   const displayNumber = publicAgreementNumber || "—";
-  const hasAgreementAttachment = Boolean(agreementAttachment);
+  const attachmentFilenames = invoiceAttachment
+    ? [invoiceAttachment.filename || INVOICE_EMAIL_ATTACHMENT_FILENAME]
+    : [];
+
+  const emailParams = {
+    agreementNumber: displayNumber,
+    contactFirstName: resolveContactFirstName(contactFirstName),
+    tripTitle: tripTitle || "Wycieczka",
+    attachmentFilenames,
+    invoiceViewUrl: invoiceViewUrl ?? null,
+  };
 
   const sendResult = await sendTransactionalEmail({
     to: contactEmail,
-    subject: `Płatność potwierdzona dla umowy ${displayNumber}`,
-    html: buildPaymentConfirmedEmailHtml({
-      publicAgreementNumber: displayNumber,
-      successUrl,
-      hasAgreementAttachment,
+    subject: buildPaymentConfirmedEmailSubject({
+      agreementNumber: displayNumber,
+      tripTitle: emailParams.tripTitle,
     }),
-    text: buildPaymentConfirmedEmailText({
-      publicAgreementNumber: displayNumber,
-      successUrl,
-      hasAgreementAttachment,
-    }),
-    attachment: agreementAttachment
-      ? { filename: agreementAttachment.filename, base64: agreementAttachment.base64 }
+    html: buildPaymentConfirmedEmailHtml(emailParams),
+    text: buildPaymentConfirmedEmailText(emailParams),
+    attachment: invoiceAttachment
+      ? {
+          filename: invoiceAttachment.filename || INVOICE_EMAIL_ATTACHMENT_FILENAME,
+          base64: invoiceAttachment.base64,
+        }
       : undefined,
     logContext: "payment-confirmed",
   });
 
   if (!sendResult.ok) {
-    // Cofnij rezerwację, żeby kolejny webhook mógł ponowić wysyłkę
     await supabase
       .from("payment_history")
       .update({ payment_confirmation_sent_at: null })
@@ -101,7 +106,8 @@ export async function sendPaymentConfirmationEmail(
   console.log("[PaymentConfirmation] ✓ Mail wysłany:", {
     paymentHistoryId,
     to: contactEmail,
-    hasAgreementAttachment,
+    hasInvoiceAttachment: Boolean(invoiceAttachment),
+    hasInvoiceViewUrl: Boolean(invoiceViewUrl),
   });
 
   return { sent: true };

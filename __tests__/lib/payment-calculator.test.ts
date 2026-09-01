@@ -3,6 +3,7 @@ import {
   calculateInstallmentAmounts,
   derivePaymentSplitFromSchedule,
   formatDepositAmountZloty,
+  getDefaultPaymentDueDates,
   getFirstInstallmentPercent,
 } from "@/lib/utils/payment-calculator";
 
@@ -97,6 +98,17 @@ describe("getFirstInstallmentPercent", () => {
   });
 });
 
+describe("getDefaultPaymentDueDates", () => {
+  it("ustawia zaliczkę na dzień po dacie podpisania", () => {
+    const { depositDueDate } = getDefaultPaymentDueDates("2026-08-11", "2026-06-01");
+    expect(depositDueDate).toBe("2026-06-02");
+  });
+
+  it("ustawia dopłatę na 14 dni przed wyjazdem", () => {
+    const { finalDueDate } = getDefaultPaymentDueDates("2026-08-11");
+    expect(finalDueDate).toBe("2026-07-28");
+  });
+});
 describe("derivePaymentSplitFromSchedule", () => {
   it("1 rata → split wyłączony i 100%", () => {
     expect(

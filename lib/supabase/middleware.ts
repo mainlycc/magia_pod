@@ -70,6 +70,7 @@ export async function updateSession(request: NextRequest) {
     // powrót z Paynow → sync statusu + faktura (klient bez konta)
     path.startsWith("/api/payments/paynow/check-status") ||
     path.startsWith("/api/payments/paynow/init") ||
+    path === "/api/auth/forgot-password" ||
     path.startsWith("/auth") ||
     path.startsWith("/login");
 

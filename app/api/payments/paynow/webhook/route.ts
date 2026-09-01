@@ -11,7 +11,6 @@ import {
 } from "@/lib/agreements/ensure-agreement";
 import { createInvoiceForPaynowPayment } from "@/lib/payments/invoice-after-paynow-payment";
 import { sendPaymentConfirmationEmail } from "@/lib/payments/send-payment-confirmation-email";
-import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -633,63 +632,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Wyślij mail potwierdzający opłacenie rezerwacji (raz na wpis payment_history)
-  if (status === "CONFIRMED" && booking.contact_email && paymentHistoryRowIdForInvoice) {
+  // Mail potwierdzenia płatności wysyłany razem z fakturą (invoice-service).
+  // Tutaj tylko fallback gdy faktura nie będzie wystawiana.
+  const willSendInvoiceEmail =
+    (newPaymentStatus === "paid" || newPaymentStatus === "partial") &&
+    paymentHistoryInserted &&
+    Boolean(paymentHistoryRowIdForInvoice) &&
+    amountCents > 0;
+
+  if (
+    status === "CONFIRMED" &&
+    booking.contact_email &&
+    paymentHistoryRowIdForInvoice &&
+    !willSendInvoiceEmail
+  ) {
     try {
-      const baseUrl = resolvePublicBaseUrl(new URL(request.url).origin);
-
-      let attachment: { filename: string; base64: string } | undefined;
-      let pdfPath: string | null = (booking.agreement_pdf_url as string | null) ?? null;
-
-      if (!pdfPath) {
-        try {
-          const { data: agreementRow } = await supabase
-            .from("agreements")
-            .select("pdf_url")
-            .eq("booking_id", booking.id)
-            .order("updated_at", { ascending: false, nullsFirst: false })
-            .order("generated_at", { ascending: false, nullsFirst: false })
-            .limit(1)
-            .maybeSingle();
-          pdfPath = (agreementRow?.pdf_url as string | null) ?? null;
-        } catch (e) {
-          console.warn("[Paynow Webhook] Failed to resolve agreement pdf_url:", e);
-        }
-      }
-
-      if (pdfPath) {
-        try {
-          const { data: pdfData, error: pdfError } = await supabase.storage
-            .from("agreements")
-            .download(pdfPath);
-
-          if (!pdfError && pdfData) {
-            const arrayBuffer = await pdfData.arrayBuffer();
-            if (arrayBuffer.byteLength >= 5_000) {
-              attachment = {
-                filename: pdfPath.includes("/") ? pdfPath.split("/").pop()! : pdfPath,
-                base64: Buffer.from(arrayBuffer).toString("base64"),
-              };
-            } else {
-              console.warn("[Paynow Webhook] Agreement PDF too small, skipping attachment:", {
-                pdfPath,
-                bytes: arrayBuffer.byteLength,
-              });
-            }
-          }
-        } catch (pdfErr) {
-          console.error("[Paynow Webhook] Failed to download agreement PDF for email:", pdfErr);
-        }
-      }
-
       let publicAgreementNumber = "—";
       try {
         const { data: tripRow } = await supabase
           .from("trips")
-          .select("reservation_number")
+          .select("title, reservation_number")
           .eq("id", booking.trip_id)
           .single();
-        const reservationNumber = tripRow?.reservation_number ?? null;
 
         const { data: agreementRow } = await supabase
           .from("agreements")
@@ -699,32 +663,35 @@ export async function POST(request: NextRequest) {
           .order("generated_at", { ascending: false, nullsFirst: false })
           .limit(1)
           .maybeSingle();
-        const seq = agreementRow?.agreement_seq;
 
         const formatted = formatAgreementNumber({
-          reservationNumber,
-          agreementSeq: typeof seq === "number" ? seq : null,
+          reservationNumber: tripRow?.reservation_number ?? null,
+          agreementSeq: typeof agreementRow?.agreement_seq === "number" ? agreementRow.agreement_seq : null,
         }).replace(/^#/, "");
         publicAgreementNumber = formatted === "-" ? "—" : formatted;
+
+        const { data: bookingContact } = await supabase
+          .from("bookings")
+          .select("contact_first_name")
+          .eq("id", booking.id)
+          .single();
+
+        const emailResult = await sendPaymentConfirmationEmail({
+          supabase,
+          paymentHistoryId: paymentHistoryRowIdForInvoice,
+          contactEmail: booking.contact_email,
+          publicAgreementNumber,
+          contactFirstName: bookingContact?.contact_first_name ?? null,
+          tripTitle: tripRow?.title ?? "Wycieczka",
+        });
+
+        if (emailResult.skipped) {
+          console.log("[Paynow Webhook] Payment confirmation email skipped (already sent)");
+        } else if (!emailResult.sent) {
+          console.error("[Paynow Webhook] Payment confirmation email failed:", emailResult.error);
+        }
       } catch (e) {
         console.warn("[Paynow Webhook] Failed to compute public agreement number:", e);
-      }
-
-      const emailResult = await sendPaymentConfirmationEmail({
-        supabase,
-        paymentHistoryId: paymentHistoryRowIdForInvoice,
-        contactEmail: booking.contact_email,
-        publicAgreementNumber,
-        accessToken: (booking.access_token as string | null) ?? null,
-        bookingRef: payload.externalId,
-        agreementAttachment: attachment,
-        origin: baseUrl,
-      });
-
-      if (emailResult.skipped) {
-        console.log("[Paynow Webhook] Payment confirmation email skipped (already sent)");
-      } else if (!emailResult.sent) {
-        console.error("[Paynow Webhook] Payment confirmation email failed:", emailResult.error);
       }
     } catch (err) {
       console.error("Failed to send payment confirmation email", err);

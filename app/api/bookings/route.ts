@@ -8,7 +8,18 @@ import { getNextAgreementSeq } from "@/lib/agreements/agreement-seq";
 import { persistAgreementSeq } from "@/lib/agreements/ensure-agreement";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 import { createPaynowPayment } from "@/lib/paynow";
-import { generateBookingConfirmationEmail } from "@/lib/email/templates/booking-confirmation";
+import {
+  generateBookingConfirmationEmail,
+  generateBookingConfirmationEmailText,
+} from "@/lib/email/templates/booking-confirmation";
+import {
+  buildBookingConfirmationEmailSubject,
+  formatAgreementPdfFilename,
+  formatPlnFromCents,
+  resolveContactNames,
+  resolveDepositDeadline,
+} from "@/lib/email/booking-confirmation-data";
+import { EMAIL_SENDER_NAME } from "@/lib/email/constants";
 import { attachmentSizeFromBase64, logDevEmail } from "@/lib/email/dev-email-log";
 import { getTripDocumentationEmailAttachments } from "@/lib/documents/email-attachments";
 import { getInsuranceOwuEmailAttachments } from "@/lib/insurance-local/owu-email-attachments";
@@ -159,7 +170,7 @@ export async function POST(req: Request) {
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, payment_split_enabled, payment_split_first_percent, payment_schedule, reservation_number, form_diets, form_extra_insurances, form_additional_attractions",
+        "id, title, start_date, end_date, price_cents, seats_total, seats_reserved, is_active, public_slug, location, payment_split_enabled, payment_split_first_percent, payment_schedule, reservation_number, form_diets, form_extra_insurances, form_additional_attractions",
       )
       .or(`slug.eq.${payload.slug},public_slug.eq.${payload.slug}`)
       .eq("is_active", true)
@@ -667,55 +678,16 @@ export async function POST(req: Request) {
 
     if (payload.contact_email) {
       try {
-        let emailHtml: string;
-        let textContent: string;
         let docsAttachmentCount = 0;
-        
-        // Tworzymy link do strony rezerwacji z access_token
-        let bookingLink: string;
-        if (accessToken) {
-          bookingLink = `${baseUrl}/booking/${accessToken}`;
-          console.log("✅ Booking link created with access_token:", bookingLink);
-        } else {
-          // Logujemy szczegóły dla debugowania
-          console.error("❌ access_token is null for booking:", {
-            booking_ref: booking.booking_ref,
-            booking_id: booking.id,
-            message: "Check database and RLS policies"
-          });
-          // Tymczasowo używamy linku do strony wycieczki
-          bookingLink = `${baseUrl}/trip/${trip.public_slug || payload.slug}`;
-          console.warn("⚠️ Using fallback link to trip page:", bookingLink);
-        }
 
-        // Jeśli with_payment=false, utwórz link do płatności
+        // Link płatności online — tylko token dostępu (bez booking_ref / ID operatora płatności)
         let paymentLink: string | null = null;
         if (!payload.with_payment && accessToken) {
           paymentLink = `${baseUrl}/booking/${accessToken}`;
-        } else if (!payload.with_payment && booking.booking_ref) {
-          paymentLink = `${baseUrl}/booking/${booking.booking_ref}`;
         }
-
-        emailHtml = generateBookingConfirmationEmail(
-          publicAgreementNumber,
-          bookingLink,
-          trip.title as string,
-          trip.start_date,
-          trip.end_date,
-          seatsRequested,
-          paymentLink,
-        );
-        
-        let textContentBase = `Dziękujemy za rezerwację w Magii Podróżowania.\n\nNumer umowy: ${publicAgreementNumber}\n\nW załączniku do tego maila znajdziesz wygenerowaną umowę w formacie PDF.\n\nProsimy o:\n1. Pobranie załączonej umowy PDF\n2. Podpisanie umowy\n3. Przesłanie podpisanej umowy przez link poniżej\n\nLink do przesłania podpisanej umowy:\n${bookingLink}`;
-        
-        if (paymentLink) {
-          textContentBase += `\n\nMożesz również dokonać płatności za rezerwację klikając w poniższy link:\n${paymentLink}`;
-        }
-        
-        textContent = textContentBase;
 
         const resend = new Resend(process.env.RESEND_API_KEY);
-        const senderName = process.env.RESEND_FROM_NAME || "Magia Podróży";
+        const senderName = process.env.RESEND_FROM_NAME || EMAIL_SENDER_NAME;
         const envFrom = process.env.RESEND_FROM;
         let emailAddress = "noreply@mail.mainly.pl";
         if (envFrom && envFrom.includes("@")) {
@@ -756,7 +728,9 @@ export async function POST(req: Request) {
           owuAttachmentCount = 0;
         }
 
-        const agreementFilenameForEmail = attachment ? `umowa-${booking.booking_ref}.pdf` : null;
+        const agreementFilenameForEmail = attachment
+          ? formatAgreementPdfFilename(publicAgreementNumber)
+          : null;
         const extraAttachments = [
           ...docs.map((d) => ({
             filename: d.filename,
@@ -786,7 +760,51 @@ export async function POST(req: Request) {
               ]
             : undefined;
 
-        const emailSubject = `Potwierdzenie rezerwacji / umowa ${publicAgreementNumber}`;
+        const attachmentFilenames = (attachments ?? []).map((a) => a.filename);
+
+        const totalCents = calculateBookingTotalCents(
+          trip.price_cents ?? 0,
+          seatsRequested,
+          payload.participants,
+          undefined,
+          {
+            form_diets: trip.form_diets,
+            form_extra_insurances: trip.form_extra_insurances,
+            form_additional_attractions: trip.form_additional_attractions,
+          },
+        );
+
+        const paymentSchedule = (trip.payment_schedule ?? null) as Array<{
+          installment_number?: number;
+          due_date?: string | null;
+        }> | null;
+
+        const { firstName, lastName } = resolveContactNames(payload);
+
+        const emailParams = {
+          agreementNumber: publicAgreementNumber,
+          tripNumber: reservationNumber,
+          contactFirstName: firstName,
+          contactLastName: lastName,
+          tripTitle: trip.title as string,
+          tripLocation: (trip as { location?: string | null }).location ?? null,
+          tripStartDate: trip.start_date ?? null,
+          tripEndDate: trip.end_date ?? null,
+          participantsCount: seatsRequested,
+          tripTotalPricePln: formatPlnFromCents(totalCents),
+          depositDeadline: resolveDepositDeadline(paymentSchedule, trip.start_date ?? null),
+          showPaymentInstructions: !payload.with_payment,
+          paymentLink,
+          attachmentFilenames,
+        };
+
+        const emailHtml = generateBookingConfirmationEmail(emailParams);
+        const textContent = generateBookingConfirmationEmailText(emailParams);
+        const emailSubject = buildBookingConfirmationEmailSubject({
+          agreementNumber: publicAgreementNumber,
+          tripTitle: trip.title as string,
+        });
+
         const devAttachmentList = (attachments ?? []).map((a) => ({
           filename: a.filename,
           sizeBytes: attachmentSizeFromBase64(a.content),
@@ -821,7 +839,7 @@ export async function POST(req: Request) {
           });
           console.log("✅ Booking confirmation email sent to:", {
             to: payload.contact_email,
-            booking_ref: booking.booking_ref,
+            agreementNumber: publicAgreementNumber,
             agreementAttached: !!attachment,
             docsAttached: docsAttachmentCount,
             owuAttached: owuAttachmentCount,

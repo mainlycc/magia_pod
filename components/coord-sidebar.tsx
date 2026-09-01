@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import {
-  IconInnerShadowTop,
   IconMap,
+  IconMessage,
+  IconUsers,
 } from "@tabler/icons-react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
 import { NavSimple } from "@/components/nav-simple"
@@ -16,20 +18,8 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@/components/ui/sidebar"
-
-const coordData = {
-  navMain: [
-    {
-      title: "Wyjazdy",
-      url: "/coord",
-      icon: IconMap,
-    },
-  ],
-}
 
 export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [userData, setUserData] = React.useState<{
@@ -37,17 +27,23 @@ export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
     email: string
     avatar: string
   } | null>(null)
+  const pathname = usePathname()
 
   React.useEffect(() => {
     const loadUserData = async () => {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
       if (user) {
-        const name = (user.user_metadata?.full_name as string) || user.email?.split('@')[0] || 'Użytkownik'
-        const email = user.email || ''
-        const avatar = user.user_metadata?.avatar_url || ''
-        
+        const name =
+          (user.user_metadata?.full_name as string) ||
+          user.email?.split("@")[0] ||
+          "Użytkownik"
+        const email = user.email || ""
+        const avatar = user.user_metadata?.avatar_url || ""
+
         setUserData({
           name,
           email,
@@ -55,36 +51,81 @@ export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
         })
       }
     }
-    
+
     loadUserData()
   }, [])
 
-  // Fallback do przykładowych danych jeśli jeszcze nie załadowano
   const displayUser = userData || {
     name: "Koordynator",
     email: "coord@example.com",
     avatar: "",
   }
 
+  const isActive = (url: string) => {
+    if (url === "/coord") {
+      return pathname === "/coord"
+    }
+    return pathname?.startsWith(url)
+  }
+
+  const navItems = [
+    {
+      title: "Wyjazdy",
+      url: "/coord",
+      icon: IconMap,
+    },
+  ]
+
+  // Na stronie konkretnego wyjazdu pokaż skróty do podstron
+  const tripIdMatch = pathname?.match(/^\/coord\/trips\/([^/]+)/)
+  const tripId = tripIdMatch?.[1]
+  const tripNavItems = tripId
+    ? [
+        {
+          title: "Uczestnicy",
+          url: `/coord/trips/${tripId}/participants`,
+          icon: IconUsers,
+        },
+        {
+          title: "Wiadomość",
+          url: `/coord/trips/${tripId}/message`,
+          icon: IconMessage,
+        },
+      ]
+    : []
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
+            <div className="px-2 pt-4 pb-2">
               <Link href="/coord">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Koordynator</span>
+                <h2 className="text-base font-semibold text-center hover:underline">
+                  Magia podróżowania
+                </h2>
               </Link>
-            </SidebarMenuButton>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavSimple items={coordData.navMain} label="Menu" />
+        <NavSimple
+          items={navItems.map((item) => ({
+            ...item,
+            isActive: isActive(item.url),
+          }))}
+          label="Menu"
+        />
+        {tripNavItems.length > 0 && (
+          <NavSimple
+            items={tripNavItems.map((item) => ({
+              ...item,
+              isActive: isActive(item.url),
+            }))}
+            label="Wyjazd"
+          />
+        )}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={displayUser} />
@@ -92,4 +133,3 @@ export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
     </Sidebar>
   )
 }
-

@@ -152,7 +152,7 @@ function buildTripPriceBreakdownHtml(params: {
 /**
  * Wylicza terminy zapłaty zaliczki (pierwsza rata) i całości (ostatnia rata)
  * na podstawie harmonogramu płatności. Jeśli harmonogramu brak — fallback do
- * domyślnych terminów spójnych z zakładką „Informacje” (zaliczka: dziś + 7 dni,
+ * domyślnych terminów spójnych z zakładką „Informacje” (zaliczka: data podpisania + 1 dzień,
  * dopłata: 14 dni przed wyjazdem), aby na umowie nie pojawiała się dwa razy
  * ta sama data.
  */

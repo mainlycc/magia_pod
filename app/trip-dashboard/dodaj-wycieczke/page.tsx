@@ -33,6 +33,7 @@ import {
   normalizeTransportMode,
 } from "@/lib/trip-transport"
 import { TRIP_TERRITORIAL_SCOPE_OPTIONS } from "@/lib/trip-territorial-scope"
+import { getDefaultPaymentDueDates } from "@/lib/utils/payment-calculator"
 
 type Coordinator = {
   id: string
@@ -134,19 +135,9 @@ export default function DodajWycieczkePage() {
           if (data.paymentSchedule && Array.isArray(data.paymentSchedule)) {
             setPaymentSchedule(data.paymentSchedule)
           } else {
-            // Domyślny harmonogram: 2 raty
-            const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-              .toISOString()
-              .split("T")[0]
-            const defaultDate2 = data.startDate
-              ? new Date(
-                  new Date(data.startDate).getTime() - 14 * 24 * 60 * 60 * 1000
-                )
-                  .toISOString()
-                  .split("T")[0]
-              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-                  .toISOString()
-                  .split("T")[0]
+            // Domyślny harmonogram: 2 raty (zaliczka: jutro = data podpisania + 1 dzień)
+            const { depositDueDate: defaultDate1, finalDueDate: defaultDate2 } =
+              getDefaultPaymentDueDates(data.startDate ?? null)
             setPaymentSchedule([
               {
                 installment_number: 1,
@@ -165,12 +156,8 @@ export default function DodajWycieczkePage() {
         }
       } else {
         // Domyślny harmonogram jeśli brak zapisanych danych
-        const defaultDate1 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split("T")[0]
-        const defaultDate2 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split("T")[0]
+        const { depositDueDate: defaultDate1, finalDueDate: defaultDate2 } =
+          getDefaultPaymentDueDates(null)
         setPaymentSchedule([
           {
             installment_number: 1,

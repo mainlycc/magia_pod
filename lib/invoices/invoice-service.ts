@@ -36,7 +36,8 @@ import {
   type FakturowniaInvoiceData,
   type FakturowniaInvoiceItem,
 } from "@/lib/fakturownia/client";
-import { sendTransactionalEmail } from "@/lib/email/send-transactional";
+import { INVOICE_EMAIL_ATTACHMENT_FILENAME } from "@/lib/email/payment-confirmation-data";
+import { sendPaymentConfirmationEmail } from "@/lib/payments/send-payment-confirmation-email";
 import {
   buildInvoiceServiceName,
   INVOICE_VAT_MARGIN_NOTE,
@@ -865,6 +866,91 @@ async function ensureInvoiceSentToKsef(
   return false;
 }
 
+// ===================== PAYMENT CONFIRMATION EMAIL =====================
+
+async function resolvePublicAgreementNumberForBooking(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+): Promise<string> {
+  try {
+    const { formatAgreementNumber } = await import("@/lib/agreements/format-agreement-number");
+    const { data: agreementRow } = await supabase
+      .from("agreements")
+      .select("agreement_seq")
+      .eq("booking_id", bookingId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .order("generated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: bookingRow } = await supabase
+      .from("bookings")
+      .select("trip_id, trips:trips(reservation_number)")
+      .eq("id", bookingId)
+      .single();
+
+    const trip = Array.isArray((bookingRow as any)?.trips)
+      ? (bookingRow as any).trips[0]
+      : (bookingRow as any)?.trips;
+
+    const formatted = formatAgreementNumber({
+      reservationNumber: trip?.reservation_number ?? null,
+      agreementSeq: typeof agreementRow?.agreement_seq === "number" ? agreementRow.agreement_seq : null,
+    }).replace(/^#/, "");
+
+    return formatted === "-" ? "—" : formatted;
+  } catch (e) {
+    console.warn("[InvoiceService] Failed to compute public agreement number:", e);
+    return "—";
+  }
+}
+
+async function sendPaymentConfirmationForInvoice(
+  supabase: ReturnType<typeof createAdminClient>,
+  invoiceId: string,
+  booking: BookingData,
+  options: {
+    pdfBase64?: string;
+    invoiceViewUrl?: string;
+  },
+): Promise<{ sent: boolean; skipped?: boolean; error?: string }> {
+  if (!booking.contact_email) {
+    return { sent: false, error: "missing contact_email" };
+  }
+
+  const { data: invoiceRow } = await supabase
+    .from("invoices")
+    .select("payment_history_id")
+    .eq("id", invoiceId)
+    .single();
+
+  if (!invoiceRow?.payment_history_id) {
+    console.warn("[InvoiceService] Brak payment_history_id — pomijam mail potwierdzenia płatności");
+    return { sent: false, error: "missing payment_history_id" };
+  }
+
+  const { data: trip } = await supabase
+    .from("trips")
+    .select("title")
+    .eq("id", booking.trip_id)
+    .single();
+
+  const publicAgreementNumber = await resolvePublicAgreementNumberForBooking(supabase, booking.id);
+
+  return sendPaymentConfirmationEmail({
+    supabase,
+    paymentHistoryId: invoiceRow.payment_history_id,
+    contactEmail: booking.contact_email,
+    publicAgreementNumber,
+    contactFirstName: booking.contact_first_name,
+    tripTitle: trip?.title ?? "Wycieczka",
+    invoiceAttachment: options.pdfBase64
+      ? { filename: INVOICE_EMAIL_ATTACHMENT_FILENAME, base64: options.pdfBase64 }
+      : undefined,
+    invoiceViewUrl: options.invoiceViewUrl,
+  });
+}
+
 async function fetchPdfAndSendEmail(
   config: FakturowniaConfig,
   supabase: ReturnType<typeof createAdminClient>,
@@ -935,51 +1021,20 @@ async function fetchPdfAndSendEmail(
     console.warn("[InvoiceService] Browser PDF render failed:", browserErr);
   }
 
-  // Fallback 2: mail przez Resend z linkiem do podglądu (Fakturownia send_by_email często nie dostarcza)
+  // Fallback 2: mail potwierdzenia płatności z linkiem do podglądu faktury
   if (booking.contact_email) {
     const refreshed = await getInvoice(config, fakturowniaInvoiceId);
     const viewUrl = refreshed.viewUrl ?? buildInvoiceHtmlViewUrl(config, fakturowniaInvoiceId);
-    console.log("[InvoiceService] Fallback: Resend z linkiem do faktury →", booking.contact_email);
+    console.log("[InvoiceService] Fallback: payment confirmation with invoice link →", booking.contact_email);
 
-    let publicAgreementNumber = "—";
-    try {
-      const { formatAgreementNumber } = await import("@/lib/agreements/format-agreement-number");
-      const { data: agreementRow } = await supabase
-        .from("agreements")
-        .select("agreement_seq")
-        .eq("booking_id", booking.id)
-        .order("updated_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-      const { data: bookingRow } = await supabase
-        .from("bookings")
-        .select("trip_id, trips:trips(reservation_number)")
-        .eq("id", booking.id)
-        .single();
-      const trip = Array.isArray((bookingRow as any)?.trips)
-        ? (bookingRow as any).trips[0]
-        : (bookingRow as any)?.trips;
-      publicAgreementNumber =
-        formatAgreementNumber({
-          reservationNumber: trip?.reservation_number ?? null,
-          agreementSeq: typeof agreementRow?.agreement_seq === "number" ? agreementRow.agreement_seq : null,
-        }).replace(/^#/, "") || "—";
-    } catch {
-      // keep default
-    }
+    const sendResult = await sendPaymentConfirmationForInvoice(
+      supabase,
+      invoiceId,
+      booking,
+      { invoiceViewUrl: viewUrl },
+    );
 
-    const sendResult = await sendTransactionalEmail({
-      to: booking.contact_email,
-      subject: `Faktura zaliczkowa ${invoiceNumber} – Magia Podróżowania`,
-      html: buildInvoiceEmailHtml(invoiceNumber, publicAgreementNumber).replace(
-        "Faktura zaliczkowa została dołączona do tego emaila w formacie PDF.",
-        `Nie udało się dołączyć PDF automatycznie. Możesz obejrzeć i pobrać fakturę online: <a href="${viewUrl}">${viewUrl}</a>`,
-      ),
-      text: `Faktura zaliczkowa ${invoiceNumber} dla umowy ${publicAgreementNumber}.\n\nPodgląd faktury: ${viewUrl}\n\nMagia Podróżowania`,
-      logContext: "invoice-advance-link",
-    });
-
-    if (sendResult.ok) {
+    if (sendResult.sent || sendResult.skipped) {
       await supabase
         .from("invoices")
         .update({ status: "wysłana", invoice_provider_error: null, pdf_url: viewUrl })
@@ -990,7 +1045,7 @@ async function fetchPdfAndSendEmail(
     await supabase
       .from("invoices")
       .update({
-        invoice_provider_error: "PDF i browser render failed; Resend link failed: " + sendResult.error,
+        invoice_provider_error: "PDF i browser render failed; payment confirmation failed: " + sendResult.error,
       })
       .eq("id", invoiceId);
     return;
@@ -1037,40 +1092,7 @@ async function persistPdfAndSendEmail(
   }
 
   if (booking.contact_email) {
-    // Publiczny numer (dla klienta) — nie pokazujemy booking_ref (to jest externalId Paynow)
-    let publicAgreementNumber: string | null = null;
-    try {
-      const { formatAgreementNumber } = await import("@/lib/agreements/format-agreement-number");
-      const { data: agreementRow } = await supabase
-        .from("agreements")
-        .select("agreement_seq")
-        .eq("booking_id", booking.id)
-        .order("updated_at", { ascending: false, nullsFirst: false })
-        .order("generated_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-      const seq = agreementRow?.agreement_seq;
-
-      const { data: bookingRow } = await supabase
-        .from("bookings")
-        .select("trip_id, trips:trips(reservation_number)")
-        .eq("id", booking.id)
-        .single();
-
-      const trip = Array.isArray((bookingRow as any)?.trips) ? (bookingRow as any).trips[0] : (bookingRow as any)?.trips;
-      const reservationNumber = trip?.reservation_number ?? null;
-
-      publicAgreementNumber = formatAgreementNumber({
-        reservationNumber,
-        agreementSeq: typeof seq === "number" ? seq : null,
-      }).replace(/^#/, "");
-      if (publicAgreementNumber === "-") publicAgreementNumber = null;
-    } catch (e) {
-      console.warn("[InvoiceService] Failed to compute public agreement number:", e);
-      publicAgreementNumber = null;
-    }
-
-    console.log("[InvoiceService] Sending invoice email:", {
+    console.log("[InvoiceService] Sending payment confirmation with invoice:", {
       invoiceId,
       booking_ref: booking.booking_ref,
       invoiceNumber,
@@ -1079,28 +1101,21 @@ async function persistPdfAndSendEmail(
     });
     try {
       const pdfBase64 = pdfBuffer.toString("base64");
-      const sendResult = await sendTransactionalEmail({
-        to: booking.contact_email,
-        subject: `Faktura zaliczkowa ${invoiceNumber} – Magia Podróżowania`,
-        html: buildInvoiceEmailHtml(invoiceNumber, publicAgreementNumber || "—"),
-        text: `W załączniku przesyłamy fakturę zaliczkową ${invoiceNumber} dla umowy ${publicAgreementNumber || "—"}.\n\nDziękujemy za wpłatę!\n\nMagia Podróżowania`,
-        attachment: {
-          filename: `${safeInvoiceNumber}.pdf`,
-          base64: pdfBase64,
-        },
-        logContext: "invoice-advance",
+      const sendResult = await sendPaymentConfirmationForInvoice(supabase, invoiceId, booking, {
+        pdfBase64,
       });
 
-      if (sendResult.ok) {
-        console.log("[InvoiceService] Invoice email sent:", {
+      if (sendResult.sent || sendResult.skipped) {
+        console.log("[InvoiceService] Payment confirmation email sent:", {
           invoiceId,
           booking_ref: booking.booking_ref,
           invoiceNumber,
           to: booking.contact_email,
+          skipped: sendResult.skipped ?? false,
         });
         await supabase.from("invoices").update({ status: "wysłana" }).eq("id", invoiceId);
       } else {
-        console.error("[InvoiceService] Failed to send invoice email:", {
+        console.error("[InvoiceService] Failed to send payment confirmation email:", {
           invoiceId,
           booking_ref: booking.booking_ref,
           invoiceNumber,
@@ -1115,7 +1130,7 @@ async function persistPdfAndSendEmail(
           .eq("id", invoiceId);
       }
     } catch (emailErr) {
-      console.error("[InvoiceService] Error sending invoice email:", {
+      console.error("[InvoiceService] Error sending payment confirmation email:", {
         invoiceId,
         booking_ref: booking.booking_ref,
         invoiceNumber,
@@ -1132,7 +1147,7 @@ async function persistPdfAndSendEmail(
         .eq("id", invoiceId);
     }
   } else {
-    console.warn("[InvoiceService] Missing booking.contact_email; skipping invoice email:", {
+    console.warn("[InvoiceService] Missing booking.contact_email; skipping payment confirmation email:", {
       invoiceId,
       booking_ref: booking.booking_ref,
       invoiceNumber,
@@ -1175,57 +1190,4 @@ async function saveInvoiceWithoutProvider(
     invoiceId: invoice.id,
     invoiceNumber: invoice.invoice_number,
   };
-}
-
-// ===================== EMAIL TEMPLATE =====================
-
-function buildInvoiceEmailHtml(invoiceNumber: string, publicAgreementNumber: string): string {
-  return `
-    <!DOCTYPE html>
-    <html lang="pl">
-    <head>
-      <meta charset="UTF-8">
-      <title>Faktura zaliczkowa – Magia Podróżowania</title>
-    </head>
-    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#f5f5f5;">
-      <table role="presentation" style="width:100%;border-collapse:collapse;background-color:#f5f5f5;padding:20px;">
-        <tr>
-          <td align="center" style="padding:20px 0;">
-            <table role="presentation" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-              <tr>
-                <td style="background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);padding:40px 30px;text-align:center;">
-                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Magia Podróżowania</h1>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:40px 30px;">
-                  <h2 style="margin:0 0 20px 0;color:#1d4ed8;font-size:24px;">Faktura zaliczkowa</h2>
-                  <p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">
-                    W załączniku przesyłamy fakturę zaliczkową <strong>${invoiceNumber}</strong>
-                    dla umowy <strong>${publicAgreementNumber}</strong>.
-                  </p>
-                  <div style="background-color:#eff6ff;border-left:4px solid #3b82f6;padding:16px;border-radius:6px;margin:20px 0;">
-                    <p style="margin:0 0 8px 0;font-size:14px;color:#1e40af;font-weight:600;">Faktura w załączniku</p>
-                    <p style="margin:0;font-size:14px;color:#1e40af;line-height:1.5;">
-                      Faktura zaliczkowa została dołączona do tego emaila w formacie PDF.
-                      Prosimy o zachowanie jej do celów rozliczeniowych.
-                    </p>
-                  </div>
-                  <p style="margin:20px 0 0 0;font-size:14px;color:#666666;line-height:1.5;">
-                    Dziękujemy za wpłatę i życzymy udanej podróży!
-                  </p>
-                </td>
-              </tr>
-              <tr>
-                <td style="background-color:#f8fafc;padding:20px 30px;text-align:center;border-top:1px solid #e2e8f0;">
-                  <p style="margin:0;font-size:12px;color:#94a3b8;">Magia Podróżowania &copy; ${new Date().getFullYear()}</p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
 }

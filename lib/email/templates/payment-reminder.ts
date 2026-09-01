@@ -1,26 +1,35 @@
-export function generatePaymentReminderEmail(
-  bookingRef: string,
-  paymentLink: string,
-  tripTitle: string,
-  tripStartDate: string | null,
-  amountCents: number,
-  participantsCount: number
-): string {
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "—";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("pl-PL", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+import { EMAIL_BRAND } from "../constants";
+import {
+  type PaymentReminderEmailParams,
+  formatEmailDateLong,
+} from "../payment-reminder-data";
 
-  const amountPLN = (amountCents / 100).toFixed(2);
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildGreeting(firstName: string): string {
+  return firstName ? `Dzień dobry ${firstName},` : "Dzień dobry,";
+}
+
+function buildLocationSuffix(location: string | null): string {
+  const trimmed = (location ?? "").trim();
+  return trimmed ? ` (${trimmed})` : "";
+}
+
+function formatTripDateRange(startDate: string | null, endDate: string | null): string {
+  const start = formatEmailDateLong(startDate);
+  if (!endDate || endDate === startDate) return start;
+  return `${start} – ${formatEmailDateLong(endDate)}`;
+}
+
+export function generatePaymentReminderEmail(params: PaymentReminderEmailParams): string {
+  const greeting = buildGreeting(params.contactFirstName);
+  const dateRange = formatTripDateRange(params.tripStartDate, params.tripEndDate);
 
   return `
 <!DOCTYPE html>
@@ -35,77 +44,58 @@ export function generatePaymentReminderEmail(
     <tr>
       <td align="center" style="padding: 20px 0;">
         <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 40px 30px; text-align: center;">
+            <td style="background: ${EMAIL_BRAND.gradient}; padding: 40px 30px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">
                 Magia Podróżowania
               </h1>
             </td>
           </tr>
-          
-          <!-- Content -->
           <tr>
             <td style="padding: 40px 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #2563eb; font-size: 24px; font-weight: 600;">
-                Przypomnienie o płatności
+              <h2 style="margin: 0 0 20px 0; color: ${EMAIL_BRAND.primary}; font-size: 24px; font-weight: 600;">
+                Przypomnienie o zbliżającym się terminie płatności
               </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px; line-height: 1.6;">
-                Witaj!
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
+                ${escapeHtml(greeting)} Przypominamy, że zbliża się termin uregulowania płatności za nadchodzący wyjazd.
               </p>
-              
-              <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px; line-height: 1.6;">
-                Przypominamy o konieczności dokonania płatności reszty kwoty za rezerwację <strong>${bookingRef}</strong>.
-              </p>
-              
-              <div style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <table role="presentation" style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Wycieczka:</td>
-                    <td style="padding: 8px 0; text-align: right; color: #111827; font-size: 14px; font-weight: 600;">${tripTitle}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Data wyjazdu:</td>
-                    <td style="padding: 8px 0; text-align: right; color: #111827; font-size: 14px; font-weight: 600;">${formatDate(tripStartDate)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Liczba uczestników:</td>
-                    <td style="padding: 8px 0; text-align: right; color: #111827; font-size: 14px; font-weight: 600;">${participantsCount}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Kwota do zapłacenia:</td>
-                    <td style="padding: 8px 0; text-align: right; color: #2563eb; font-size: 18px; font-weight: 700;">${amountPLN} PLN</td>
-                  </tr>
-                </table>
+
+              <div style="background-color: ${EMAIL_BRAND.lightBg}; border-left: 4px solid ${EMAIL_BRAND.primary}; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <p style="margin: 0 0 12px 0; font-size: 14px; color: ${EMAIL_BRAND.text}; font-weight: 600;">
+                  Link do szybkiej płatności online:
+                </p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.6; word-break: break-all;">
+                  <a href="${params.paymentLink}" style="color: ${EMAIL_BRAND.primary}; font-weight: 600;">${escapeHtml(params.paymentLink)}</a>
+                </p>
+                <div style="text-align: center; margin: 20px 0 0 0;">
+                  <a href="${params.paymentLink}" style="display: inline-block; background: ${EMAIL_BRAND.gradient}; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 12px ${EMAIL_BRAND.shadow};">
+                    Zapłać teraz
+                  </a>
+                </div>
               </div>
-              
-              <p style="margin: 20px 0; color: #374151; font-size: 16px; line-height: 1.6;">
-                Prosimy o dokonanie płatności poprzez kliknięcie w poniższy link:
-              </p>
-              
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${paymentLink}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);">
-                  Zapłać teraz
-                </a>
+
+              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <p style="margin: 0 0 12px 0; font-size: 15px; color: #111827; font-weight: 600;">
+                  Szczegóły rezerwacji
+                </p>
+                <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #374151; line-height: 1.8;">
+                  <li>Numer umowy: <strong>${escapeHtml(params.agreementNumber)}</strong></li>
+                  <li>Wycieczka: <strong>${escapeHtml(params.tripTitle)}</strong>${escapeHtml(buildLocationSuffix(params.tripLocation))}</li>
+                  <li>Termin wyjazdu: ${escapeHtml(dateRange)}</li>
+                  <li>Cena całkowita: <strong>${escapeHtml(params.tripTotalPricePln)}</strong></li>
+                  <li>Dotychczas opłacono: <strong>${escapeHtml(params.amountPaidPln)}</strong></li>
+                  <li>Pozostało do zapłaty: <strong style="color: ${EMAIL_BRAND.primary};">${escapeHtml(params.amountRemainingPln)}</strong></li>
+                </ul>
               </div>
-              
-              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                Jeśli masz jakiekolwiek pytania, prosimy o kontakt z naszym biurem.
-              </p>
-              
-              <p style="margin: 30px 0 0 0; color: #374151; font-size: 16px; line-height: 1.6;">
-                Pozdrawiamy,<br>
-                <strong>Zespół Magii Podróżowania</strong>
-              </p>
             </td>
           </tr>
-          
-          <!-- Footer -->
           <tr>
             <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #6b7280; font-size: 12px; line-height: 1.5;">
-                To jest automatyczna wiadomość. Prosimy nie odpowiadać na ten e-mail.
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: ${EMAIL_BRAND.primary}; font-weight: 600;">
+                Magia Podróżowania
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">
+                To jest automatyczna wiadomość. Numer umowy: <strong>${escapeHtml(params.agreementNumber)}</strong>
               </p>
             </td>
           </tr>
@@ -118,3 +108,20 @@ export function generatePaymentReminderEmail(
   `.trim();
 }
 
+export function generatePaymentReminderEmailText(params: PaymentReminderEmailParams): string {
+  const greeting = buildGreeting(params.contactFirstName);
+  const dateRange = formatTripDateRange(params.tripStartDate, params.tripEndDate);
+
+  let text = `${greeting}\n\n`;
+  text += `Przypominamy, że zbliża się termin uregulowania płatności za nadchodzący wyjazd.\n\n`;
+  text += `Link do szybkiej płatności online:\n${params.paymentLink}\n\n`;
+  text += `Szczegóły rezerwacji\n`;
+  text += `• Numer umowy: ${params.agreementNumber}\n`;
+  text += `• Wycieczka: ${params.tripTitle}${buildLocationSuffix(params.tripLocation)}\n`;
+  text += `• Termin wyjazdu: ${dateRange}\n`;
+  text += `• Cena całkowita: ${params.tripTotalPricePln}\n`;
+  text += `• Dotychczas opłacono: ${params.amountPaidPln}\n`;
+  text += `• Pozostało do zapłaty: ${params.amountRemainingPln}\n\n`;
+  text += `Magia Podróżowania`;
+  return text;
+}

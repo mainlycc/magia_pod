@@ -6,7 +6,12 @@ import {
   generateAgreementUpdatedEmailHtml,
   generateAgreementUpdatedEmailText,
 } from "@/lib/email/templates/agreement-updated";
-import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url";
+import {
+  buildAgreementUpdatedEmailSubject,
+  formatUpdatedAgreementPdfFilename,
+} from "@/lib/email/agreement-updated-data";
+import { resolveContactNames } from "@/lib/email/booking-confirmation-data";
+import { resolvePublicAgreementNumberForBooking } from "@/lib/email/payment-reminder-data";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -43,11 +48,6 @@ async function checkCoordinator(
   if (!profile.allowed_trip_ids) return false;
 
   return profile.allowed_trip_ids.includes(tripId);
-}
-
-function resolvePublicBaseUrlFromRequest(request: NextRequest): string {
-  const { origin } = new URL(request.url);
-  return resolvePublicBaseUrl(origin);
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -87,6 +87,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         id,
         booking_ref,
         contact_email,
+        contact_first_name,
+        contact_last_name,
         access_token,
         agreement_pdf_url,
         trips:trips!inner(id, title)
@@ -158,27 +160,29 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
     const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-    const baseUrl = resolvePublicBaseUrlFromRequest(request);
-    const token = booking.access_token as string | null | undefined;
-    const bookingLink = token ? `${baseUrl}/booking/${token}` : null;
-
-    const html = generateAgreementUpdatedEmailHtml({
-      bookingRef: booking.booking_ref as string,
-      tripTitle,
-      bookingLink,
-    });
-    const text = generateAgreementUpdatedEmailText({
-      bookingRef: booking.booking_ref as string,
-      tripTitle,
-      bookingLink,
+    const publicAgreementNumber = await resolvePublicAgreementNumberForBooking(adminClient, bookingId);
+    const { firstName } = resolveContactNames({
+      contact_first_name: booking.contact_first_name ?? undefined,
+      contact_last_name: booking.contact_last_name ?? undefined,
+      participants: [],
     });
 
-    const subject = `Zaktualizowana umowa — rezerwacja ${booking.booking_ref}`;
+    const attachmentFilename = formatUpdatedAgreementPdfFilename(publicAgreementNumber);
 
-    const baseFileName = pdfUrl.includes("/") ? pdfUrl.split("/").pop()! : pdfUrl;
-    const attachmentFilename = baseFileName.toLowerCase().endsWith(".pdf")
-      ? baseFileName
-      : `${baseFileName}.pdf`;
+    const emailParams = {
+      agreementNumber: publicAgreementNumber,
+      contactFirstName: firstName,
+      tripTitle,
+      attachmentFilename,
+    };
+
+    const html = generateAgreementUpdatedEmailHtml(emailParams);
+    const text = generateAgreementUpdatedEmailText(emailParams);
+
+    const subject = buildAgreementUpdatedEmailSubject({
+      agreementNumber: publicAgreementNumber,
+      tripTitle,
+    });
 
     const sendResult = await sendTransactionalEmail({
       to: email,
