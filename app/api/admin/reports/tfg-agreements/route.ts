@@ -13,6 +13,7 @@ import {
   type TfgReportType,
   reportFilename,
   resolvePeriodBounds,
+  resolvePeriodDateBounds,
 } from "@/lib/reports/tfg-agreement-report";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
@@ -93,6 +94,12 @@ export async function POST(request: NextRequest) {
       dateFrom: body.dateFrom,
       dateTo: body.dateTo,
     });
+    const { startDate, endDate } = resolvePeriodDateBounds(body.period, {
+      year: body.year,
+      month: body.month,
+      dateFrom: body.dateFrom,
+      dateTo: body.dateTo,
+    });
 
     const periodLabel =
       body.period === "month"
@@ -106,22 +113,22 @@ export async function POST(request: NextRequest) {
 
     switch (body.reportType) {
       case "tfg_signed_detail": {
-        const r = await fetchSignedAgreementRows(admin, startIso, endIso);
+        const r = await fetchSignedAgreementRows(admin, startIso, endIso, startDate, endDate);
         detailRows = r.detail;
         break;
       }
       case "tfg_signed_summary": {
-        const r = await fetchSignedAgreementRows(admin, startIso, endIso);
+        const r = await fetchSignedAgreementRows(admin, startIso, endIso, startDate, endDate);
         summaryInputs = r.summaryInputs;
         break;
       }
       case "tfg_cancellations_detail": {
-        const r = await fetchCancellationRows(admin, startIso, endIso);
+        const r = await fetchCancellationRows(admin, startIso, endIso, startDate, endDate);
         detailRows = r.detail;
         break;
       }
       case "tfg_cancellations_summary": {
-        const r = await fetchCancellationRows(admin, startIso, endIso);
+        const r = await fetchCancellationRows(admin, startIso, endIso, startDate, endDate);
         summaryInputs = r.summaryInputs;
         break;
       }

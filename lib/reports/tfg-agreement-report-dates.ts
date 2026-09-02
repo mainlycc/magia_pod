@@ -36,6 +36,30 @@ export function resolvePeriodBounds(
   return { startIso, endIso };
 }
 
+function padDatePart(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+export function resolvePeriodDateBounds(
+  period: "month" | "range",
+  opts: { year?: number; month?: number; dateFrom?: string; dateTo?: string },
+): { startDate: string; endDate: string } {
+  if (period === "month") {
+    const y = opts.year!;
+    const m = opts.month!;
+    const lastDay = new TZDate(y, m, 0, 12, 0, 0, 0, REPORT_TIMEZONE).getDate();
+    return {
+      startDate: `${y}-${padDatePart(m)}-01`,
+      endDate: `${y}-${padDatePart(m)}-${padDatePart(lastDay)}`,
+    };
+  }
+
+  return {
+    startDate: opts.dateFrom!,
+    endDate: opts.dateTo!,
+  };
+}
+
 export function getAgreementConclusionDate(agreement: {
   signed_at: string | null;
   generated_at: string;

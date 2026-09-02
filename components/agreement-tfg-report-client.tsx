@@ -164,8 +164,9 @@ export function AgreementTfgReportClient() {
           <CardTitle>Generowanie raportu umów (TFG)</CardTitle>
           <CardDescription>
             Comiesięczne zestawienia na podstawie daty zawarcia umowy — potwierdzenie płatności (zawarte)
-            lub daty anulacji rezerwacji (rezygnacje). Jedna linia szczegółów = jedna umowa lub jedna
-            anulowana rezerwacja.
+            lub daty anulacji rezerwacji (rezygnacje). W raporcie szczegółowym każda umowa ma jeden wiersz;
+            gdy w okresie raportu występują dwie lub więcej wpłat do tej samej umowy, wiersz jest powielany
+            z danymi każdej wpłaty (data, kwota, waluta).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

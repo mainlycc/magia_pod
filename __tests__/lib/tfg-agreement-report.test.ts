@@ -38,10 +38,12 @@ jest.mock("@/lib/pdf/register-noto-fonts", () => ({
 const {
   buildDetailRowFromBooking,
   DETAIL_HEADERS,
+  expandDetailRowsWithPayments,
   getAgreementConclusionDate,
   isConcludedAgreement,
   isEffectiveDateInRange,
   resolvePeriodBounds,
+  resolvePeriodDateBounds,
 } = require("@/lib/reports/tfg-agreement-report");
 
 describe("lib/reports/tfg-agreement-report", () => {
@@ -68,6 +70,25 @@ describe("lib/reports/tfg-agreement-report", () => {
 
       expect(startIso).toBe("2026-06-15T22:00:00.000Z");
       expect(endIso).toBe("2026-06-16T21:59:59.999Z");
+    });
+  });
+
+  describe("resolvePeriodDateBounds", () => {
+    it("ustawia granice kalendarzowe miesiąca", () => {
+      const { startDate, endDate } = resolvePeriodDateBounds("month", { year: 2026, month: 6 });
+
+      expect(startDate).toBe("2026-06-01");
+      expect(endDate).toBe("2026-06-30");
+    });
+
+    it("ustawia granice kalendarzowe zakresu dat", () => {
+      const { startDate, endDate } = resolvePeriodDateBounds("range", {
+        dateFrom: "2026-06-16",
+        dateTo: "2026-06-20",
+      });
+
+      expect(startDate).toBe("2026-06-16");
+      expect(endDate).toBe("2026-06-20");
     });
   });
 
@@ -160,6 +181,36 @@ describe("lib/reports/tfg-agreement-report", () => {
   });
 
   describe("buildDetailRowFromBooking", () => {
+    const sampleBooking = {
+      id: "booking-1",
+      status: "confirmed",
+      payment_status: "paid",
+      booking_ref: "BOOK-1",
+      cancelled_at: "2026-06-12T08:00:00.000Z",
+      trips: {
+        title: "Nieuzywane",
+        start_date: "2026-07-10",
+        end_date: "2026-07-15",
+        location: "Nieuzywane",
+        price_cents: 123456,
+        reservation_number: "12",
+        transport_mode: "LOTNCZART",
+        airport_codes: "WAW,KRK",
+        territorial_scope: "EUR",
+        country: "Hiszpania",
+        locality: "Barcelona",
+        territorial_scope_2: "PLISAS",
+        country_2: "Polska",
+        locality_2: "Warszawa",
+      },
+      participants: [{ id: "p1" }, { id: "p2" }],
+    };
+
+    const sampleAgreement = {
+      agreement_seq: 7,
+      conclusion_date: "2026-06-10T10:00:00.000Z",
+    };
+
     it("buduje wiersz TFG z nowymi polami lokalizacji i wartościami domyślnymi", () => {
       expect(DETAIL_HEADERS).toEqual([
         "Numer umowy",
@@ -179,38 +230,15 @@ describe("lib/reports/tfg-agreement-report", () => {
         "Łączna cena usług",
         "WalutaUslug1",
         "SposobPrzyjmowaniaWplat",
+        "DataWplaty",
+        "KwotaWplaty",
+        "WalutaWplaty",
         "Data anulacji",
       ]);
 
       const row = buildDetailRowFromBooking(
-        {
-          id: "booking-1",
-          status: "confirmed",
-          payment_status: "paid",
-          booking_ref: "BOOK-1",
-          cancelled_at: "2026-06-12T08:00:00.000Z",
-          trips: {
-            title: "Nieuzywane",
-            start_date: "2026-07-10",
-            end_date: "2026-07-15",
-            location: "Nieuzywane",
-            price_cents: 123456,
-            reservation_number: "12",
-            transport_mode: "LOTNCZART",
-            airport_codes: "WAW,KRK",
-            territorial_scope: "EUR",
-            country: "Hiszpania",
-            locality: "Barcelona",
-            territorial_scope_2: "PLISAS",
-            country_2: "Polska",
-            locality_2: "Warszawa",
-          },
-          participants: [{ id: "p1" }, { id: "p2" }],
-        },
-        {
-          agreement_seq: 7,
-          conclusion_date: "2026-06-10T10:00:00.000Z",
-        },
+        sampleBooking,
+        sampleAgreement,
         { cancellationDate: "2026-06-12T08:00:00.000Z" },
       );
 
@@ -232,8 +260,59 @@ describe("lib/reports/tfg-agreement-report", () => {
         "2469,12",
         "PLN",
         "WPLATAPRZED",
+        "",
+        "",
+        "",
         "12.06.2026",
       ]);
+    });
+
+    it("uzupełnia kolumny wpłaty gdy podano payment", () => {
+      const row = buildDetailRowFromBooking(sampleBooking, sampleAgreement, {
+        payment: {
+          booking_id: "booking-1",
+          payment_date: "2026-06-11",
+          amount_cents: 194970,
+          created_at: "2026-06-11T10:00:00.000Z",
+        },
+      });
+
+      expect(row[17]).toBe("11.06.2026");
+      expect(row[18]).toBe("1949,70");
+      expect(row[19]).toBe("PLN");
+    });
+  });
+
+  describe("expandDetailRowsWithPayments", () => {
+    it("zwraca jeden wiersz z pustymi wpłatami gdy brak wpłat", () => {
+      const rows = expandDetailRowsWithPayments(
+        (payment) => [payment ? "with-payment" : "no-payment"],
+        [],
+      );
+
+      expect(rows).toEqual([["no-payment"]]);
+    });
+
+    it("zwraca jeden wiersz na wpłatę", () => {
+      const rows = expandDetailRowsWithPayments(
+        (payment) => [payment?.payment_date ?? ""],
+        [
+          {
+            booking_id: "booking-1",
+            payment_date: "2026-06-01",
+            amount_cents: 10000,
+            created_at: "2026-06-01T08:00:00.000Z",
+          },
+          {
+            booking_id: "booking-1",
+            payment_date: "2026-06-15",
+            amount_cents: 20000,
+            created_at: "2026-06-15T08:00:00.000Z",
+          },
+        ],
+      );
+
+      expect(rows).toEqual([["2026-06-01"], ["2026-06-15"]]);
     });
   });
 });

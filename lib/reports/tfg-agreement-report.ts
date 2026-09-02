@@ -19,6 +19,7 @@ export {
   isEffectiveDateInRange,
   REPORT_TIMEZONE,
   resolvePeriodBounds,
+  resolvePeriodDateBounds,
 } from "@/lib/reports/tfg-agreement-report-dates";
 
 export const TFG_REPORT_TYPES = [
@@ -50,8 +51,18 @@ export const DETAIL_HEADERS = [
   "Łączna cena usług",
   "WalutaUslug1",
   "SposobPrzyjmowaniaWplat",
+  "DataWplaty",
+  "KwotaWplaty",
+  "WalutaWplaty",
   "Data anulacji",
 ] as const;
+
+export type PaymentLite = {
+  booking_id: string;
+  payment_date: string;
+  amount_cents: number;
+  created_at: string;
+};
 
 type TripLite = {
   title: string | null;
@@ -137,7 +148,7 @@ function formatMoneyPln(value: number): string {
 export function buildDetailRowFromBooking(
   booking: BookingLite,
   agreement: { agreement_seq: number | null; conclusion_date: string } | null,
-  options: { cancellationDate?: string | null },
+  options: { cancellationDate?: string | null; payment?: PaymentLite | null },
 ): string[] {
   const trip = unwrapTrip(booking.trips);
   const n = participantCount(booking);
@@ -163,8 +174,67 @@ export function buildDetailRowFromBooking(
     formatMoneyPln(price),
     "PLN",
     "WPLATAPRZED",
+    options.payment ? formatPlDate(options.payment.payment_date) : "",
+    options.payment ? formatMoneyPln(options.payment.amount_cents / 100) : "",
+    options.payment ? "PLN" : "",
     options.cancellationDate ? formatPlDate(options.cancellationDate) : "",
   ];
+}
+
+export function expandDetailRowsWithPayments(
+  buildRow: (payment: PaymentLite | null) => string[],
+  payments: PaymentLite[],
+): string[][] {
+  if (payments.length === 0) {
+    return [buildRow(null)];
+  }
+  return payments.map((payment) => buildRow(payment));
+}
+
+function pushDetailRowsForBooking(
+  detail: string[][],
+  booking: BookingLite,
+  agreement: { agreement_seq: number | null; conclusion_date: string } | null,
+  options: { cancellationDate?: string | null },
+  payments: PaymentLite[],
+): void {
+  for (const row of expandDetailRowsWithPayments(
+    (payment) => buildDetailRowFromBooking(booking, agreement, { ...options, payment }),
+    payments,
+  )) {
+    detail.push(row);
+  }
+}
+
+async function fetchPaymentsInPeriod(
+  admin: SupabaseClient,
+  bookingIds: string[],
+  startDate: string,
+  endDate: string,
+): Promise<Map<string, PaymentLite[]>> {
+  const result = new Map<string, PaymentLite[]>();
+  if (bookingIds.length === 0) return result;
+
+  const { data, error } = await admin
+    .from("payment_history")
+    .select("booking_id, payment_date, amount_cents, created_at")
+    .in("booking_id", bookingIds)
+    .gt("amount_cents", 0)
+    .gte("payment_date", startDate)
+    .lte("payment_date", endDate)
+    .order("payment_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const payment = row as PaymentLite;
+    const list = result.get(payment.booking_id) ?? [];
+    list.push(payment);
+    result.set(payment.booking_id, list);
+  }
+
+  return result;
 }
 
 export type SummaryRow = {
@@ -235,6 +305,8 @@ export async function fetchSignedAgreementRows(
   admin: SupabaseClient,
   startIso: string,
   endIso: string,
+  startDate: string,
+  endDate: string,
 ): Promise<{ detail: string[][]; summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] }> {
   const list = await fetchAgreementsInConclusionPeriod(admin, startIso, endIso);
   if (list.length === 0) {
@@ -275,6 +347,7 @@ export async function fetchSignedAgreementRows(
   if (bErr) throw new Error(bErr.message);
 
   const byId = new Map((bookings as BookingLite[] | null)?.map((b) => [b.id, b]) ?? []);
+  const paymentsByBooking = await fetchPaymentsInPeriod(admin, bookingIds, startDate, endDate);
 
   const detail: string[][] = [];
   const summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] = [];
@@ -287,13 +360,14 @@ export async function fetchSignedAgreementRows(
     const n = participantCount(b);
     const valuePln = contractPricePln(trip, n);
     const conclusionDate = getAgreementConclusionDate(ag);
+    const payments = paymentsByBooking.get(ag.booking_id) ?? [];
 
-    detail.push(
-      buildDetailRowFromBooking(
-        b,
-        { agreement_seq: ag.agreement_seq, conclusion_date: conclusionDate },
-        {},
-      ),
+    pushDetailRowsForBooking(
+      detail,
+      b,
+      { agreement_seq: ag.agreement_seq, conclusion_date: conclusionDate },
+      {},
+      payments,
     );
     summaryInputs.push({
       territorialScope: trip?.territorial_scope ?? "",
@@ -309,6 +383,8 @@ export async function fetchCancellationRows(
   admin: SupabaseClient,
   startIso: string,
   endIso: string,
+  startDate: string,
+  endDate: string,
 ): Promise<{ detail: string[][]; summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] }> {
   const { data: bookings, error: bErr } = await admin
     .from("bookings")
@@ -373,14 +449,21 @@ export async function fetchCancellationRows(
 
   const detail: string[][] = [];
   const summaryInputs: { territorialScope: string; participants: number; valuePln: number }[] = [];
+  const paymentsByBooking = await fetchPaymentsInPeriod(admin, bookingIds, startDate, endDate);
 
   for (const b of blist) {
     const trip = unwrapTrip(b.trips);
     const n = participantCount(b);
     const valuePln = contractPricePln(trip, n);
     const ag = bestAg.get(b.id) ?? null;
-    detail.push(
-      buildDetailRowFromBooking(b, ag, { cancellationDate: b.cancelled_at }),
+    const payments = paymentsByBooking.get(b.id) ?? [];
+
+    pushDetailRowsForBooking(
+      detail,
+      b,
+      ag,
+      { cancellationDate: b.cancelled_at },
+      payments,
     );
     summaryInputs.push({
       territorialScope: trip?.territorial_scope ?? "",
