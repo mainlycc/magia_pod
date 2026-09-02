@@ -7,6 +7,7 @@ import {
   fillParticipantStep,
   generateBookingTestData,
   openReservePage,
+  resolveProductionTripAccess,
   resolveProductionTripSlug,
 } from "../helpers/production-booking";
 import { completePaynowSandboxPayment } from "../helpers/paynow-sandbox";
@@ -35,6 +36,7 @@ test.describe.configure({ mode: "serial", timeout: 180_000 });
 
 test.describe("Produkcja — personalizacja umowy (Wzór umowy → podgląd rezerwacji)", () => {
   let tripSlug: string;
+  let registrationToken: string;
   let tripId: string;
   let backupIndividualHtml: string | null = null;
   let publicAgreementApi = false;
@@ -47,8 +49,14 @@ test.describe("Produkcja — personalizacja umowy (Wzór umowy → podgląd reze
 
     const page = await browser.newPage();
     await loginUser(page);
-    tripSlug = await resolveProductionTripSlug(page.request);
-    publicAgreementApi = await isPublicAgreementApiAvailable(page, tripSlug);
+    const access = await resolveProductionTripAccess(page.request);
+    tripSlug = access.slug;
+    registrationToken = access.registrationToken;
+    publicAgreementApi = await isPublicAgreementApiAvailable(
+      page,
+      tripSlug,
+      registrationToken,
+    );
     await selectTripInDashboard(page, tripSlug);
     tripId = await getSelectedTripId(page);
     backupIndividualHtml = await fetchAgreementTemplateHtml(page, tripId, "individual");
@@ -96,7 +104,7 @@ test.describe("Produkcja — personalizacja umowy (Wzór umowy → podgląd reze
       "API /api/trips/by-slug/.../agreement-templates zwraca 403 — wdróż poprawkę is_public (lokalnie gotowa)",
     );
 
-    await expectMarkerOnReservePreview(page, tripSlug, marker);
+    await expectMarkerOnReservePreview(page, tripSlug, marker, registrationToken);
   });
 
   test("3. krok podsumowania rezerwacji (HTML) pokazuje zmiany z edytora", async ({ page }) => {
@@ -104,7 +112,7 @@ test.describe("Produkcja — personalizacja umowy (Wzór umowy → podgląd reze
     test.skip(!publicAgreementApi, "Wymaga deployu poprawki API szablonów (patrz test 2)");
 
     const data = generateBookingTestData("umowa-prev");
-    await openReservePage(page, tripSlug);
+    await openReservePage(page, tripSlug, registrationToken);
     await fillContactStepIndividual(page, data);
     await clickDalej(page);
     await fillParticipantStep(page, data);
@@ -142,7 +150,7 @@ test.describe("Produkcja — personalizacja umowy (Wzór umowy → podgląd reze
 
     const data = generateBookingTestData("umowa-pdf");
     const { completeIndividualBookingWithoutPayment } = await import("../helpers/production-booking");
-    await completeIndividualBookingWithoutPayment(page, tripSlug, data);
+    await completeIndividualBookingWithoutPayment(page, tripSlug, registrationToken, data);
 
     await loginUser(page);
     await selectTripInDashboard(page, tripSlug);
@@ -180,8 +188,14 @@ test.describe("Produkcja — umowa po płatności Paynow (PDF = załącznik e-ma
     let backupHtml: string | null = null;
 
     await loginUser(page);
-    tripSlug = await resolveProductionTripSlug(page.request);
-    const apiOk = await isPublicAgreementApiAvailable(page, tripSlug);
+    const access = await resolveProductionTripAccess(page.request);
+    tripSlug = access.slug;
+    const registrationToken = access.registrationToken;
+    const apiOk = await isPublicAgreementApiAvailable(
+      page,
+      tripSlug,
+      registrationToken,
+    );
     test.skip(!apiOk, "Wymaga deployu poprawki API szablonów");
 
     await selectTripInDashboard(page, tripSlug);
@@ -199,7 +213,7 @@ test.describe("Produkcja — umowa po płatności Paynow (PDF = załącznik e-ma
         assertBookingPageHealthy,
       } = await import("../helpers/production-booking");
 
-      await openReservePage(page, tripSlug);
+      await openReservePage(page, tripSlug, registrationToken);
       await fillContactStepIndividual(page, data);
       await clickDalej(page);
       await fillParticipantStep(page, data);

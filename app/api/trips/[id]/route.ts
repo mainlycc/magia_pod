@@ -36,7 +36,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     console.log("Is admin:", isAdmin, "canManage:", canManage);
 
     const selectCols =
-      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,territorial_scope,country,locality,territorial_scope_2,country_2,locality_2,location,transport_mode,airport_codes,is_public,public_slug,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
+      "id,title,slug,description,start_date,end_date,price_cents,seats_total,seats_reserved,is_active,territorial_scope,country,locality,territorial_scope_2,country_2,locality_2,location,transport_mode,airport_codes,is_public,public_slug,registration_token,registration_mode,require_pesel,form_show_additional_services,company_participants_info,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,payment_split_enabled,payment_split_first_percent,payment_split_second_percent,payment_reminder_enabled,payment_reminder_days_before,payment_schedule";
 
     let data: Record<string, unknown> | null = null;
     let error: { message: string } | null = null;

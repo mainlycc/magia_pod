@@ -264,7 +264,10 @@ export default function AgreementPage() {
   };
 
   const reserveSlug = tripFullData?.slug || selectedTrip.slug;
-  const reservePreviewUrl = `/trip/${reserveSlug}/reserve?podglad=1`;
+  const registrationToken = tripFullData?.registration_token;
+  const reservePreviewUrl = registrationToken
+    ? `/trip/${reserveSlug}/reserve?token=${encodeURIComponent(registrationToken)}&podglad=1`
+    : `/trip/${reserveSlug}/reserve?podglad=1`;
 
   const sampleFormIndividual = getAgreementPreviewSampleFormDataIndividual();
   const sampleFormCompany = getAgreementPreviewSampleFormDataCompany();

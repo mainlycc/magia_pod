@@ -40,7 +40,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "fetch_failed", details: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data || []);
+    const trips = data || [];
+    if (!isAdmin) {
+      return NextResponse.json(
+        trips.map(({ registration_token: _token, ...rest }) => rest),
+      );
+    }
+
+    return NextResponse.json(trips);
   } catch (err) {
     console.error("Error in GET /api/trips:", err);
     return NextResponse.json({ error: "internal_error", details: String(err) }, { status: 500 });

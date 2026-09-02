@@ -42,96 +42,113 @@ type TripRow = {
   seats_total?: number | null;
   seats_reserved?: number | null;
   form_show_additional_services?: boolean | null;
+  registration_token?: string | null;
 };
 
-async function isTripBookable(request: APIRequestContext, slug: string): Promise<boolean> {
-  const res = await request.get(`/trip/${slug}/reserve`);
+export type ProductionTripAccess = {
+  slug: string;
+  registrationToken: string;
+};
+
+function buildReservePath(slug: string, registrationToken: string) {
+  return `/trip/${slug}/reserve?token=${encodeURIComponent(registrationToken)}`;
+}
+
+function buildTripPath(slug: string, registrationToken: string) {
+  return `/trip/${slug}?token=${encodeURIComponent(registrationToken)}`;
+}
+
+async function isTripBookable(
+  request: APIRequestContext,
+  slug: string,
+  registrationToken: string,
+): Promise<boolean> {
+  const validateRes = await request.get(
+    `/api/trips/by-slug/${encodeURIComponent(slug)}/validate-token?token=${encodeURIComponent(registrationToken)}`,
+  );
+  if (!validateRes.ok()) return false;
+
+  const res = await request.get(buildReservePath(slug, registrationToken));
   if (!res.ok()) return false;
   const html = await res.text();
   if (/rezerwacja niedostępna|nie jest dostępna/i.test(html)) return false;
   return /kontakt/i.test(html);
 }
 
-async function pickBookableSlugFromTripPage(
+async function pickBookableTripAccess(
   request: APIRequestContext,
   options?: { titlePattern?: RegExp; preferMinimal?: boolean },
-): Promise<string> {
+): Promise<ProductionTripAccess> {
+  const envSlug = process.env.PRODUCTION_TRIP_SLUG?.trim();
+  const envToken = process.env.PRODUCTION_REGISTRATION_TOKEN?.trim();
+  if (envSlug && envToken) {
+    if (await isTripBookable(request, envSlug, envToken)) {
+      return { slug: envSlug, registrationToken: envToken };
+    }
+    console.warn(
+      `[PROD] PRODUCTION_TRIP_SLUG=${envSlug} niedostępna z podanym tokenem — szukam innej wycieczki`,
+    );
+  }
+
   const res = await request.get("/api/trips");
   if (res.ok()) {
     const trips = (await res.json()) as TripRow[];
     if (trips.length > 0) {
-      const candidate = pickTripSlug(trips, options);
-      if (await isTripBookable(request, candidate)) return candidate;
+      const withSeats = trips.filter((t) => {
+        if (t.is_active === false) return false;
+        const total = t.seats_total ?? 0;
+        const reserved = t.seats_reserved ?? 0;
+        return total <= 0 || reserved < total;
+      });
+      const pool = withSeats.length > 0 ? withSeats : trips;
+      let candidates = pool;
+      if (options?.titlePattern) {
+        candidates = pool.filter((t) => options.titlePattern!.test(t.title));
+      }
+      if (options?.preferMinimal) {
+        const minimal = candidates.find((t) => !t.form_show_additional_services);
+        if (minimal) candidates = [minimal];
+      }
+      for (const trip of candidates) {
+        const token = trip.registration_token ?? envToken;
+        if (!token) continue;
+        if (await isTripBookable(request, trip.slug, token)) {
+          return { slug: trip.slug, registrationToken: token };
+        }
+      }
     }
   }
 
-  const htmlRes = await request.get("/trip");
-  expect(htmlRes.ok(), `GET /trip → ${htmlRes.status()}`).toBeTruthy();
-  const html = await htmlRes.text();
-  const slugs = [
-    ...html.matchAll(/href="\/trip\/([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]{3,})"/gi),
-  ]
-    .map((m) => m[1])
-    .filter((s) => s !== "reserve" && !s.includes("/"));
-
-  expect(slugs.length, "Nie znaleziono linków do wycieczek na /trip").toBeGreaterThan(0);
-  const preferred = slugs.filter((s) => /[a-z-]/i.test(s));
-  const ordered = [...preferred, ...slugs.filter((s) => !preferred.includes(s))];
-
-  for (const slug of ordered) {
-    if (await isTripBookable(request, slug)) {
-      console.log(`[PROD] Slugi z /trip: ${slugs.slice(0, 5).join(", ")}… → wybrano: ${slug}`);
-      return slug;
-    }
-  }
-
-  throw new Error("Żadna wycieczka z /trip nie ma aktywnego formularza rezerwacji");
+  throw new Error(
+    "Brak dostępnej wycieczki z tokenem rejestracji. Ustaw PRODUCTION_TRIP_SLUG i PRODUCTION_REGISTRATION_TOKEN (panel → Kopiuj link) lub uruchom testy jako admin.",
+  );
 }
 
-/** Slug wycieczki: env (jeśli dostępna) → strona /trip → API (jeśli dostępne). */
+/** Slug wycieczki: env (jeśli dostępna) → API (jeśli dostępne). */
 export async function resolveProductionTripSlug(
   request: APIRequestContext,
   options?: { titlePattern?: RegExp; preferMinimal?: boolean },
 ): Promise<string> {
-  const fromEnv = process.env.PRODUCTION_TRIP_SLUG?.trim();
-  if (fromEnv) {
-    if (await isTripBookable(request, fromEnv)) return fromEnv;
-    console.warn(
-      `[PROD] PRODUCTION_TRIP_SLUG=${fromEnv} niedostępna — szukam innej wycieczki`,
-    );
-  }
-
-  return pickBookableSlugFromTripPage(request, options);
+  const access = await resolveProductionTripAccess(request, options);
+  return access.slug;
 }
 
-function pickTripSlug(
-  trips: TripRow[],
+/** Slug + token rejestracji do testów produkcyjnych. */
+export async function resolveProductionTripAccess(
+  request: APIRequestContext,
   options?: { titlePattern?: RegExp; preferMinimal?: boolean },
-): string {
-  const withSeats = trips.filter((t) => {
-    if (t.is_active === false) return false;
-    const total = t.seats_total ?? 0;
-    const reserved = t.seats_reserved ?? 0;
-    return total <= 0 || reserved < total;
-  });
-
-  const pool = withSeats.length > 0 ? withSeats : trips;
-
-  if (options?.titlePattern) {
-    const match = pool.find((t) => options.titlePattern!.test(t.title));
-    if (match) return match.slug;
-  }
-
-  if (options?.preferMinimal) {
-    const minimal = pool.find((t) => !t.form_show_additional_services);
-    if (minimal) return minimal.slug;
-  }
-
-  return pool[0].slug;
+): Promise<ProductionTripAccess> {
+  return pickBookableTripAccess(request, options);
 }
 
-export async function openReservePage(page: Page, slug: string) {
-  await page.goto(`/trip/${slug}/reserve`, { waitUntil: "domcontentloaded" });
+export async function openReservePage(
+  page: Page,
+  slug: string,
+  registrationToken: string,
+) {
+  await page.goto(buildReservePath(slug, registrationToken), {
+    waitUntil: "domcontentloaded",
+  });
   await waitForBookingFormReady(page);
 }
 
@@ -344,9 +361,10 @@ export async function assertBookingPageHealthy(page: Page) {
 export async function completeIndividualBookingWithoutPayment(
   page: Page,
   slug: string,
+  registrationToken: string,
   data: BookingTestData,
 ): Promise<BookingConfirmation> {
-  await openReservePage(page, slug);
+  await openReservePage(page, slug, registrationToken);
   await fillContactStepIndividual(page, data);
   await clickDalej(page);
   await fillParticipantStep(page, data);

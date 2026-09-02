@@ -2,7 +2,8 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, use, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -27,6 +28,10 @@ import {
   getAdditionalSectionContent,
   hasAdditionalSectionContent,
 } from "@/lib/trip-additional-field-section"
+import {
+  appendRegistrationTokenQuery,
+  REGISTRATION_LINK_INACTIVE_MESSAGE,
+} from "@/lib/trips/registration-access"
 
 type Trip = {
   id: string
@@ -227,14 +232,43 @@ function TripSectionCard({
 
 export default function TripPage({ params }: { params: Promise<{ slug: string }> | { slug: string } }) {
   const { slug } = use(params instanceof Promise ? params : Promise.resolve(params))
+  const searchParams = useSearchParams()
+  const registrationToken = searchParams.get("token")
   const [trip, setTrip] = useState<Trip | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<any>(null)
+  const [accessError, setAccessError] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState<number | null>(null)
+
+  const reserveHref = useMemo(() => {
+    const base = `/trip/${slug}/reserve`
+    return registrationToken
+      ? appendRegistrationTokenQuery(base, registrationToken)
+      : base
+  }, [slug, registrationToken])
 
   useEffect(() => {
     async function loadTrip() {
       try {
+        setAccessError(null)
+
+        const validateUrl = new URL(
+          `/api/trips/by-slug/${encodeURIComponent(slug)}/validate-token`,
+          window.location.origin,
+        )
+        if (registrationToken) {
+          validateUrl.searchParams.set("token", registrationToken)
+        }
+
+        const validateRes = await fetch(validateUrl.toString(), {
+          credentials: "include",
+        })
+        if (!validateRes.ok) {
+          setAccessError(REGISTRATION_LINK_INACTIVE_MESSAGE)
+          setLoading(false)
+          return
+        }
+
         const supabase = createClient()
         
         // Wszystkie pola w jednym zapytaniu — unikamy cichego błędu drugiego zapytania
@@ -296,13 +330,35 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
     }
 
     loadTrip()
-  }, [slug])
+  }, [slug, registrationToken])
 
   if (loading) {
     return (
       <ClientPanelShell>
         <AzureCard accent="blue" title="Ładowanie">
           <p className="text-sm text-[#3f3f46]">Ładowanie danych wycieczki...</p>
+        </AzureCard>
+      </ClientPanelShell>
+    )
+  }
+
+  if (accessError) {
+    return (
+      <ClientPanelShell>
+        <ClientPanelHeader
+          title={
+            <>
+              Wycieczka <ClientPanelTitleAccent>niedostępna</ClientPanelTitleAccent>
+            </>
+          }
+          backHref="/trip"
+          backLabel="Wróć do wycieczek"
+        />
+        <AzureCard accent="danger" title="Link nieaktywny">
+          <p className="mb-4 text-sm text-[#3f3f46]">{accessError}</p>
+          <AzureBtnPrimary asChild>
+            <Link href="/">Wróć na stronę główną</Link>
+          </AzureBtnPrimary>
         </AzureCard>
       </ClientPanelShell>
     )
@@ -594,7 +650,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
               price={price}
               seatsLeft={seatsLeft}
               showSeatsLeft={Boolean(trip.show_seats_left)}
-              reserveHref={`/trip/${trip.slug}/reserve`}
+              reserveHref={reserveHref}
             />
           </div>
 
@@ -664,7 +720,7 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                 price={price}
                 seatsLeft={seatsLeft}
                 showSeatsLeft={Boolean(trip.show_seats_left)}
-                reserveHref={`/trip/${trip.slug}/reserve`}
+                reserveHref={reserveHref}
               />
             </div>
           </div>

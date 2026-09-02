@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BookingForm } from "@/components/booking-form";
 import { AzureCard, ClientPanelShell } from "@/components/client-panel";
@@ -9,6 +9,10 @@ import {
   ClientPanelTitleAccent,
 } from "@/components/client-panel/client-panel-header";
 import { createClient } from "@/lib/supabase/client";
+import {
+  appendRegistrationTokenQuery,
+  REGISTRATION_LINK_INACTIVE_MESSAGE,
+} from "@/lib/trips/registration-access";
 
 type TripForReserve = {
   id: string;
@@ -23,17 +27,46 @@ type TripForReserve = {
 export default function ReservePage({ params }: { params: Promise<{ slug: string }> | { slug: string } }) {
   const { slug } = use(params instanceof Promise ? params : Promise.resolve(params));
   const searchParams = useSearchParams();
+  const registrationToken = searchParams.get("token");
   const agreementPreviewMode = searchParams.get("podglad") === "1";
 
   const [trip, setTrip] = useState<TripForReserve | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessGranted, setAccessGranted] = useState(false);
+
+  const backHref = useMemo(() => {
+    const base = `/trip/${slug}`;
+    return registrationToken
+      ? appendRegistrationTokenQuery(base, registrationToken)
+      : base;
+  }, [slug, registrationToken]);
 
   useEffect(() => {
     const loadTrip = async () => {
       try {
-        const supabase = createClient();
+        setLoading(true);
+        setError(null);
+        setAccessGranted(false);
 
+        const validateUrl = new URL(
+          `/api/trips/by-slug/${encodeURIComponent(slug)}/validate-token`,
+          window.location.origin,
+        );
+        if (registrationToken) {
+          validateUrl.searchParams.set("token", registrationToken);
+        }
+
+        const validateRes = await fetch(validateUrl.toString(), {
+          credentials: "include",
+        });
+        if (!validateRes.ok) {
+          setError(REGISTRATION_LINK_INACTIVE_MESSAGE);
+          return;
+        }
+        setAccessGranted(true);
+
+        const supabase = createClient();
         const { data: tripData, error: tripError } = await supabase
           .from("trips")
           .select("id,title,slug,public_slug,seats_total,seats_reserved,is_active")
@@ -59,10 +92,9 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
     };
 
     loadTrip();
-  }, [slug]);
+  }, [slug, registrationToken]);
 
   const seatsLeft = trip ? Math.max(0, (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0)) : 0;
-  const seatsTotal = trip?.seats_total ?? 0;
   const hasNoSeats = trip ? seatsLeft <= 0 : false;
 
   return (
@@ -74,7 +106,7 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
           </>
         }
         subtitle="Wypełnij dane kontaktowe, uzupełnij listę uczestników i zaakceptuj zgody, aby wysłać rezerwację."
-        backHref={`/trip/${slug}`}
+        backHref={backHref}
       />
 
       {loading && (
@@ -97,8 +129,12 @@ export default function ReservePage({ params }: { params: Promise<{ slug: string
         </AzureCard>
       )}
 
-      {!loading && !error && trip && !hasNoSeats && (
-        <BookingForm slug={slug} startAtAgreementPreview={agreementPreviewMode} />
+      {!loading && !error && trip && !hasNoSeats && accessGranted && (
+        <BookingForm
+          slug={slug}
+          registrationToken={registrationToken}
+          startAtAgreementPreview={agreementPreviewMode}
+        />
       )}
     </ClientPanelShell>
   );

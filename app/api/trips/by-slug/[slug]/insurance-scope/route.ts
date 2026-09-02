@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import {
+  assertRegistrationAccessWithBypass,
+  registrationAccessErrorStatus,
+} from "@/lib/trips/registration-access";
 import {
   buildInsuranceScope,
   type InsuranceScopeParticipant,
@@ -7,72 +12,66 @@ import {
 
 export const dynamic = "force-dynamic";
 
-async function resolveTripBySlug(slug: string) {
-  // Service role: publiczna rezerwacja nie ma sesji, a RLS na trips ogranicza anon.
-  const admin = createAdminClient();
-
-  let { data: trip, error } = await admin
-    .from("trips")
-    .select("id, is_active, form_extra_insurances")
-    .eq("slug", slug)
-    .maybeSingle<{ id: string; is_active: boolean; form_extra_insurances: unknown }>();
-
-  if (!trip && !error) {
-    const byPublic = await admin
-      .from("trips")
-      .select("id, is_active, form_extra_insurances")
-      .eq("public_slug", slug)
-      .maybeSingle<{ id: string; is_active: boolean; form_extra_insurances: unknown }>();
-    trip = byPublic.data;
-    error = byPublic.error;
-  }
-
-  return { admin, trip, error };
-}
-
 /**
  * Publiczny endpoint zakresu ubezpieczenia dla formularza rezerwacji.
  * Zwraca ten sam tekst {{insurance_scope}} co przepływ e-mail/PDF, dzięki czemu
  * podgląd umowy na stronie rezerwacji pokazuje wypełnione pole.
  *
- * Body (opcjonalne): { participants: [{ first_name, last_name, selected_services }] }
- * - z uczestnikami: zakres wyliczony na podstawie wybranych ubezpieczeń,
- * - bez uczestników: podstawowe + dostępne ubezpieczenia dodatkowe.
+ * Body (opcjonalne): { participants: [...], registration_token?: string }
+ * Query: ?token= — alternatywa dla registration_token w body
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
+    const queryToken = request.nextUrl.searchParams.get("token");
 
     let participants: InsuranceScopeParticipant[] | null = null;
+    let bodyToken: string | undefined;
     try {
       const body = (await request.json()) as {
         participants?: InsuranceScopeParticipant[];
+        registration_token?: string;
       };
       if (Array.isArray(body?.participants)) {
         participants = body.participants;
       }
+      bodyToken = body?.registration_token;
     } catch {
-      // brak/niepoprawne body — traktuj jak podgląd bez uczestników
       participants = null;
     }
 
-    const { admin, trip, error } = await resolveTripBySlug(slug);
+    const token = queryToken ?? bodyToken ?? null;
+    const admin = createAdminClient();
+    const supabase = await createClient();
 
-    if (error || !trip) {
-      return NextResponse.json({ error: "trip_not_found" }, { status: 404 });
+    const access = await assertRegistrationAccessWithBypass(
+      admin,
+      supabase,
+      slug,
+      token,
+    );
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: access.error },
+        { status: registrationAccessErrorStatus(access.error) },
+      );
     }
 
-    if (!trip.is_active) {
-      return NextResponse.json({ error: "trip_not_available" }, { status: 403 });
-    }
+    const trip = access.trip;
+    const { data: tripExtras } = await admin
+      .from("trips")
+      .select("form_extra_insurances")
+      .eq("id", trip.id)
+      .maybeSingle<{ form_extra_insurances: unknown }>();
 
+    const formExtraInsurances = tripExtras?.form_extra_insurances ?? null;
     const hasParticipants = Boolean(participants && participants.length > 0);
 
     const scope = await buildInsuranceScope(
       admin,
       trip.id,
       hasParticipants ? participants : null,
-      trip.form_extra_insurances,
+      formExtraInsurances,
       hasParticipants ? undefined : { includeAvailableExtras: true },
     );
 

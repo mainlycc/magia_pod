@@ -62,6 +62,7 @@ export type TripFullData = {
   payment_reminder_enabled: boolean | null
   payment_reminder_days_before: number | null
   payment_schedule: PaymentScheduleItem[] | null
+  registration_token?: string | null
 }
 
 // Dane content wycieczki

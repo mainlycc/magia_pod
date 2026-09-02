@@ -5,6 +5,7 @@ import {
   completeIndividualBookingWithoutPayment,
   generateBookingTestData,
   openReservePage,
+  resolveProductionTripAccess,
   resolveProductionTripSlug,
   waitForBookingFormReady,
   fillContactStepIndividual,
@@ -25,11 +26,14 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("Produkcja — pełna ścieżka klienta (rezerwacja)", () => {
   let tripSlug: string;
+  let registrationToken: string;
   let lastBookingToken: string | null = null;
   let lastBookingEmail: string | null = null;
 
   test.beforeAll(async ({ request }) => {
-    tripSlug = await resolveProductionTripSlug(request, { preferMinimal: true });
+    const access = await resolveProductionTripAccess(request, { preferMinimal: true });
+    tripSlug = access.slug;
+    registrationToken = access.registrationToken;
     console.log(`[PROD] Wycieczka testowa: ${tripSlug}`);
   });
 
@@ -37,19 +41,21 @@ test.describe("Produkcja — pełna ścieżka klienta (rezerwacja)", () => {
     await page.goto("/trip");
     await expect(page.getByRole("heading", { name: /wycieczki/i })).toBeVisible();
 
-    await page.goto(`/trip/${tripSlug}`);
+    await page.goto(`/trip/${tripSlug}?token=${encodeURIComponent(registrationToken)}`);
     const reserveLink = page.getByRole("link", { name: /zarezerwuj/i });
     if (await reserveLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await reserveLink.click();
     } else {
-      await page.goto(`/trip/${tripSlug}/reserve`);
+      await page.goto(
+        `/trip/${tripSlug}/reserve?token=${encodeURIComponent(registrationToken)}`,
+      );
     }
     await expect(page).toHaveURL(new RegExp(`/trip/${tripSlug}/reserve`));
     await waitForBookingFormReady(page);
   });
 
   test("walidacja: pusty krok Kontakt nie przechodzi dalej", async ({ page }) => {
-    await openReservePage(page, tripSlug);
+    await openReservePage(page, tripSlug, registrationToken);
     await clickDalej(page);
 
     await expect(page.getByText(/uzupełnij|wymagane|błąd/i).first()).toBeVisible({
@@ -71,6 +77,7 @@ test.describe("Produkcja — pełna ścieżka klienta (rezerwacja)", () => {
     const confirmation = await completeIndividualBookingWithoutPayment(
       page,
       tripSlug,
+      registrationToken,
       data,
     );
 
@@ -138,10 +145,11 @@ test.describe("Produkcja — rezerwacja z płatnością Paynow (B1.2)", () => {
   }) => {
     test.setTimeout(180_000);
 
-    const slug = await resolveProductionTripSlug(request);
+    const access = await resolveProductionTripAccess(request);
+    const slug = access.slug;
     const data = generateBookingTestData("b12");
 
-    await openReservePage(page, slug);
+    await openReservePage(page, slug, access.registrationToken);
     await fillContactStepIndividual(page, data);
     await clickDalej(page);
     await fillParticipantStep(page, data);
@@ -167,8 +175,8 @@ test.describe("Produkcja — macierz formularza (read-only)", () => {
     page,
     request,
   }) => {
-    const slug = await resolveProductionTripSlug(request);
-    await openReservePage(page, slug);
+    const access = await resolveProductionTripAccess(request);
+    await openReservePage(page, access.slug, access.registrationToken);
 
     const companyBtn = page.getByRole("button", { name: /^2\.\s*firma$/i });
     if (!(await companyBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
@@ -186,10 +194,10 @@ test.describe("Produkcja — macierz formularza (read-only)", () => {
 
   test("podgląd umowy (?podglad=1) bez składania rezerwacji", async ({
     page,
-    request,
   }) => {
-    const slug = await resolveProductionTripSlug(request);
-    await page.goto(`/trip/${slug}/reserve?podglad=1`);
+    await page.goto(
+      `/trip/${tripSlug}/reserve?token=${encodeURIComponent(registrationToken)}&podglad=1`,
+    );
     await waitForBookingFormReady(page);
 
     await expect(page.getByRole("tab", { name: /zgody|podsumowanie/i })).toBeVisible({

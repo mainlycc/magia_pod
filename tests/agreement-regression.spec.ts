@@ -134,10 +134,20 @@ test.describe("Umowa — persystencja szablonu (API + reserve, bez logowania)", 
     expect(html!).toContain(marker);
     expect(html!).toContain(label);
 
-    const res = await request.get(`/api/trips/by-slug/${trip.slug}/agreement-templates`);
+    const res = await request.get(
+      `/api/trips/by-slug/${trip.slug}/agreement-templates?token=${trip.registration_token}`,
+    );
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.individual).toContain(marker);
+  });
+
+  test("agreement-templates bez tokenu zwraca 403", async ({ request }) => {
+    const trip = await createAgreementTestTrip();
+    created.tripId = trip.id;
+
+    const res = await request.get(`/api/trips/by-slug/${trip.slug}/agreement-templates`);
+    expect(res.status()).toBe(403);
   });
 
   test("field-remove-persists (M2): usunięty marker nie występuje w API", async ({ request }) => {
@@ -156,7 +166,9 @@ test.describe("Umowa — persystencja szablonu (API + reserve, bez logowania)", 
     html = await getAgreementTemplateHtml(trip.id, "individual");
     expect(html!).not.toContain(marker);
 
-    const res = await request.get(`/api/trips/by-slug/${trip.slug}/agreement-templates`);
+    const res = await request.get(
+      `/api/trips/by-slug/${trip.slug}/agreement-templates?token=${trip.registration_token}`,
+    );
     const body = await res.json();
     expect(body.individual).not.toContain(marker);
   });
@@ -169,7 +181,7 @@ test.describe("Umowa — persystencja szablonu (API + reserve, bez logowania)", 
     const marker = `SYNC-RESERVE-${Date.now()}`;
     await upsertTemplateHtml(trip.id, buildTemplateWithCustomField(marker, "TEST sync reserve:"));
 
-    await goToAgreementPreviewOnReserve(page, trip.slug);
+    await goToAgreementPreviewOnReserve(page, trip.slug, trip.registration_token);
     await expect(page.getByText(marker).first()).toBeVisible({ timeout: 15000 });
   });
 
@@ -277,7 +289,7 @@ test.describe("Umowa — persystencja szablonu (API + reserve, bez logowania)", 
     const html = await getAgreementTemplateHtml(trip.id, "individual");
     expect(html!.toLowerCase()).not.toMatch(/<td>\s*transfery/i);
 
-    await goToAgreementPreviewOnReserve(page, trip.slug);
+    await goToAgreementPreviewOnReserve(page, trip.slug, trip.registration_token);
     await expect(page.getByText(/^Transfery:/i)).toHaveCount(0);
   });
 });

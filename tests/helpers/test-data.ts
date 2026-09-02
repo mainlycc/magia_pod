@@ -5,6 +5,8 @@ import type { TripConfig } from "@/components/booking-form/booking-form-types";
  * Helpery do tworzenia mock danych testowych
  */
 
+export const MOCK_REGISTRATION_TOKEN = "11111111-1111-4111-8111-111111111111";
+
 export function createMockTrip(overrides?: Partial<any>): any {
   return {
     id: "123e4567-e89b-12d3-a456-426614174000",
@@ -19,6 +21,7 @@ export function createMockTrip(overrides?: Partial<any>): any {
     is_active: true,
     is_public: true,
     public_slug: "testowa-wycieczka",
+    registration_token: MOCK_REGISTRATION_TOKEN,
     location: "Test Location",
     registration_mode: "both",
     require_pesel: true,

@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { TripPublicLink } from "@/components/trip-public-link"
+import { TripRegistrationLink } from "@/components/trip-registration-link"
 import { createClient } from "@/lib/supabase/client"
 import {
   Users,
@@ -270,7 +271,10 @@ export default function TripDashboardPage() {
             </div>
           )}
         </div>
-        <TripPublicLink />
+        <div className="flex flex-wrap items-center gap-2">
+          <TripRegistrationLink />
+          <TripPublicLink />
+        </div>
       </div>
 
       {/* Górne kafelki z kluczowymi liczbami */}

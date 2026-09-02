@@ -51,6 +51,7 @@ import {
   getFirstInstallmentPercent,
 } from "@/lib/utils/payment-calculator";
 import { resolveAdditionalServicesCents } from "@/lib/sum-additional-services-cents";
+import { appendRegistrationTokenQuery } from "@/lib/trips/registration-access";
 import {
   ApplicantTypeToggle,
   AzureBtnGhost,
@@ -889,6 +890,7 @@ const steps = [
 
 interface BookingFormProps {
   slug: string;
+  registrationToken?: string | null;
   /** Od razu przejdź do kroku podsumowania z przykładowymi danymi (np. ?podglad=1). */
   startAtAgreementPreview?: boolean;
 }
@@ -965,7 +967,11 @@ const formatValidationErrors = (errors: any): string => {
     : "Sprawdź formularz i popraw błędy przed wysłaniem rezerwacji.";
 };
 
-export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFormProps) {
+export function BookingForm({
+  slug,
+  registrationToken = null,
+  startAtAgreementPreview = false,
+}: BookingFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<"reserve" | "pay" | "company" | null>(null);
@@ -1068,7 +1074,10 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
           // Pobierz dokumenty dla wycieczki
           try {
-            const docsRes = await fetch(`/api/documents/trip/${trip.id}`);
+            const docsUrl = registrationToken
+              ? appendRegistrationTokenQuery(`/api/documents/trip/${trip.id}`, registrationToken)
+              : `/api/documents/trip/${trip.id}`;
+            const docsRes = await fetch(docsUrl, { credentials: "include" });
             const contentType = docsRes.headers.get("content-type") ?? "";
             if (docsRes.ok && contentType.includes("application/json")) {
               const docsData = await docsRes.json();
@@ -1214,8 +1223,15 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
 
           // Pobierz szablony umów
           try {
-            const templatesRes = await fetch(`/api/trips/by-slug/${slug}/agreement-templates`, {
+            const templatesUrl = registrationToken
+              ? appendRegistrationTokenQuery(
+                  `/api/trips/by-slug/${slug}/agreement-templates`,
+                  registrationToken,
+                )
+              : `/api/trips/by-slug/${slug}/agreement-templates`;
+            const templatesRes = await fetch(templatesUrl, {
               cache: "no-store",
+              credentials: "include",
             });
             if (templatesRes.ok) {
               setAgreementTemplateLoadFailed(false);
@@ -1248,7 +1264,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
     };
 
     loadTripConfig();
-  }, [slug]);
+  }, [slug, registrationToken]);
 
   const bookingFormSchemaWithConfig = useMemo(() => {
     return createBookingFormSchema(
@@ -1418,10 +1434,20 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
           applicantType,
           tripConfig?.seats_total,
         );
-        const res = await fetch(`/api/trips/by-slug/${slug}/insurance-scope`, {
+        const insuranceScopeUrl = registrationToken
+          ? appendRegistrationTokenQuery(
+              `/api/trips/by-slug/${slug}/insurance-scope`,
+              registrationToken,
+            )
+          : `/api/trips/by-slug/${slug}/insurance-scope`;
+        const res = await fetch(insuranceScopeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participants: previewParticipants }),
+          credentials: "include",
+          body: JSON.stringify({
+            participants: previewParticipants,
+            ...(registrationToken ? { registration_token: registrationToken } : {}),
+          }),
           signal: controller.signal,
         });
         if (!res.ok) return;
@@ -1439,7 +1465,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
       controller.abort();
       clearTimeout(timer);
     };
-  }, [slug, applicantType, tripConfig?.seats_total, insuranceSelectionKey, form]);
+  }, [slug, registrationToken, applicantType, tripConfig?.seats_total, insuranceSelectionKey, form]);
 
   const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
@@ -1540,6 +1566,7 @@ export function BookingForm({ slug, startAtAgreementPreview = false }: BookingFo
     try {
       const base = {
         slug: slug,
+        ...(registrationToken ? { registration_token: registrationToken } : {}),
         contact_first_name:
           values.contact.first_name && values.contact.first_name.trim() !== ""
             ? values.contact.first_name

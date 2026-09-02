@@ -79,24 +79,38 @@ export async function expectMarkerInDashboardPreview(page: Page, marker: string)
 export async function isPublicAgreementApiAvailable(
   page: Page,
   slug: string,
+  registrationToken?: string,
 ): Promise<boolean> {
-  const res = await page.request.get(`/api/trips/by-slug/${slug}/agreement-templates`);
+  const url = registrationToken
+    ? `/api/trips/by-slug/${slug}/agreement-templates?token=${encodeURIComponent(registrationToken)}`
+    : `/api/trips/by-slug/${slug}/agreement-templates`;
+  const res = await page.request.get(url);
   return res.ok();
 }
 
-export async function expectMarkerOnReservePreview(page: Page, slug: string, marker: string) {
-  const apiOk = await isPublicAgreementApiAvailable(page, slug);
+export async function expectMarkerOnReservePreview(
+  page: Page,
+  slug: string,
+  marker: string,
+  registrationToken?: string,
+) {
+  const apiOk = await isPublicAgreementApiAvailable(page, slug, registrationToken);
   if (!apiOk) {
     console.warn(
-      `[PROD-UMOWA] API /agreement-templates zwraca ${(await page.request.get(`/api/trips/by-slug/${slug}/agreement-templates`)).status()} — wymaga deployu poprawki is_public`,
+      `[PROD-UMOWA] API /agreement-templates zwraca 403 — brak lub niepoprawny token rejestracji`,
     );
   }
-  await goToAgreementPreviewOnReserve(page, slug);
+  await goToAgreementPreviewOnReserve(page, slug, registrationToken);
   await expect(page.getByText(marker).first()).toBeVisible({ timeout: 20_000 });
 }
 
-export async function expectMarkerAbsentOnReservePreview(page: Page, slug: string, marker: string) {
-  await goToAgreementPreviewOnReserve(page, slug);
+export async function expectMarkerAbsentOnReservePreview(
+  page: Page,
+  slug: string,
+  marker: string,
+  registrationToken?: string,
+) {
+  await goToAgreementPreviewOnReserve(page, slug, registrationToken);
   await expect(page.getByText(marker)).toHaveCount(0);
 }
 

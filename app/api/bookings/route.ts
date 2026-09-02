@@ -29,6 +29,10 @@ import {
   calculateBookingTotalCents,
   calculateInstallmentAmounts,
 } from "@/lib/utils/payment-calculator";
+import {
+  assertRegistrationAccess,
+  registrationAccessErrorStatus,
+} from "@/lib/trips/registration-access";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -102,6 +106,7 @@ const invoiceSchema = z
 
 const bookingPayloadSchema = z.object({
   slug: z.string().min(1, "Brak identyfikatora wycieczki"),
+  registration_token: z.string().uuid("Brak lub niepoprawny token rejestracji"),
   contact_first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
   contact_last_name: z.string().min(2, "Podaj nazwisko").optional().or(z.literal("").transform(() => undefined)),
   contact_pesel: z
@@ -164,6 +169,19 @@ export async function POST(req: Request) {
 
     const payload = parsed.data;
     const seatsRequested = payload.participants.length;
+
+    const adminSupabaseForToken = createAdminClient();
+    const tokenAccess = await assertRegistrationAccess(
+      adminSupabaseForToken,
+      payload.slug,
+      payload.registration_token,
+    );
+    if (!tokenAccess.ok) {
+      return NextResponse.json(
+        { error: tokenAccess.error },
+        { status: registrationAccessErrorStatus(tokenAccess.error) },
+      );
+    }
 
     const supabase = await createClient();
 

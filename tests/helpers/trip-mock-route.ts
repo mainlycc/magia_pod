@@ -3,6 +3,11 @@ import type { Page } from "@playwright/test";
 /** Stałe ID i slug muszą być spójne z mockiem — strona `/trip/[slug]/reserve` używa slug z URL. */
 export const MOCK_TRIP_ID = "00000000-0000-4000-8000-000000000099";
 export const MOCK_TRIP_SLUG = "e2e-form-config";
+export const MOCK_REGISTRATION_TOKEN = "22222222-2222-4222-8222-222222222222";
+
+export function buildReserveUrl(slug: string = MOCK_TRIP_SLUG, token: string = MOCK_REGISTRATION_TOKEN) {
+  return `/trip/${slug}/reserve?token=${encodeURIComponent(token)}`;
+}
 
 export type TripMockOverrides = {
   registration_mode?: "both" | "individual" | "company";
@@ -46,6 +51,7 @@ export function buildMockTripRow(overrides: TripMockOverrides = {}) {
     title: "Wycieczka E2E (mock)",
     slug: MOCK_TRIP_SLUG,
     public_slug: null,
+    registration_token: MOCK_REGISTRATION_TOKEN,
     description: "Mock opisu",
     start_date: "2026-07-01",
     end_date: "2026-07-08",
@@ -94,6 +100,8 @@ export async function installTripMocks(page: Page, tripRow: Record<string, unkno
   await page.unroute(`**/api/documents/trip/${tripId}**`);
   await page.unroute("**/api/documents/trip/**");
   await page.unroute("**/api/trips/by-slug/**/agreement-templates**");
+  await page.unroute("**/api/trips/by-slug/**/validate-token**");
+  await page.unroute("**/api/trips/by-slug/**/insurance-scope**");
 
   await page.route("**/rest/v1/trips**", async (route) => {
     const req = route.request();
@@ -129,11 +137,30 @@ export async function installTripMocks(page: Page, tripRow: Record<string, unkno
     });
   });
 
+  await page.route("**/api/trips/by-slug/**/validate-token**", async (route) => {
+    const url = new URL(route.request().url());
+    const token = url.searchParams.get("token");
+    const ok = token === MOCK_REGISTRATION_TOKEN;
+    await route.fulfill({
+      status: ok ? 200 : 403,
+      contentType: "application/json",
+      body: JSON.stringify(ok ? { ok: true } : { error: "invalid_token" }),
+    });
+  });
+
   await page.route("**/api/trips/by-slug/**/agreement-templates**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ individual: null, company: null }),
+    });
+  });
+
+  await page.route("**/api/trips/by-slug/**/insurance-scope**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ scope: "" }),
     });
   });
 }

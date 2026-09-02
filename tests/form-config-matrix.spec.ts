@@ -1,12 +1,13 @@
 import { test, expect } from "@playwright/test";
 import {
   buildMockTripRow,
+  buildReserveUrl,
   installTripMocks,
   MOCK_TRIP_SLUG,
   type TripMockOverrides,
 } from "./helpers/trip-mock-route";
 
-const RESERVE_PATH = `/trip/${MOCK_TRIP_SLUG}/reserve`;
+const RESERVE_PATH = buildReserveUrl();
 
 async function openBookingForm(page: import("@playwright/test").Page) {
   await page.goto(RESERVE_PATH);

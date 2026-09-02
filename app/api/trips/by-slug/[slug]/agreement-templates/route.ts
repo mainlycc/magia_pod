@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import {
+  assertRegistrationAccessWithBypass,
+  registrationAccessErrorStatus,
+} from "@/lib/trips/registration-access";
 
 export const dynamic = "force-dynamic";
 
@@ -53,43 +58,27 @@ function injectCompanySection(html: string): string {
   return `${html.trimEnd()}\n\n${COMPANY_SECTION_HTML}\n`;
 }
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
-    // Service role: publiczna rezerwacja nie ma sesji, a RLS na trips ogranicza anon.
+    const token = request.nextUrl.searchParams.get("token");
     const admin = createAdminClient();
+    const supabase = await createClient();
 
-    // Najpierw znajdź wycieczkę po slug
-    let { data: trip, error: tripError } = await admin
-      .from("trips")
-      .select("id, is_active")
-      .eq("slug", slug)
-      .maybeSingle();
-
-    // Jeśli nie znaleziono, spróbuj public_slug
-    if (!trip && !tripError) {
-      const { data: tripByPublicSlug, error: errorByPublicSlug } = await admin
-        .from("trips")
-        .select("id, is_active")
-        .eq("public_slug", slug)
-        .maybeSingle();
-      
-      if (tripByPublicSlug) {
-        trip = tripByPublicSlug;
-      } else {
-        tripError = errorByPublicSlug;
-      }
+    const access = await assertRegistrationAccessWithBypass(
+      admin,
+      supabase,
+      slug,
+      token,
+    );
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: access.error },
+        { status: registrationAccessErrorStatus(access.error) },
+      );
     }
 
-    if (tripError || !trip) {
-      return NextResponse.json({ error: "trip_not_found" }, { status: 404 });
-    }
-
-    // Wystarczy aktywna wycieczka — lista /trip i /reserve nie filtrują po is_public.
-    if (!trip.is_active) {
-      return NextResponse.json({ error: "trip_not_available" }, { status: 403 });
-    }
-
+    const trip = access.trip;
     const { data: templates, error } = await admin
       .from("trip_agreement_templates")
       .select("registration_type, template_html")

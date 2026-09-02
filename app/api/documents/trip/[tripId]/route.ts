@@ -6,6 +6,11 @@ import {
   buildDefaultEmailSettings,
   isValidDocumentType,
 } from "@/lib/documents/constants";
+import {
+  assertRegistrationAccessByTripIdWithBypass,
+  registrationAccessErrorStatus,
+} from "@/lib/trips/registration-access";
+import { canManageTrip } from "@/lib/trips/can-manage-trip";
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims();
@@ -55,6 +60,23 @@ export async function GET(
     const { tripId } = await context.params;
     const supabase = await createClient();
     const adminClient = createAdminClient();
+    const token = request.nextUrl.searchParams.get("token");
+
+    const canManage = await canManageTrip(supabase, tripId);
+    if (!canManage) {
+      const access = await assertRegistrationAccessByTripIdWithBypass(
+        adminClient,
+        supabase,
+        tripId,
+        token,
+      );
+      if (!access.ok) {
+        return NextResponse.json(
+          { error: access.error },
+          { status: registrationAccessErrorStatus(access.error) },
+        );
+      }
+    }
 
     // Pobierz dokumenty specyficzne dla wycieczki
     const { data: tripDocs, error: tripDocsError } = await supabase

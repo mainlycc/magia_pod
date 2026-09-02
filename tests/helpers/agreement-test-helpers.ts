@@ -72,8 +72,15 @@ export async function deleteFieldByLabel(page: Page, labelPattern: RegExp) {
 }
 
 /** Przechodzi od razu do podglądu umowy (?podglad=1 — przykładowe dane, krok podsumowania). */
-export async function goToAgreementPreviewOnReserve(page: Page, slug: string) {
-  await page.goto(`/trip/${slug}/reserve?podglad=1`, {
+export async function goToAgreementPreviewOnReserve(
+  page: Page,
+  slug: string,
+  registrationToken?: string,
+) {
+  const tokenQuery = registrationToken
+    ? `token=${encodeURIComponent(registrationToken)}&`
+    : "";
+  await page.goto(`/trip/${slug}/reserve?${tokenQuery}podglad=1`, {
     waitUntil: "domcontentloaded",
     timeout: 45000,
   });
