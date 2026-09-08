@@ -220,7 +220,7 @@ function TripSectionCard({
     >
       {title && (
         <h2 className="mb-3 flex items-center gap-2.5 text-base font-semibold tracking-tight text-[#0a0a0a] max-xl:mb-3 xl:mb-4 xl:text-xl">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1e90ff]" aria-hidden />
+          <span className={azureClasses.sectionTitleDot} aria-hidden />
           {title}
         </h2>
       )}

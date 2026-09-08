@@ -1,8 +1,9 @@
 "use client";
 
+import type { CSSProperties, ReactNode } from "react";
 import { DM_Sans } from "next/font/google";
 import { cn } from "@/lib/utils";
-import { azureClasses } from "./azure-theme";
+import { azureClasses, azureCssVars } from "./azure-theme";
 import "./client-panel.css";
 
 const dmSans = DM_Sans({
@@ -12,7 +13,7 @@ const dmSans = DM_Sans({
 });
 
 type ClientPanelShellProps = {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   containerClassName?: string;
 };
@@ -30,6 +31,7 @@ export function ClientPanelShell({
         "font-[family-name:var(--font-dm-sans)]",
         className,
       )}
+      style={azureCssVars as CSSProperties}
     >
       <div className={cn(azureClasses.container, containerClassName)}>{children}</div>
     </div>

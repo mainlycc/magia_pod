@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { RefreshCw, Copy, Check, X } from "lucide-react"
+import { RefreshCw, X } from "lucide-react"
 
 type Invitation = {
   id: string
@@ -36,7 +36,6 @@ export default function ZaproszeniaKoordynatorowPage() {
   const [loading, setLoading] = useState(true)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [selectedRows, setSelectedRows] = useState<Invitation[]>([])
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const loadInvitations = async () => {
@@ -93,51 +92,6 @@ export default function ZaproszeniaKoordynatorowPage() {
       toast.error("Błąd podczas wysyłania zaproszenia")
     } finally {
       setSending(false)
-    }
-  }
-
-  const resendInvitation = async (invitationId: string) => {
-    try {
-      const res = await fetch(
-        `/api/coordinators/invitations/${invitationId}/resend`,
-        {
-          method: "POST",
-        }
-      )
-
-      if (res.ok) {
-        toast.success("Zaproszenie zostało wysłane ponownie")
-        await loadInvitations()
-      } else {
-        const error = await res.json()
-        if (error.error === "user_already_exists") {
-          toast.error("Użytkownik z tym emailem już istnieje")
-        } else {
-          toast.error("Nie udało się wysłać zaproszenia ponownie")
-        }
-      }
-    } catch (err) {
-      toast.error("Błąd podczas ponownego wysyłania zaproszenia")
-    }
-  }
-
-  const copyInvitationLink = async (token: string) => {
-    if (!token) {
-      toast.error("Brak tokenu zaproszenia")
-      return
-    }
-
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") || window.location.origin
-    const invitationLink = `${baseUrl}/register?token=${token}`
-
-    try {
-      await navigator.clipboard.writeText(invitationLink)
-      setCopiedToken(token)
-      toast.success("Link zaproszenia skopiowany do schowka")
-      setTimeout(() => setCopiedToken(null), 2000)
-    } catch (err) {
-      toast.error("Nie udało się skopiować linku")
     }
   }
 
@@ -242,91 +196,23 @@ export default function ZaproszeniaKoordynatorowPage() {
           return date.toLocaleDateString("pl-PL")
         },
       },
-      {
-        id: "actions",
-        header: "Akcje",
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            {row.original.status === "pending" && row.original.token && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyInvitationLink(row.original.token!)}
-                >
-                  {copiedToken === row.original.token ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => resendInvitation(row.original.id)}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                setSelectedRows([row.original])
-                setDeleteDialogOpen(true)
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ),
-      },
     ],
-    [copiedToken]
+    []
   )
+
+  const canResendSelected =
+    selectedRows.length > 0 && selectedRows.every((r) => r.status === "pending")
 
   return (
     <div className="space-y-4">
-
-      <div className="flex items-center justify-between">
+      {invitations.length > 0 && (
         <div className="text-sm text-muted-foreground">
-          {invitations.length > 0 && (
-            <span>
-              Łącznie zaproszeń: {invitations.length} | Oczekujące:{" "}
-              {invitations.filter((i) => i.status === "pending").length} |
-              Zaakceptowane:{" "}
-              {invitations.filter((i) => i.status === "accepted").length}
-            </span>
-          )}
+          Łącznie zaproszeń: {invitations.length} | Oczekujące:{" "}
+          {invitations.filter((i) => i.status === "pending").length} |
+          Zaakceptowane:{" "}
+          {invitations.filter((i) => i.status === "accepted").length}
         </div>
-        <div className="flex items-center gap-2">
-          {selectedRows.length > 0 && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBulkResend}
-                disabled={selectedRows.some((r) => r.status !== "pending")}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Wyślij ponownie ({selectedRows.length})
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <X className="h-4 w-4 mr-2" />
-                Usuń ({selectedRows.length})
-              </Button>
-            </>
-          )}
-          <Button onClick={() => setInviteDialogOpen(true)}>
-            Dodaj zaproszenie
-          </Button>
-        </div>
-      </div>
+      )}
 
       <ReusableTable
         columns={columns}
@@ -338,6 +224,32 @@ export default function ZaproszeniaKoordynatorowPage() {
         pageSize={20}
         emptyMessage="Brak zaproszeń"
         onSelectionChange={setSelectedRows}
+        onAdd={() => setInviteDialogOpen(true)}
+        addButtonLabel="Dodaj zaproszenie"
+        customToolbarButtons={(selectedCount) => (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkResend}
+              disabled={!canResendSelected}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Wyślij ponownie
+              {selectedCount > 0 ? ` (${selectedCount})` : ""}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={selectedCount === 0}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Usuń
+              {selectedCount > 0 ? ` (${selectedCount})` : ""}
+            </Button>
+          </>
+        )}
       />
 
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>

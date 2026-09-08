@@ -1,4 +1,4 @@
-export { azureColors, azureClasses } from "./azure-theme";
+export { AZURE_ACCENT, azureColors, azureClasses, azureCssVars } from "./azure-theme";
 export { AzureCard } from "./azure-card";
 export { BookingStepper, type BookingStepperStep } from "./booking-stepper";
 export { ClientPanelShell } from "./client-panel-shell";

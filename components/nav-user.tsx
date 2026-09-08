@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client"
 import { clearTripsListCache } from "@/lib/trips-list-cache"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
-import { Laptop, Moon, Sun } from "lucide-react"
+import { Moon, Sun } from "lucide-react"
 
 import {
   Avatar,
@@ -68,6 +68,12 @@ export function NavUser({
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (theme === "system") {
+      setTheme("light")
+    }
+  }, [theme, setTheme])
 
   const handleLogout = async () => {
     try {
@@ -131,7 +137,7 @@ export function NavUser({
               <>
                 <DropdownMenuLabel>Motyw</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
-                  value={theme}
+                  value={theme === "dark" ? "dark" : "light"}
                   onValueChange={(value) => setTheme(value)}
                 >
                   <DropdownMenuRadioItem className="flex gap-2" value="light">
@@ -141,10 +147,6 @@ export function NavUser({
                   <DropdownMenuRadioItem className="flex gap-2" value="dark">
                     <Moon size={ICON_SIZE} className="text-muted-foreground" />
                     <span>Ciemny</span>
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem className="flex gap-2" value="system">
-                    <Laptop size={ICON_SIZE} className="text-muted-foreground" />
-                    <span>Systemowy</span>
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
                 <DropdownMenuSeparator />

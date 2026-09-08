@@ -56,7 +56,7 @@ export function BookingStepper({
                 <span
                   className={cn(
                     "absolute inset-0 rounded-full",
-                    isCurrent ? "bg-[#1e90ff]" : "bg-[#0a0a0a]",
+                    isCurrent ? azureClasses.bgAccent : "bg-[#0a0a0a]",
                   )}
                 />
               )}
@@ -87,8 +87,8 @@ export function BookingStepper({
                 className={cn(
                   "flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] text-[13px] font-semibold",
                   azureClasses.mono,
-                  active && "bg-[#1e90ff] text-white shadow-[0_6px_14px_-6px_#1e90ff]",
-                  done && !active && "bg-[#cee4fc] text-[#1e90ff]",
+                  active && azureClasses.avatarAccent,
+                  done && !active && cn(azureClasses.bgAccentSoft, azureClasses.textAccent),
                   !active && !done && "bg-[#eceef3] text-[#a1a1aa]",
                 )}
               >

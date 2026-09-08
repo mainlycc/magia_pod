@@ -202,7 +202,7 @@ export function ParticipantCardShell({
             className={cn(
               "flex h-11 w-11 items-center justify-center rounded-xl text-sm font-semibold tracking-tight",
               hasName
-                ? "bg-[#1e90ff] text-white shadow-[0_6px_14px_-6px_#1e90ff]"
+                ? azureClasses.avatarAccent
                 : "border border-dashed border-[#dadce3] bg-[#eceef3] text-[#a1a1aa]",
             )}
           >
@@ -212,7 +212,12 @@ export function ParticipantCardShell({
             <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[#a1a1aa]">
               <span>UCZESTNIK {String(index + 1).padStart(2, "0")}</span>
               {isMain && (
-                <span className="rounded-full bg-[#1e90ff] px-2 py-0.5 text-[10px] font-bold text-white">
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-bold text-white",
+                    azureClasses.bgAccent,
+                  )}
+                >
                   ZGŁASZAJĄCY
                 </span>
               )}
@@ -300,8 +305,18 @@ export function AzureInfoAlert({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-7 grid grid-cols-[auto_1fr] items-start gap-4 rounded-[14px] border border-[#cee4fc] bg-[#e8f2fe] p-[18px_22px]">
-      <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[#1e90ff] text-white shadow-[0_6px_14px_-6px_#1e90ff]">
+    <div
+      className={cn(
+        "mb-7 grid grid-cols-[auto_1fr] items-start gap-4 p-[18px_22px]",
+        azureClasses.infoBanner,
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] text-white",
+          azureClasses.avatarAccent,
+        )}
+      >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <circle cx="12" cy="12" r="9" />
           <path d="M12 8v5" />
@@ -309,7 +324,9 @@ export function AzureInfoAlert({
         </svg>
       </div>
       <div>
-        <div className="mb-1.5 text-[10.5px] font-bold tracking-[0.1em] text-[#1e90ff]">{title}</div>
+        <div className={cn("mb-1.5 text-[10.5px] font-bold tracking-[0.1em]", azureClasses.textAccent)}>
+          {title}
+        </div>
         <div className="text-sm font-medium leading-relaxed text-[#0a0a0a]">{children}</div>
       </div>
     </div>

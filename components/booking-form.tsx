@@ -2755,13 +2755,19 @@ export function BookingForm({
                           : null;
                         if (seatsAvailable === null) return null;
                         return (
-                          <div className="rounded-[14px] border border-[#cee4fc] bg-[#e8f2fe] p-3 text-sm text-[#1574d6]">
+                          <div
+                            className={cn(
+                              "p-3 text-sm",
+                              azureClasses.infoBanner,
+                              azureClasses.textAccentDark,
+                            )}
+                          >
                             <span className="font-medium">Wolne miejsca:</span>{" "}
                             <span>
                               {seatsAvailable} z {seatsTotal}
                             </span>
                             {seatsAvailable > 0 ? (
-                              <span className="ml-1 text-blue-700">
+                              <span className={cn("ml-1", azureClasses.textAccentDark)}>
                                 – możesz dodać maksymalnie {seatsAvailable}{" "}
                                 {seatsAvailable === 1 ? "uczestnika" : "uczestników"}.
                               </span>
@@ -3522,7 +3528,10 @@ export function BookingForm({
                                                     href={insurance.owu_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="mt-1 flex items-center gap-1 text-xs font-medium text-[#1e90ff] hover:underline"
+                                                    className={cn(
+                                                      "mt-1 flex items-center gap-1",
+                                                      azureClasses.linkAccent,
+                                                    )}
                                                   >
                                                     <ExternalLink className="h-3 w-3" />
                                                     OWU

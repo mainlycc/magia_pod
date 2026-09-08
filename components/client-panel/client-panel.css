@@ -2,6 +2,10 @@
 
 .client-panel {
   color-scheme: light;
+  /*
+   * Tokeny koloru (w tym --client-accent*) wstrzykuje ClientPanelShell
+   * z `azureCssVars` / `AZURE_ACCENT` w azure-theme.ts — nie hardcoduj tu hexów akcentu.
+   */
   --client-bg: #eef0f5;
   --client-paper: #ffffff;
   --client-ink: #0a0a0a;
@@ -9,9 +13,6 @@
   --client-ink-mute: #a1a1aa;
   --client-line: #dadce3;
   --client-line-soft: #eceef3;
-  --client-accent: #1e90ff;
-  --client-accent-soft: #cee4fc;
-  --client-accent-ice: #e8f2fe;
   --client-success: #16a34a;
   --client-danger: #dc2626;
 

@@ -413,7 +413,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
                   <Separator className="my-1 bg-[#eceef3]" />
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-medium text-[#3f3f46]">Łączna cena</span>
-                    <span className="text-lg font-semibold text-[#1e90ff]">
+                    <span className={cn("text-lg font-semibold", azureClasses.textAccent)}>
                       {(totalPrice / 100).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
                     </span>
                   </div>
@@ -453,7 +453,12 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
                       key={participant.id}
                       className="flex items-start gap-3 rounded-2xl border border-[#dadce3] bg-[#f7f8fb] p-4"
                     >
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1e90ff] text-sm font-semibold text-white shadow-[0_6px_14px_-6px_#1e90ff]">
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold",
+                          azureClasses.avatarAccent,
+                        )}
+                      >
                         {initials || idx + 1}
                       </div>
                       <div className="min-w-0">

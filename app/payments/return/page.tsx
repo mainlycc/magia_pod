@@ -11,7 +11,9 @@ import {
   AzureCard,
   ClientPanelHeader,
   ClientPanelShell,
+  azureClasses,
 } from "@/components/client-panel";
+import { cn } from "@/lib/utils";
 
 function PaymentReturnContent() {
   const searchParams = useSearchParams();
@@ -192,7 +194,7 @@ function PaymentReturnContent() {
         <div className="space-y-4">
           {status === "loading" && (
             <div className="flex flex-col items-center justify-center gap-4 py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-[#1e90ff]" />
+              <Loader2 className={cn("h-12 w-12 animate-spin", azureClasses.textAccent)} />
               <p className="text-[#3f3f46]">{message || "Sprawdzanie statusu płatności..."}</p>
             </div>
           )}
@@ -217,7 +219,7 @@ function PaymentReturnContent() {
 
           {status === "pending" && (
             <Alert className="rounded-[14px] border-[#dadce3] bg-[#f7f8fb]">
-              <Clock className="h-4 w-4 text-[#1e90ff]" />
+              <Clock className={cn("h-4 w-4", azureClasses.textAccent)} />
               <AlertTitle className="text-[#0a0a0a]">Płatność w trakcie przetwarzania</AlertTitle>
               <AlertDescription className="text-[#3f3f46]">
                 {message}
@@ -275,7 +277,7 @@ export default function PaymentReturnPage() {
       <ClientPanelShell containerClassName="max-w-2xl">
         <AzureCard accent="blue" title="Status płatności">
           <div className="flex flex-col items-center justify-center gap-4 py-8">
-            <Loader2 className="h-12 w-12 animate-spin text-[#1e90ff]" />
+            <Loader2 className={cn("h-12 w-12 animate-spin", azureClasses.textAccent)} />
             <p className="text-[#3f3f46]">Ładowanie...</p>
           </div>
         </AzureCard>
