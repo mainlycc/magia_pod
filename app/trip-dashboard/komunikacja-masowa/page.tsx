@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { MoreHorizontal, Pencil } from "lucide-react"
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -244,20 +244,6 @@ export default function KomunikacjaMasowaPage() {
 
   return (
     <div className="space-y-4">
-
-      <div className="flex items-center justify-between">
-        {selectedRows.length > 0 && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            Usuń ({selectedRows.length})
-          </Button>
-        )}
-        <Button onClick={handleAdd}>Dodaj szablon</Button>
-      </div>
-
       {addError && (
         <div className="text-sm text-destructive">{addError}</div>
       )}
@@ -272,6 +258,20 @@ export default function KomunikacjaMasowaPage() {
         pageSize={20}
         emptyMessage="Brak szablonów wiadomości"
         onSelectionChange={handleSelectionChange}
+        onAdd={handleAdd}
+        addButtonLabel="Dodaj szablon"
+        customToolbarButtons={(selectedCount) => (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteDialogOpen(true)}
+            disabled={selectedCount === 0}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Usuń
+            {selectedCount > 0 ? ` (${selectedCount})` : ""}
+          </Button>
+        )}
       />
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
