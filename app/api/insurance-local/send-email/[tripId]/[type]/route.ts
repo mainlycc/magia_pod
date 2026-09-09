@@ -266,6 +266,7 @@ async function buildXlsx(
       .select("first_name, last_name, birth_date, bookings!inner ( trip_id, status )")
       .eq("bookings.trip_id", tripId)
       .neq("bookings.status", "cancelled")
+      .eq("is_active", true)
 
     participants = (data || []).map((p: { first_name: string; last_name: string; birth_date: string | null }) => ({
       first_name: p.first_name,
@@ -284,7 +285,7 @@ async function buildXlsx(
     if (variantIds.length > 0) {
       let query = supabase
         .from("participant_insurances")
-        .select("participants ( first_name, last_name, birth_date )")
+        .select("participants ( first_name, last_name, birth_date, is_active )")
         .in("trip_insurance_variant_id", variantIds)
         .neq("status", "cancelled")
 
@@ -301,18 +302,20 @@ async function buildXlsx(
         pi: any
       ): Array<{ first_name: string; last_name: string; date_of_birth: string | null }> => {
         const p = pi?.participants as
-          | { first_name?: string; last_name?: string; birth_date?: string | null }
-          | Array<{ first_name?: string; last_name?: string; birth_date?: string | null }>
+          | { first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }
+          | Array<{ first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }>
           | null
           | undefined
 
         if (!p) return []
         const arr = Array.isArray(p) ? p : [p]
-        return arr.map((x) => ({
-          first_name: String(x?.first_name ?? ""),
-          last_name: String(x?.last_name ?? ""),
-          date_of_birth: (x?.birth_date ?? null) as string | null,
-        }))
+        return arr
+          .filter((x) => x && x.is_active !== false)
+          .map((x) => ({
+            first_name: String(x?.first_name ?? ""),
+            last_name: String(x?.last_name ?? ""),
+            date_of_birth: (x?.birth_date ?? null) as string | null,
+          }))
       }
 
       participants = (data || []).flatMap(toParticipantRows)

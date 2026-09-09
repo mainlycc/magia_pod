@@ -224,7 +224,8 @@ export async function fetchParticipantsForReport(
       )
     `,
     )
-    .eq("bookings.trip_id", tripId);
+    .eq("bookings.trip_id", tripId)
+    .eq("is_active", true);
 
   if (error) throw new Error(error.message);
 

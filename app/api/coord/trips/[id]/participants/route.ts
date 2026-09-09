@@ -65,7 +65,8 @@ export async function GET(
       const { data: participantsData, error: participantsError } = await adminSupabase
         .from("participants")
         .select("first_name,last_name,email,phone,booking_id")
-        .in("booking_id", bookingIds);
+        .in("booking_id", bookingIds)
+        .eq("is_active", true);
 
       if (participantsError) {
         console.error("Participants fetch error", participantsError);

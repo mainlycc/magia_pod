@@ -48,6 +48,7 @@ export async function GET(
         `)
         .eq("bookings.trip_id", tripId)
         .neq("bookings.status", "cancelled")
+        .eq("is_active", true)
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       participants = (data || []).map((p) => ({
@@ -79,7 +80,8 @@ export async function GET(
             participants (
               first_name,
               last_name,
-              birth_date
+              birth_date,
+              is_active
             )
           `)
           .in("trip_insurance_variant_id", variantIds)
@@ -103,15 +105,15 @@ export async function GET(
 
         const toParticipantRows = (pi: any): Array<{ first_name: string; last_name: string; date_of_birth: string | null }> => {
           const p = pi?.participants as
-            | { first_name?: string; last_name?: string; birth_date?: string | null }
-            | Array<{ first_name?: string; last_name?: string; birth_date?: string | null }>
+            | { first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }
+            | Array<{ first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }>
             | null
             | undefined
 
           if (!p) return []
           const arr = Array.isArray(p) ? p : [p]
           return arr
-            .filter((x) => x && (x.first_name || x.last_name || x.birth_date !== undefined))
+            .filter((x) => x && x.is_active !== false && (x.first_name || x.last_name || x.birth_date !== undefined))
             .map((x) => ({
               first_name: String(x.first_name ?? ""),
               last_name: String(x.last_name ?? ""),

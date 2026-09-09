@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DOCUMENT_TYPES } from "@/lib/documents/constants";
+import { DOCUMENTATION_UI_TYPES } from "@/lib/documents/constants";
 
 export type Base64Attachment = { filename: string; base64: string };
 
@@ -16,8 +16,11 @@ function guessPdfFilename(row: DocumentRow): string {
 }
 
 /**
- * Zwraca komplet dokumentów z zakładki "Dokumentacja" dla danej wycieczki.
- * Zasada: dokumenty trip nadpisują globalne; zwracamy tylko te, które istnieją.
+ * Zwraca dokumenty z zakładki "Dokumentacja" (`/trip-dashboard/dokumentacja`).
+ * Zasady:
+ * - tylko typy widoczne w UI (DOCUMENTATION_UI_TYPES) — stare typy (rodo/terms/conditions) nie lecą do maila
+ * - dokument trip nadpisuje globalny
+ * - respektuje przełącznik attach_on_reservation (domyślnie: włączony)
  */
 export async function getTripDocumentationEmailAttachments(params: {
   tripId: string;
@@ -64,7 +67,7 @@ export async function getTripDocumentationEmailAttachments(params: {
   );
 
   const chosen: { row: DocumentRow; documentType: string }[] = [];
-  for (const t of DOCUMENT_TYPES) {
+  for (const t of DOCUMENTATION_UI_TYPES) {
     const row = tripMap.get(t) ?? globalMap.get(t);
     if (!row?.file_name) continue;
 

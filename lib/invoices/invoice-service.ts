@@ -519,7 +519,8 @@ export async function processPaymentInvoice(
     const { data: participants } = await supabase
       .from("participants")
       .select("id")
-      .eq("booking_id", bookingId);
+      .eq("booking_id", bookingId)
+      .eq("is_active", true);
     const participantsCount = participants?.length || 1;
 
     // ─── 5. Pobierz poprzednie faktury dla tej rezerwacji ───

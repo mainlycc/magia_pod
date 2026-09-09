@@ -43,6 +43,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ParticipantAdditionalServicesEditor } from "./participant-additional-services-editor"
+import { Switch } from "@/components/ui/switch"
+import { isParticipantActive } from "@/lib/participants/active"
 
 // Wartości muszą odpowiadać PARTICIPANT_REPORT_TYPES z lib/reports/participants-report.ts
 // (nie importujemy stamtąd — moduł używa ExcelJS i jest przeznaczony na serwer).
@@ -90,6 +92,7 @@ type Participant = {
   gender_code: string | null
   booking_id: string
   selected_services: unknown
+  is_active?: boolean | null
   bookings: {
     id: string
     booking_ref: string
@@ -257,6 +260,7 @@ export default function UczestnicyPage() {
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [generatingInvoiceForPaymentId, setGeneratingInvoiceForPaymentId] = useState<string | null>(null)
   const [generatingReportType, setGeneratingReportType] = useState<ParticipantReportTypeValue | null>(null)
+  const [togglingParticipantId, setTogglingParticipantId] = useState<string | null>(null)
   // Wiadomość grupowa do uczestników (tak samo jak u koordynatora)
   const [messageDialogOpen, setMessageDialogOpen] = useState(false)
   const [messageSubject, setMessageSubject] = useState("")
@@ -431,6 +435,43 @@ export default function UczestnicyPage() {
     })
   }
 
+  const toggleParticipantActive = async (participant: Participant) => {
+    if (isCoordinator || togglingParticipantId) return
+    const nextActive = !isParticipantActive(participant)
+    setTogglingParticipantId(participant.id)
+    // Optymistyczna aktualizacja UI
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === participant.id ? { ...p, is_active: nextActive } : p)),
+    )
+    try {
+      const res = await fetch(`/api/participants/${participant.id}/toggle-active`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        throw new Error(await res.text())
+      }
+      const result = (await res.json()) as { is_active: boolean }
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === participant.id ? { ...p, is_active: result.is_active } : p)),
+      )
+      toast.success(
+        result.is_active
+          ? "Uczestnik włączony — będzie uwzględniany w raportach i rozliczeniach"
+          : "Uczestnik wyłączony — nie będzie uwzględniany w raportach i rozliczeniach",
+      )
+    } catch (err) {
+      console.error("toggleParticipantActive:", err)
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === participant.id ? { ...p, is_active: participant.is_active } : p,
+        ),
+      )
+      toast.error("Nie udało się zmienić statusu uczestnika")
+    } finally {
+      setTogglingParticipantId(null)
+    }
+  }
+
   const toggleAgreementPreview = (bookingId: string) => {
     setExpandedAgreementPreviewByBookingId((prev) => {
       const next = new Set(prev)
@@ -594,12 +635,13 @@ export default function UczestnicyPage() {
     return paymentInputs[bookingId] ?? ""
   }
 
-  // Ile osób jest podpiętych do danej rezerwacji (booking).
+  // Ile aktywnych osób jest podpiętych do danej rezerwacji (booking).
   // Wpłaty są zapisywane na poziomie booking, ale w tabeli uczestników
-  // pokazujemy je "per osoba" (podział po równo).
+  // pokazujemy je "per osoba" (podział po równo) — tylko wśród aktywnych.
   const participantCountByBookingId = useMemo(() => {
     const map = new Map<string, number>()
     for (const p of participants) {
+      if (!isParticipantActive(p)) continue
       // Kluczujemy po `bookings.id` jeśli jest, bo to jest faktyczny identyfikator rezerwacji
       // używany do historii płatności. Fallback do `participants.booking_id` na wypadek braków.
       const bookingId = p.bookings?.id ?? p.booking_id
@@ -615,7 +657,7 @@ export default function UczestnicyPage() {
     return participantCountByBookingId.get(bookingId) ?? 1
   }
 
-  // "Pierwszy uczestnik" w danej umowie/rezerwacji (booking).
+  // "Pierwszy uczestnik" w danej umowie/rezerwacji (booking) — spośród aktywnych.
   // Tylko na nim można dodawać wpłaty ręcznie, ale kwota i tak jest wspólna dla booking,
   // więc reszta uczestników dostaje ją automatycznie (w UI dzielimy po równo).
   const primaryParticipantIdByBookingId = useMemo(() => {
@@ -623,6 +665,7 @@ export default function UczestnicyPage() {
     const groups = new Map<string, Participant[]>()
 
     for (const p of participants) {
+      if (!isParticipantActive(p)) continue
       const bookingId = p.bookings?.id ?? p.booking_id
       if (!bookingId) continue
       const arr = groups.get(bookingId) ?? []
@@ -644,6 +687,7 @@ export default function UczestnicyPage() {
   }, [participants])
 
   const canManuallyAddPaymentForParticipant = (p: Participant): boolean => {
+    if (!isParticipantActive(p)) return false
     const bookingId = p.bookings?.id ?? p.booking_id
     if (!bookingId) return true
     const count = participantCountByBookingId.get(bookingId) ?? 1
@@ -652,10 +696,11 @@ export default function UczestnicyPage() {
     return !primaryId || primaryId === p.id
   }
 
-  // Suma do zapłaty za całą umowę (booking) — suma ceny + usług dodatkowych wszystkich uczestników w booking.
+  // Suma do zapłaty za całą umowę (booking) — tylko aktywni uczestnicy.
   const totalDueCentsByBookingId = useMemo(() => {
     const map = new Map<string, number>()
     for (const p of participants) {
+      if (!isParticipantActive(p)) continue
       const bookingId = p.bookings?.id ?? p.booking_id
       if (!bookingId) continue
       const base = p.bookings?.trips?.price_cents ?? 0
@@ -699,33 +744,35 @@ export default function UczestnicyPage() {
   }, [participants, primaryParticipantIdByBookingId])
 
   const getPaidPerParticipantCents = (p: Participant): number => {
+    if (!isParticipantActive(p)) return 0
     const paid = p.bookings?.paid_amount_cents ?? 0
     const count = getBookingParticipantCount(p)
     if (count <= 1) return paid
     return Math.round(paid / count)
   }
 
-  // Oblicz statystyki
+  // Oblicz statystyki — tylko aktywni uczestnicy
   const stats = useMemo(() => {
-    const totalParticipants = participants.length
+    const activeParticipants = participants.filter(isParticipantActive)
+    const totalParticipants = activeParticipants.length
     const totalSeats = tripFullData?.seats_total ?? 0
 
     // Zlicz na podstawie aktualnych wpłat (paid_amount_cents)
-    const withAnyPayment = participants.filter(
+    const withAnyPayment = activeParticipants.filter(
       (p) => getPaidPerParticipantCents(p) > 0
     ).length
-    const fullyPaid = participants.filter((p) => {
+    const fullyPaid = activeParticipants.filter((p) => {
       const paid = getPaidPerParticipantCents(p)
       const total = p.bookings?.trips?.price_cents ?? 0
       return total > 0 && paid >= total
     }).length
 
     // Suma wpłat i suma do zapłaty
-    const totalPaidCents = participants.reduce(
+    const totalPaidCents = activeParticipants.reduce(
       (sum, p) => sum + getPaidPerParticipantCents(p),
       0
     )
-    const totalDueCents = participants.reduce(
+    const totalDueCents = activeParticipants.reduce(
       (sum, p) =>
         sum +
         (p.bookings?.trips?.price_cents ?? 0) +
@@ -740,6 +787,7 @@ export default function UczestnicyPage() {
       fullyPaid,
       totalPaidCents,
       totalDueCents,
+      inactiveCount: participants.length - activeParticipants.length,
     }
   }, [participants, tripFullData, selectedTrip, participantCountByBookingId])
 
@@ -832,13 +880,16 @@ export default function UczestnicyPage() {
   }, [tripFullData, selectedTrip])
 
   const additionalServicesTotalAllParticipantsCents = useMemo(() => {
-    return participants.reduce((sum, p) => sum + getSelectedServicesTotalCents(p.selected_services), 0)
+    return participants
+      .filter(isParticipantActive)
+      .reduce((sum, p) => sum + getSelectedServicesTotalCents(p.selected_services), 0)
   }, [participants])
 
   const averageAdditionalServicesPerPersonCents = useMemo(() => {
-    if (participants.length <= 0) return 0
-    return Math.round(additionalServicesTotalAllParticipantsCents / participants.length)
-  }, [additionalServicesTotalAllParticipantsCents, participants.length])
+    const activeCount = participants.filter(isParticipantActive).length
+    if (activeCount <= 0) return 0
+    return Math.round(additionalServicesTotalAllParticipantsCents / activeCount)
+  }, [additionalServicesTotalAllParticipantsCents, participants])
 
   const totalCostPerPerson = useMemo(() => {
     const base = tripFullData?.price_cents ?? 0
@@ -936,7 +987,10 @@ export default function UczestnicyPage() {
       {/* Dolna sekcja - Lista uczestników */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <CardTitle>Lista uczestników ({participants.length} os.)</CardTitle>
+          <CardTitle>
+            Lista uczestników ({stats.totalParticipants} os.
+            {stats.inactiveCount > 0 ? `, ${stats.inactiveCount} wył.` : ""})
+          </CardTitle>
           {isCoordinator ? (
             <Button asChild variant="outline" size="sm">
               <Link href={`/coord/trips/${selectedTrip.id}/message`}>
@@ -949,7 +1003,7 @@ export default function UczestnicyPage() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={participants.length === 0}
+                disabled={stats.totalParticipants === 0}
                 onClick={() => setMessageDialogOpen(true)}
               >
                 <Mail className="mr-2 h-4 w-4" />
@@ -960,7 +1014,7 @@ export default function UczestnicyPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={participants.length === 0 || generatingReportType !== null}
+                  disabled={stats.totalParticipants === 0 || generatingReportType !== null}
                 >
                   {generatingReportType !== null ? (
                     <>
@@ -1011,11 +1065,14 @@ export default function UczestnicyPage() {
                 <TableBody>
                   {sortedParticipants.map((participant) => {
                     const booking = participant.bookings
+                    const isActive = isParticipantActive(participant)
                     const isExpanded = !isCoordinator && expandedRows.has(participant.id)
                     const paymentStatus = booking?.payment_status || "unpaid"
                     const paidAmount = getPaidPerParticipantCents(participant)
-                    const baseAmount = booking?.trips?.price_cents || 0
-                    const additionalServicesAmount = getSelectedServicesTotalCents(participant.selected_services)
+                    const baseAmount = isActive ? (booking?.trips?.price_cents || 0) : 0
+                    const additionalServicesAmount = isActive
+                      ? getSelectedServicesTotalCents(participant.selected_services)
+                      : 0
                     const totalAmount = baseAmount + additionalServicesAmount
                     const paidPercent = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0
                     const agreementList = booking?.agreements ?? []
@@ -1043,7 +1100,10 @@ export default function UczestnicyPage() {
                     return (
                       <React.Fragment key={participant.id}>
                         <TableRow
-                          className={cn(!isCoordinator && "cursor-pointer")}
+                          className={cn(
+                            !isCoordinator && "cursor-pointer",
+                            !isActive && "opacity-55 bg-muted/40",
+                          )}
                           onClick={() => {
                             if (isCoordinator) return
                             if (booking?.id && !isExpanded) {
@@ -1069,9 +1129,16 @@ export default function UczestnicyPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium truncate block">
-                              {participant.first_name} {participant.last_name}
-                            </span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-medium truncate">
+                                {participant.first_name} {participant.last_name}
+                              </span>
+                              {!isActive && (
+                                <Badge variant="secondary" className="shrink-0 text-xs">
+                                  Wyłączony
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="truncate">
                             {agreementNumberUi}
@@ -1086,21 +1153,47 @@ export default function UczestnicyPage() {
                             {formatDate(booking?.created_at)}
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs whitespace-nowrap",
-                                getPaymentStatusBadgeClass(paymentStatus)
-                              )}
-                            >
-                              {formatCurrency(paidAmount)} / {formatCurrency(totalAmount)} ({paidPercent}%)
-                            </Badge>
+                            {isActive ? (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-xs whitespace-nowrap",
+                                  getPaymentStatusBadgeClass(paymentStatus)
+                                )}
+                              >
+                                {formatCurrency(paidAmount)} / {formatCurrency(totalAmount)} ({paidPercent}%)
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Nie w rozliczeniach</span>
+                            )}
                           </TableCell>
                         </TableRow>
                         {isExpanded && (
                           <TableRow>
                             <TableCell colSpan={6} className="bg-muted/30 p-0">
                               <div className="p-4 space-y-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium">Uczestnik aktywny</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Wyłączeni nie wchodzą do raportów, sum rozliczeń ani eksportów.
+                                    </p>
+                                  </div>
+                                  <div
+                                    className="flex items-center gap-2"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {togglingParticipantId === participant.id && (
+                                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    )}
+                                    <Switch
+                                      checked={isActive}
+                                      disabled={togglingParticipantId === participant.id}
+                                      onCheckedChange={() => toggleParticipantActive(participant)}
+                                      aria-label="Włącz lub wyłącz uczestnika"
+                                    />
+                                  </div>
+                                </div>
                                 <div>
                                   <h4 className="font-semibold text-sm mb-2">
                                     Dane osobowe

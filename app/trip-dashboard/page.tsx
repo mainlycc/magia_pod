@@ -101,6 +101,7 @@ export default function TripDashboardPage() {
           `
           )
           .eq("bookings.trip_id", selectedTrip.id)
+          .eq("is_active", true)
 
         if (error) {
           console.error("Dashboard stats error:", error)

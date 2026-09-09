@@ -119,7 +119,9 @@ export async function ensureAgreementForBooking(
 
   const overrides = opts.selectedServicesByParticipantId;
   const participants = Array.isArray(booking.participants)
-    ? booking.participants.map((p: Record<string, unknown>) => {
+    ? booking.participants
+        .filter((p: Record<string, unknown>) => p.is_active !== false)
+        .map((p: Record<string, unknown>) => {
         const id = typeof p.id === "string" ? p.id : null;
         const fromOverride =
           id && overrides && Object.prototype.hasOwnProperty.call(overrides, id)

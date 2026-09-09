@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq("bookings.trip_id", tripId)
       .neq("bookings.status", "cancelled")
+      .eq("is_active", true)
       .order("last_name", { ascending: true })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
