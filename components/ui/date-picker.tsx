@@ -133,11 +133,11 @@ export function DatePicker({
           </Button>
         </PopoverTrigger>
       </div>
-      <PopoverContent align={align} className="w-auto p-2">
+      <PopoverContent align={align} className="w-auto p-3">
         <Calendar
           className={cn(
-            // Powiększamy siatkę dni, żeby kalendarz nie był „przykurczony”.
-            "[--cell-size:2.5rem]",
+            // Powiększamy siatkę dni, żeby kalendarz nie był zbity.
+            "[--cell-size:2.75rem]",
             calendarClassName
           )}
           mode="single"

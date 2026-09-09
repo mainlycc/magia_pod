@@ -322,7 +322,7 @@ export default function DodajWycieczkePage() {
   return (
     <div className="space-y-3">
       <TripCreationProgress currentStep={1} />
-      <Card className="p-4">
+      <Card className="px-10 py-4">
         <CardContent className="px-0 pb-0 space-y-4">
           {/* Numer wycieczki */}
           <div className="grid gap-1">
@@ -348,9 +348,9 @@ export default function DodajWycieczkePage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
+          <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-xs">
             {/* Nazwa */}
-            <div className="grid gap-1">
+            <div className="grid gap-1 col-span-2">
               <Label className="text-xs">Nazwa *</Label>
               <Input
                 value={tripTitle}
@@ -361,14 +361,14 @@ export default function DodajWycieczkePage() {
             </div>
 
             {/* Opis */}
-            <div className="grid gap-1">
+            <div className="grid gap-1 col-span-2">
               <Label className="text-xs">Opis</Label>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Opis wycieczki"
-                rows={1}
-                className="text-xs resize-none h-8 min-h-8 py-1.5"
+                rows={4}
+                className="text-xs min-h-[80px] resize-y"
               />
             </div>
 
@@ -602,7 +602,7 @@ export default function DodajWycieczkePage() {
           <Separator />
 
           {/* Harmonogram płatności */}
-          <div className="border rounded-md p-3 space-y-2 text-xs">
+          <div className="border rounded-md px-10 py-4 space-y-2 text-xs">
             <PaymentScheduleEditor
               schedule={paymentSchedule}
               onChange={setPaymentSchedule}
@@ -625,7 +625,7 @@ export default function DodajWycieczkePage() {
               </Label>
             </div>
             {paymentReminderEnabled && (
-              <div className="grid gap-1">
+              <div className="grid gap-1 w-1/2">
                 <Label className="text-xs">
                   Dni przed wycieczką (wysyłka maila)
                 </Label>

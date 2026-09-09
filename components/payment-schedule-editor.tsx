@@ -225,7 +225,7 @@ export function PaymentScheduleEditor({
         {localSchedule.map((item, index) => (
           <div
             key={index}
-            className="flex flex-col gap-2 p-3 border rounded-md"
+            className="flex flex-col gap-2 px-10 py-4 border rounded-md"
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-center">
@@ -242,7 +242,7 @@ export function PaymentScheduleEditor({
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-x-12 gap-y-2">
               <div className="grid gap-1">
                 <Label className="text-xs">Procent (%)</Label>
                 <Input

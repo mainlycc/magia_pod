@@ -34,9 +34,9 @@ export function BasicSettingsSection({
   setShowAdditionalServices,
 }: BasicSettingsSectionProps) {
   return (
-    <Card className="p-3 space-y-2">
+    <Card className="px-10 py-4 space-y-2">
       <CardContent className="px-0 pb-0 space-y-2">
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-xs">
           <div className="grid gap-1">
             <Label className="text-xs">Dostępne ścieżki zgłoszenia</Label>
             <Select
@@ -62,7 +62,7 @@ export function BasicSettingsSection({
         </div>
 
         {(registrationMode === "individual" || registrationMode === "both") && (
-          <div className="grid gap-2 mt-4 border rounded-md p-3">
+          <div className="grid gap-2 mt-4 border rounded-md px-10 py-4">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">
                 Wymagane pola zgłaszającego
@@ -71,8 +71,8 @@ export function BasicSettingsSection({
                 Wybierz które pola są obowiązkowe dla osoby Zgłaszającej. Imię i nazwisko są zawsze wymagane.
               </p>
             </div>
-            <div className="space-y-3 pl-2">
-              <div className="flex items-center justify-between rounded-lg border p-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     Adres
@@ -91,7 +91,7 @@ export function BasicSettingsSection({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-2">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     E-mail
@@ -110,7 +110,7 @@ export function BasicSettingsSection({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-2">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     Telefon
@@ -129,7 +129,7 @@ export function BasicSettingsSection({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-2">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     PESEL
@@ -153,7 +153,7 @@ export function BasicSettingsSection({
         )}
 
         {(registrationMode === "individual" || registrationMode === "both") && (
-          <div className="grid gap-2 mt-4 border rounded-md p-3">
+          <div className="grid gap-2 mt-4 border rounded-md px-10 py-4">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">
                 Wymagane pola uczestników
@@ -162,8 +162,8 @@ export function BasicSettingsSection({
                 Wybierz które pola są obowiązkowe w formularzu rezerwacji dla uczestników. Imię i nazwisko są zawsze wymagane.
               </p>
             </div>
-            <div className="space-y-3 pl-2">
-              <div className="flex items-center justify-between rounded-lg border p-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     Dokument tożsamości / Paszport
@@ -182,7 +182,7 @@ export function BasicSettingsSection({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-2">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     Płeć
@@ -201,7 +201,7 @@ export function BasicSettingsSection({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-2">
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium cursor-pointer">
                     Telefon
@@ -226,7 +226,7 @@ export function BasicSettingsSection({
           
         <div className="grid gap-1 mt-4">
           <Label className="text-xs">Krok usługi dodatkowe</Label>
-          <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="flex items-center justify-between rounded-lg border px-10 py-4">
             <div className="space-y-0.5">
               <Label className="text-xs font-medium cursor-pointer">
                 Pokaż krok "Usługi dodatkowe" w formularzu

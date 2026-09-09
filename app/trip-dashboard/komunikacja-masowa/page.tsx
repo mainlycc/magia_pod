@@ -16,13 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Trash2 } from "lucide-react"
 
 type MessageTemplate = {
   id: string
@@ -206,34 +200,6 @@ export default function KomunikacjaMasowaPage() {
           <span className="text-sm">{row.original.subject}</span>
         ),
       },
-      {
-        accessorKey: "body",
-        header: "Treść",
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground line-clamp-2">
-            {row.original.body}
-          </span>
-        ),
-      },
-      {
-        id: "actions",
-        header: "Akcje",
-        cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleEdit(row.original)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Edytuj
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ),
-      },
     ],
     []
   )
@@ -257,6 +223,7 @@ export default function KomunikacjaMasowaPage() {
         enablePagination={true}
         pageSize={20}
         emptyMessage="Brak szablonów wiadomości"
+        onRowClick={handleEdit}
         onSelectionChange={handleSelectionChange}
         onAdd={handleAdd}
         addButtonLabel="Dodaj szablon"

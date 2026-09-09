@@ -248,7 +248,41 @@ export async function DELETE(
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
 
-    // Usuń wycieczkę (rezerwacje i powiązane dane zostaną usunięte automatycznie przez CASCADE)
+    // participant_insurances.trip_insurance_variant_id ma ON DELETE RESTRICT,
+    // a trip_insurance_variants kasują się kaskadowo z trips — bez wcześniejszego
+    // usunięcia PI delete trip kończy się błędem 23503.
+    const { data: variants, error: variantsError } = await adminSupabase
+      .from("trip_insurance_variants")
+      .select("id")
+      .eq("trip_id", id);
+
+    if (variantsError) {
+      console.error("Error loading trip insurance variants before delete:", variantsError);
+      return NextResponse.json(
+        { error: "delete_failed", details: variantsError.message },
+        { status: 500 },
+      );
+    }
+
+    const variantIds = (variants ?? []).map((v) => v.id);
+    if (variantIds.length > 0) {
+      const { error: participantInsurancesError } = await adminSupabase
+        .from("participant_insurances")
+        .delete()
+        .in("trip_insurance_variant_id", variantIds);
+
+      if (participantInsurancesError) {
+        console.error(
+          "Error deleting participant_insurances before trip delete:",
+          participantInsurancesError,
+        );
+        return NextResponse.json(
+          { error: "delete_failed", details: participantInsurancesError.message },
+          { status: 500 },
+        );
+      }
+    }
+
     const { error: deleteError } = await adminSupabase
       .from("trips")
       .delete()

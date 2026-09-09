@@ -30,7 +30,7 @@ export function DietsSection({
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
 
   return (
-    <Card className="p-3 space-y-2 mt-2">
+    <Card className="px-10 py-4 space-y-2 mt-2">
       <CardHeader className="px-0 pt-0 pb-1">
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -73,7 +73,7 @@ export function DietsSection({
                 key={item.id || index}
                 className={`border rounded-md ${isEnabled ? 'bg-green-50/50 border-green-200 dark:bg-green-950/30 dark:border-green-900' : 'bg-gray-50/50 border-gray-200 dark:bg-muted/30 dark:border-border'}`}
               >
-                <div className="flex items-center gap-2 p-3">
+                <div className="flex items-center gap-2 px-10 py-4">
                   <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
                   <div className={`h-2 w-2 rounded-full ${isEnabled ? 'bg-green-500' : 'bg-gray-300'}`} />
                   <div className="flex-1 min-w-0">
@@ -127,7 +127,7 @@ export function DietsSection({
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="border-t bg-background p-3 space-y-3">
+                  <div className="border-t bg-background px-10 py-4 space-y-3">
                     <div className="grid gap-1">
                       <Label className="text-xs">Tytuł</Label>
                       <Input

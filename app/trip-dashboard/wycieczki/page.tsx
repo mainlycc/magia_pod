@@ -100,11 +100,14 @@ export default function WycieczkiPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [tripToDelete, setTripToDelete] = useState<TripRow | null>(null)
+  const [tripsToBulkDelete, setTripsToBulkDelete] = useState<TripRow[]>([])
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
+  const [selectedTrips, setSelectedTrips] = useState<TripRow[]>([])
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
-  const loadTrips = useCallback(async () => {
+  const loadTrips = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      setLoading(true)
+      if (!options?.silent) setLoading(true)
       const res = await fetch("/api/trips")
       if (!res.ok) {
         toast.error("Nie udało się wczytać wycieczek")
@@ -120,7 +123,7 @@ export default function WycieczkiPage() {
     } catch {
       toast.error("Błąd podczas ładowania wycieczek")
     } finally {
-      setLoading(false)
+      if (!options?.silent) setLoading(false)
     }
   }, [])
 
@@ -144,7 +147,7 @@ export default function WycieczkiPage() {
   const afterMutation = useCallback(async () => {
     clearTripsListCache()
     await refreshTrips({ loadProfile: false })
-    await loadTrips()
+    await loadTrips({ silent: true })
   }, [refreshTrips, loadTrips])
 
   const handleOpen = useCallback(
@@ -256,27 +259,65 @@ export default function WycieczkiPage() {
     [afterMutation],
   )
 
+  const deleteTrips = useCallback(
+    async (tripsToRemove: TripRow[]) => {
+      if (tripsToRemove.length === 0) return
+
+      setActionLoading(tripsToRemove.length === 1 ? tripsToRemove[0].id : "bulk")
+      try {
+        const results = await Promise.all(
+          tripsToRemove.map(async (trip) => {
+            const res = await fetch(`/api/trips/${trip.id}`, { method: "DELETE" })
+            return { ok: res.ok, title: trip.title }
+          }),
+        )
+        const failed = results.filter((r) => !r.ok)
+        const succeeded = results.length - failed.length
+
+        if (succeeded === 1) {
+          toast.success("Wycieczka została usunięta")
+        } else if (succeeded > 1) {
+          toast.success(`Usunięto ${succeeded} wycieczek`)
+        }
+        if (failed.length > 0) {
+          toast.error(
+            `Nie udało się usunąć: ${failed.map((f) => f.title).join(", ")}`,
+          )
+        }
+
+        if (succeeded > 0) {
+          const removedIds = new Set(
+            tripsToRemove
+              .filter((_, index) => results[index]?.ok)
+              .map((trip) => trip.id),
+          )
+          setTrips((prev) => prev.filter((trip) => !removedIds.has(trip.id)))
+          setSelectedTrips((prev) =>
+            prev.filter((trip) => !removedIds.has(trip.id)),
+          )
+          setDeleteDialogOpen(false)
+          setTripToDelete(null)
+          setBulkDeleteDialogOpen(false)
+          setTripsToBulkDelete([])
+          await afterMutation()
+        }
+      } catch {
+        toast.error("Błąd podczas usuwania wycieczek")
+      } finally {
+        setActionLoading(null)
+      }
+    },
+    [afterMutation],
+  )
+
   const handleDelete = useCallback(async () => {
     if (!tripToDelete) return
-    setActionLoading(tripToDelete.id)
-    try {
-      const res = await fetch(`/api/trips/${tripToDelete.id}`, {
-        method: "DELETE",
-      })
-      if (!res.ok) {
-        toast.error("Nie udało się usunąć wycieczki")
-        return
-      }
-      toast.success("Wycieczka została usunięta")
-      setDeleteDialogOpen(false)
-      setTripToDelete(null)
-      await afterMutation()
-    } catch {
-      toast.error("Błąd podczas usuwania wycieczki")
-    } finally {
-      setActionLoading(null)
-    }
-  }, [tripToDelete, afterMutation])
+    await deleteTrips([tripToDelete])
+  }, [tripToDelete, deleteTrips])
+
+  const handleBulkDeleteConfirm = useCallback(async () => {
+    await deleteTrips(tripsToBulkDelete)
+  }, [tripsToBulkDelete, deleteTrips])
 
   const columns = useMemo<ColumnDef<TripRow>[]>(
     () => [
@@ -289,12 +330,26 @@ export default function WycieczkiPage() {
       },
       {
         id: "dates",
+        accessorFn: (row) => {
+          const date = row.end_date ?? row.start_date
+          return date ? new Date(date).getTime() : 0
+        },
         header: "Daty",
-        cell: ({ row }) => (
-          <span className="text-sm whitespace-nowrap">
-            {formatDateRange(row.original.start_date, row.original.end_date)}
-          </span>
-        ),
+        enableSorting: true,
+        cell: ({ row }) => {
+          const past = isPastTrip(row.original)
+          return (
+            <span
+              className={
+                past
+                  ? "text-sm whitespace-nowrap text-muted-foreground"
+                  : "text-sm whitespace-nowrap"
+              }
+            >
+              {formatDateRange(row.original.start_date, row.original.end_date)}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "is_active",
@@ -438,14 +493,9 @@ export default function WycieczkiPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-muted-foreground">
-          Zarządzaj wszystkimi wycieczkami — aktywuj, duplikuj lub usuń.
-        </p>
-        <Button asChild>
-          <Link href="/trip-dashboard/dodaj-wycieczke">Dodaj wycieczkę</Link>
-        </Button>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Zarządzaj wszystkimi wycieczkami — aktywuj, duplikuj lub usuń.
+      </p>
 
       <ReusableTable
         columns={columns}
@@ -454,8 +504,8 @@ export default function WycieczkiPage() {
         searchable={true}
         searchPlaceholder="Szukaj po tytule lub slugu..."
         searchColumn="title"
-        customGlobalFilterFn={(row, filterValue) => {
-          const trip = row.original as TripRow
+        getRowId={(row) => row.id}
+        customGlobalFilterFn={(trip: TripRow, filterValue) => {
           const query = filterValue.toLowerCase()
           return (
             trip.title.toLowerCase().includes(query) ||
@@ -466,6 +516,28 @@ export default function WycieczkiPage() {
         pageSize={20}
         emptyMessage="Brak wycieczek"
         onRowClick={handleSelectTrip}
+        enableRowSelection={true}
+        onSelectionChange={setSelectedTrips}
+        customToolbarButtons={() => (
+          <>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={selectedTrips.length === 0 || actionLoading === "bulk"}
+              onClick={() => {
+                setTripsToBulkDelete(selectedTrips)
+                setBulkDeleteDialogOpen(true)
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Usuń
+              {selectedTrips.length > 0 ? ` (${selectedTrips.length})` : ""}
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/trip-dashboard/dodaj-wycieczke">Dodaj wycieczkę</Link>
+            </Button>
+          </>
+        )}
         filters={
           <Select
             value={statusFilter}
@@ -530,6 +602,67 @@ export default function WycieczkiPage() {
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
               Usuń wycieczkę
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Usuń zaznaczone wycieczki</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Czy na pewno chcesz usunąć{" "}
+                  <strong>{tripsToBulkDelete.length}</strong>{" "}
+                  {tripsToBulkDelete.length === 1 ? "wycieczkę" : "wycieczek"}?
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {tripsToBulkDelete.slice(0, 8).map((trip) => (
+                    <li key={trip.id}>
+                      <strong>{trip.title}</strong>
+                      {trip.start_date && (
+                        <> ({formatDateRange(trip.start_date, trip.end_date)})</>
+                      )}
+                    </li>
+                  ))}
+                  {tripsToBulkDelete.length > 8 && (
+                    <li>…i {tripsToBulkDelete.length - 8} więcej</li>
+                  )}
+                </ul>
+                <p>
+                  Usunięcie jest nieodwracalne. Zostaną usunięte wszystkie
+                  rezerwacje, uczestnicy i powiązane dane.
+                </p>
+                {tripsToBulkDelete.some((t) => (t.seats_reserved ?? 0) > 0) && (
+                  <p className="text-destructive font-medium">
+                    Część zaznaczonych wycieczek ma zajęte miejsca — powiązane
+                    rezerwacje zostaną trwale usunięte.
+                  </p>
+                )}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBulkDeleteDialogOpen(false)
+                setTripsToBulkDelete([])
+              }}
+            >
+              Anuluj
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDeleteConfirm}
+              disabled={actionLoading === "bulk"}
+            >
+              {actionLoading === "bulk" ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Usuń zaznaczone
             </Button>
           </DialogFooter>
         </DialogContent>

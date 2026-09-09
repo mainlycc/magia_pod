@@ -71,7 +71,20 @@ export async function createTestTrip(tripData: Partial<any> = {}) {
  */
 export async function deleteTestTrip(tripId: string) {
   const adminClient = createAdminClient();
-  
+
+  const { data: variants } = await adminClient
+    .from("trip_insurance_variants")
+    .select("id")
+    .eq("trip_id", tripId);
+
+  const variantIds = (variants ?? []).map((v: { id: string }) => v.id);
+  if (variantIds.length > 0) {
+    await adminClient
+      .from("participant_insurances")
+      .delete()
+      .in("trip_insurance_variant_id", variantIds);
+  }
+
   const { error } = await adminClient
     .from("trips")
     .delete()

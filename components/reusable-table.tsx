@@ -59,6 +59,7 @@ export interface ReusableTableProps<TData, TValue> {
   onSelectionChange?: (selectedRows: TData[]) => void;
   onDeleteSelected?: () => void;
   deleteButtonLabel?: string;
+  getRowId?: (originalRow: TData, index: number) => string;
   // Wbudowane dialogi
   enableAddDialog?: boolean;
   enableDeleteDialog?: boolean;
@@ -96,6 +97,7 @@ export function ReusableTable<TData, TValue>({
   onSelectionChange,
   onDeleteSelected,
   deleteButtonLabel = "Usuń",
+  getRowId,
   enableAddDialog = false,
   enableDeleteDialog = false,
   onConfirmAdd,
@@ -161,6 +163,7 @@ export function ReusableTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns: tableColumns,
+    getRowId,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
@@ -190,17 +193,33 @@ export function ReusableTable<TData, TValue>({
     },
   });
 
-  // Aktualizuj selectedRows gdy zmienia się rowSelection
+  // Aktualizuj selectedRows gdy zmienia się rowSelection / data
   React.useEffect(() => {
     const currentSelectedRows = table
-      .getRowModel()
-      .rows.filter((row) => rowSelection[row.id])
-      .map((row) => row.original);
-    
+      .getFilteredSelectedRowModel()
+      .rows.map((row) => row.original);
+
     setSelectedRows(currentSelectedRows);
-    
+
     if (onSelectionChange) {
       onSelectionChange(currentSelectedRows);
+    }
+
+    // Usuń z selection klucze wierszy, których już nie ma w danych
+    const validIds = new Set(
+      table.getCoreRowModel().rows.map((row) => row.id),
+    );
+    const nextSelection: RowSelectionState = {};
+    let changed = false;
+    for (const [id, selected] of Object.entries(rowSelection)) {
+      if (selected && validIds.has(id)) {
+        nextSelection[id] = true;
+      } else if (selected) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      setRowSelection(nextSelection);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowSelection, data]);

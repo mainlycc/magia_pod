@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useTrip } from "@/contexts/trip-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -385,7 +386,7 @@ export default function TripGeneralInfoPage() {
 
   return (
     <div className="space-y-2">
-          <Card className="p-3 space-y-2">
+          <Card className="px-10 py-4 space-y-2">
             <CardContent className="px-0 pb-0 space-y-2">
               {/* Numer wycieczki */}
               <div className="flex items-center gap-2 mb-1">
@@ -395,8 +396,8 @@ export default function TripGeneralInfoPage() {
                 </Badge>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="grid gap-1">
+              <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-xs">
+                <div className="grid gap-1 col-span-2">
                   <Label className="text-xs">Nazwa *</Label>
                   <Input
                     value={title}
@@ -406,13 +407,14 @@ export default function TripGeneralInfoPage() {
                   />
                 </div>
 
-                <div className="grid gap-1">
+                <div className="grid gap-1 col-span-2">
                   <Label className="text-xs">Opis</Label>
-                  <Input
+                  <Textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Opis wycieczki"
-                    className="h-8 text-xs"
+                    rows={4}
+                    className="text-xs min-h-[80px] resize-y"
                   />
                 </div>
 
@@ -633,7 +635,7 @@ export default function TripGeneralInfoPage() {
                 </div>
 
                 {/* Harmonogram płatności */}
-                <div className="col-span-2 border rounded-md p-2">
+                <div className="col-span-2 border rounded-md px-10 py-4">
                   <PaymentScheduleEditor
                     schedule={paymentSchedule}
                     onChange={setPaymentSchedule}
@@ -656,7 +658,7 @@ export default function TripGeneralInfoPage() {
                     </Label>
                   </div>
                   {paymentReminderEnabled && (
-                    <div className="grid gap-1 mt-2">
+                    <div className="grid gap-1 mt-2 w-1/2">
                       <Label className="text-xs">
                         Dni przed wycieczką (wysyłka maila)
                       </Label>

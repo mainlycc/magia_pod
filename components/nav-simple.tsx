@@ -29,7 +29,16 @@ export function NavSimple({
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.title}>
-            <SidebarMenuButton asChild tooltip={item.title} isActive={item.isActive}>
+            <SidebarMenuButton
+              asChild
+              tooltip={item.title}
+              isActive={item.isActive}
+              className={
+                item.isActive
+                  ? "bg-blue-500/15 data-[active=true]:bg-blue-500/15 data-[active=true]:text-sidebar-accent-foreground hover:bg-blue-500/20"
+                  : undefined
+              }
+            >
               <Link href={item.url}>
                 {item.icon && <item.icon />}
                 <span>{item.title}</span>

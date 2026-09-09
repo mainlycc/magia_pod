@@ -7,9 +7,16 @@ import {
   ChevronRightIcon,
 } from "lucide-react"
 import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
+import { pl } from "react-day-picker/locale"
 
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
+
+function startOfLocalDay(date: Date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
 
 function Calendar({
   className,
@@ -19,12 +26,16 @@ function Calendar({
   buttonVariant = "ghost",
   formatters,
   components,
+  modifiers,
+  modifiersClassNames,
+  locale = pl,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
 }) {
   const defaultClassNames = getDefaultClassNames()
   const hideNav = captionLayout !== "label"
+  const todayStart = React.useMemo(() => startOfLocalDay(new Date()), [])
 
   return (
     <DayPicker
@@ -32,16 +43,27 @@ function Calendar({
       // Gdy używamy dropdownów miesiąc/rok, nawigacja strzałkami tylko przeszkadza.
       hideNavigation={hideNav}
       className={cn(
-        "bg-background group/calendar p-3 [--cell-size:2rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
+        "bg-background group/calendar p-4 [--cell-size:2.75rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
       )}
       captionLayout={captionLayout}
+      locale={locale}
       formatters={{
         formatMonthDropdown: (date) =>
-          date.toLocaleString("default", { month: "short" }),
+          date.toLocaleString("pl-PL", { month: "short" }),
+        formatWeekdayName: (date) =>
+          date.toLocaleDateString("pl-PL", { weekday: "short" }),
         ...formatters,
+      }}
+      modifiers={{
+        past: (date) => startOfLocalDay(date) < todayStart,
+        ...modifiers,
+      }}
+      modifiersClassNames={{
+        past: "text-muted-foreground [&_button]:text-muted-foreground",
+        ...modifiersClassNames,
       }}
       classNames={{
         root: cn("w-fit", defaultClassNames.root),
@@ -49,7 +71,7 @@ function Calendar({
           "flex gap-4 flex-col md:flex-row relative",
           defaultClassNames.months
         ),
-        month: cn("flex flex-col w-full gap-4", defaultClassNames.month),
+        month: cn("flex flex-col w-full gap-5", defaultClassNames.month),
         nav: cn(
           "flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
           defaultClassNames.nav
@@ -70,7 +92,7 @@ function Calendar({
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
-          "w-full flex items-center text-sm font-medium justify-center h-(--cell-size) gap-1.5",
+          "w-full flex items-center text-base font-medium justify-center h-(--cell-size) gap-2",
           defaultClassNames.dropdowns
         ),
         dropdown_root: cn(
@@ -84,24 +106,24 @@ function Calendar({
         caption_label: cn(
           "select-none font-medium",
           captionLayout === "label"
-            ? "text-sm"
-            : "rounded-md pl-2 pr-1 flex items-center gap-1 text-sm h-8 [&>svg]:text-muted-foreground [&>svg]:size-3.5",
+            ? "text-base"
+            : "rounded-md pl-2.5 pr-1.5 flex items-center gap-1.5 text-base h-9 [&>svg]:text-muted-foreground [&>svg]:size-4",
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse",
         // Dodaj odstępy, żeby nagłówek i dni nie były „ściśnięte”
-        weekdays: cn("flex gap-1", defaultClassNames.weekdays),
+        weekdays: cn("flex gap-1.5", defaultClassNames.weekdays),
         weekday: cn(
-          "text-muted-foreground rounded-md flex-1 font-normal text-[0.8rem] select-none",
+          "text-muted-foreground rounded-md flex-1 font-normal text-sm select-none",
           defaultClassNames.weekday
         ),
-        week: cn("flex w-full mt-2 gap-1", defaultClassNames.week),
+        week: cn("flex w-full mt-2.5 gap-1.5", defaultClassNames.week),
         week_number_header: cn(
           "select-none w-(--cell-size)",
           defaultClassNames.week_number_header
         ),
         week_number: cn(
-          "text-[0.8rem] select-none text-muted-foreground",
+          "text-sm select-none text-muted-foreground",
           defaultClassNames.week_number
         ),
         day: cn(
@@ -146,14 +168,14 @@ function Calendar({
         Chevron: ({ className, orientation, ...props }) => {
           if (orientation === "left") {
             return (
-              <ChevronLeftIcon className={cn("size-4", className)} {...props} />
+              <ChevronLeftIcon className={cn("size-5", className)} {...props} />
             )
           }
 
           if (orientation === "right") {
             return (
               <ChevronRightIcon
-                className={cn("size-4", className)}
+                className={cn("size-5", className)}
                 {...props}
               />
             )
@@ -193,12 +215,21 @@ function CalendarDayButton({
     if (modifiers.focused) ref.current?.focus()
   }, [modifiers.focused])
 
+  const isPast =
+    Boolean(modifiers.past) &&
+    !modifiers.selected &&
+    !modifiers.range_start &&
+    !modifiers.range_end &&
+    !modifiers.range_middle &&
+    !modifiers.today
+
   return (
     <Button
       ref={ref}
       variant="ghost"
       size="icon"
       data-day={day.date.toLocaleDateString()}
+      data-past={isPast || undefined}
       data-selected-single={
         modifiers.selected &&
         !modifiers.range_start &&
@@ -209,7 +240,7 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 dark:hover:text-accent-foreground flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md [&>span]:text-xs [&>span]:opacity-70",
+        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 dark:hover:text-accent-foreground flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 text-sm leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md data-[past=true]:text-muted-foreground data-[past=true]:opacity-55 [&>span]:text-xs [&>span]:opacity-70",
         defaultClassNames.day,
         className
       )}

@@ -537,11 +537,11 @@ function TripFormContent() {
         registrationMode={registrationMode}
       />
 
-      <Card>
-        <CardHeader className="pb-2">
+      <Card className="px-10 py-4">
+        <CardHeader className="px-0 pb-2">
           <CardTitle className="text-sm">Komunikat w panelu rejestracji</CardTitle>
         </CardHeader>
-        <div className="px-4 pb-4 space-y-2">
+        <div className="space-y-2">
           <Label htmlFor="reservation-info" className="text-xs font-semibold">
             Tekst informacyjny o rezerwacji
           </Label>
@@ -555,11 +555,11 @@ function TripFormContent() {
         </div>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
+      <Card className="px-10 py-4">
+        <CardHeader className="px-0 pb-2">
           <CardTitle className="text-sm">Komunikat po rezerwacji / płatności</CardTitle>
         </CardHeader>
-        <div className="px-4 pb-4 space-y-4">
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label className="text-xs font-semibold">Treść komunikatu</Label>
             <Textarea

@@ -21,7 +21,7 @@ export function CompanyParticipantsSection({
   }
 
   return (
-    <Card className="p-3 space-y-2">
+    <Card className="px-10 py-4 space-y-2">
       <CardHeader className="px-0 pt-0 pb-1">
         <CardTitle className="text-sm font-semibold">
           Uczestnicy – zgłoszenia firmowe
