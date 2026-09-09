@@ -356,7 +356,14 @@ export default function WycieczkiPage() {
         header: "Status",
         cell: ({ row }) => {
           if (row.original.is_active) {
-            return <Badge variant="default">Aktywna</Badge>
+            return (
+              <Badge
+                variant="outline"
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+              >
+                Aktywna
+              </Badge>
+            )
           }
           if (isArchivedTrip(row.original)) {
             return <Badge variant="outline">Archiwalna</Badge>

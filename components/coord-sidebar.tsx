@@ -7,6 +7,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
@@ -100,9 +101,21 @@ export function CoordSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="px-2 pt-4 pb-2">
-              <Link href="/coord">
-                <h2 className="text-base font-semibold text-center hover:underline">
-                  Magia podróżowania
+              <Link
+                href="/coord"
+                className="flex items-center gap-2 hover:opacity-90"
+              >
+                <Image
+                  src="/logo23.png"
+                  alt="Magia podróżowania"
+                  width={40}
+                  height={40}
+                  className="size-10 shrink-0 object-contain"
+                  priority
+                />
+                <h2 className="text-xs font-semibold leading-none tracking-tight hover:underline">
+                  <span className="block">MAGIA</span>
+                  <span className="block mt-0.5">PODRÓŻOWANIA</span>
                 </h2>
               </Link>
             </div>

@@ -324,33 +324,32 @@ export default function DodajWycieczkePage() {
       <TripCreationProgress currentStep={1} />
       <Card className="px-10 py-4">
         <CardContent className="px-0 pb-0 space-y-4">
-          {/* Numer wycieczki */}
-          <div className="grid gap-1">
-            <Label className="text-xs">
-              Numer wycieczki *{" "}
-              {nextTripNumber ? (
-                <span className="text-[10px] text-muted-foreground">
-                  (podpowiedź: {nextTripNumber})
-                </span>
-              ) : null}
-            </Label>
-            <Input
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={tripNumber}
-              onChange={(e) => {
-                // Pozwól wpisać tylko cyfry (i pusty string podczas kasowania)
-                const v = e.target.value
-                if (v === "" || /^\d+$/.test(v)) setTripNumber(v)
-              }}
-              placeholder={nextTripNumber || "np. 123"}
-              className="h-8 text-xs"
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-xs">
-            {/* Nazwa */}
-            <div className="grid gap-1 col-span-2">
+            {/* Numer wycieczki + Nazwa */}
+            <div className="grid gap-1">
+              <Label className="text-xs">
+                Numer wycieczki *{" "}
+                {nextTripNumber ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    (podpowiedź: {nextTripNumber})
+                  </span>
+                ) : null}
+              </Label>
+              <Input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={tripNumber}
+                onChange={(e) => {
+                  // Pozwól wpisać tylko cyfry (i pusty string podczas kasowania)
+                  const v = e.target.value
+                  if (v === "" || /^\d+$/.test(v)) setTripNumber(v)
+                }}
+                placeholder={nextTripNumber || "np. 123"}
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="grid gap-1">
               <Label className="text-xs">Nazwa *</Label>
               <Input
                 value={tripTitle}
@@ -660,8 +659,8 @@ export default function DodajWycieczkePage() {
                     {coordinators.map((coordinator) => (
                       <Badge
                         key={coordinator.id}
-                        variant="secondary"
-                        className="text-[10px] px-2 py-0.5"
+                        variant="outline"
+                        className="text-[10px] px-2 py-0.5 border-violet-500/30 bg-violet-500/10 text-violet-700"
                       >
                         {coordinator.full_name || "Brak imienia i nazwiska"}
                         <button

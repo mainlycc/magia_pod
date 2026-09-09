@@ -694,8 +694,8 @@ export default function TripGeneralInfoPage() {
                         {coordinators.map((coordinator) => (
                           <Badge
                             key={coordinator.id}
-                            variant="secondary"
-                            className="text-[10px] px-2 py-0.5"
+                            variant="outline"
+                            className="text-[10px] px-2 py-0.5 border-violet-500/30 bg-violet-500/10 text-violet-700"
                           >
                             {coordinator.full_name || "Brak imienia i nazwiska"}
                             <button
