@@ -261,6 +261,9 @@ export default function UczestnicyPage() {
   const [generatingInvoiceForPaymentId, setGeneratingInvoiceForPaymentId] = useState<string | null>(null)
   const [generatingReportType, setGeneratingReportType] = useState<ParticipantReportTypeValue | null>(null)
   const [togglingParticipantId, setTogglingParticipantId] = useState<string | null>(null)
+  const [participantDeleteDialogOpen, setParticipantDeleteDialogOpen] = useState(false)
+  const [pendingDeleteParticipant, setPendingDeleteParticipant] = useState<Participant | null>(null)
+  const [deletingParticipantId, setDeletingParticipantId] = useState<string | null>(null)
   // Wiadomość grupowa do uczestników (tak samo jak u koordynatora)
   const [messageDialogOpen, setMessageDialogOpen] = useState(false)
   const [messageSubject, setMessageSubject] = useState("")
@@ -469,6 +472,42 @@ export default function UczestnicyPage() {
       toast.error("Nie udało się zmienić statusu uczestnika")
     } finally {
       setTogglingParticipantId(null)
+    }
+  }
+
+  const requestDeleteParticipant = (participant: Participant) => {
+    if (isCoordinator || deletingParticipantId) return
+    setPendingDeleteParticipant(participant)
+    setParticipantDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteParticipant = async () => {
+    if (!pendingDeleteParticipant || isCoordinator) return
+    const participant = pendingDeleteParticipant
+    setDeletingParticipantId(participant.id)
+    try {
+      const res = await fetch(`/api/participants/${participant.id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        throw new Error(await res.text())
+      }
+      setParticipants((prev) => prev.filter((p) => p.id !== participant.id))
+      setExpandedRows((prev) => {
+        const next = new Set(prev)
+        next.delete(participant.id)
+        return next
+      })
+      toast.success(
+        `Usunięto uczestnika ${participant.first_name} ${participant.last_name}`,
+      )
+      setParticipantDeleteDialogOpen(false)
+      setPendingDeleteParticipant(null)
+    } catch (err) {
+      console.error("confirmDeleteParticipant:", err)
+      toast.error("Nie udało się usunąć uczestnika")
+    } finally {
+      setDeletingParticipantId(null)
     }
   }
 
@@ -1122,7 +1161,7 @@ export default function UczestnicyPage() {
                                 <ChevronDown
                                   className={cn(
                                     "h-4 w-4 transition-transform",
-                                    isExpanded && "-rotate-90"
+                                    !isExpanded && "-rotate-90"
                                   )}
                                 />
                               </Button>
@@ -1180,18 +1219,41 @@ export default function UczestnicyPage() {
                                     </p>
                                   </div>
                                   <div
-                                    className="flex items-center gap-2"
+                                    className="flex flex-wrap items-center gap-3"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    {togglingParticipantId === participant.id && (
-                                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                    )}
-                                    <Switch
-                                      checked={isActive}
-                                      disabled={togglingParticipantId === participant.id}
-                                      onCheckedChange={() => toggleParticipantActive(participant)}
-                                      aria-label="Włącz lub wyłącz uczestnika"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                      {togglingParticipantId === participant.id && (
+                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                      )}
+                                      <Switch
+                                        checked={isActive}
+                                        disabled={
+                                          togglingParticipantId === participant.id ||
+                                          deletingParticipantId === participant.id
+                                        }
+                                        onCheckedChange={() => toggleParticipantActive(participant)}
+                                        aria-label="Włącz lub wyłącz uczestnika"
+                                      />
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive"
+                                      disabled={
+                                        deletingParticipantId === participant.id ||
+                                        togglingParticipantId === participant.id
+                                      }
+                                      onClick={() => requestDeleteParticipant(participant)}
+                                    >
+                                      {deletingParticipantId === participant.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4" />
+                                      )}
+                                      Usuń uczestnika
+                                    </Button>
                                   </div>
                                 </div>
                                 <div>
@@ -1772,6 +1834,59 @@ export default function UczestnicyPage() {
               disabled={!pendingDelete || !!deletingPaymentId}
             >
               Usuń
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={participantDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (deletingParticipantId) return
+          setParticipantDeleteDialogOpen(open)
+          if (!open) {
+            setPendingDeleteParticipant(null)
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Usunąć uczestnika?</DialogTitle>
+            <DialogDescription>
+              {pendingDeleteParticipant ? (
+                <>
+                  Tej operacji nie można cofnąć. Uczestnik{" "}
+                  <strong>
+                    {pendingDeleteParticipant.first_name}{" "}
+                    {pendingDeleteParticipant.last_name}
+                  </strong>{" "}
+                  zostanie trwale usunięty z rezerwacji (wraz z powiązanymi danymi).
+                </>
+              ) : (
+                "Tej operacji nie można cofnąć. Uczestnik zostanie trwale usunięty z rezerwacji."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setParticipantDeleteDialogOpen(false)
+                setPendingDeleteParticipant(null)
+              }}
+              disabled={!!deletingParticipantId}
+            >
+              Anuluj
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteParticipant}
+              disabled={!pendingDeleteParticipant || !!deletingParticipantId}
+            >
+              {deletingParticipantId ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Usuń uczestnika
             </Button>
           </DialogFooter>
         </DialogContent>

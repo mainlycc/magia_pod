@@ -77,13 +77,6 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
     avatar: "",
   }
 
-  const isActive = (url: string) => {
-    if (url === "/trip-dashboard") {
-      return pathname === "/trip-dashboard"
-    }
-    return pathname?.startsWith(url)
-  }
-
   const coordinatorAllowedUrls = [
     "/trip-dashboard/publiczny-wyglad",
     "/trip-dashboard/uczestnicy",
@@ -178,6 +171,26 @@ export function TripSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
       icon: IconReportAnalytics,
     },
   ]
+
+  // Najdłuższy pasujący URL wygrywa — inaczej rodzic (np. /informacje)
+  // podświetla się razem z dzieckiem (np. /informacje/formularz).
+  const allNavUrls = [...allTripNavItems, ...globalNavItems].map((item) => item.url)
+  const isActive = (url: string) => {
+    if (!pathname) return false
+    if (url === "/trip-dashboard") {
+      return pathname === "/trip-dashboard"
+    }
+    const matches =
+      pathname === url || pathname.startsWith(`${url}/`)
+    if (!matches) return false
+    const longerMatchExists = allNavUrls.some(
+      (other) =>
+        other !== url &&
+        other.length > url.length &&
+        (pathname === other || pathname.startsWith(`${other}/`)),
+    )
+    return !longerMatchExists
+  }
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>

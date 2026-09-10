@@ -451,10 +451,8 @@ export async function createInvoice(
       if (data.description) invoicePayload.description = data.description;
       if (data.internal_note) invoicePayload.internal_note = data.internal_note;
 
-      if (data.margin_procedure === true || process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true") {
-        invoicePayload.margin_procedure = true;
-      }
-
+      // Nie wysyłamy margin_procedure — API zwraca 422 „Nieprawidłowy atrybut”.
+      // Oznaczenia marży (procedure_vat_margin / procedure_designations) idą przez mergeKsefFieldsIntoPayload.
       mergeKsefFieldsIntoPayload(invoicePayload, data);
       mergeSellerIntoPayload(invoicePayload, config);
 
@@ -483,10 +481,6 @@ export async function createInvoice(
         buyer_name: data.buyer_name,
         positions: data.positions.map((item) => mapPositionForApi(item)),
       };
-
-      if (data.margin_procedure === true || process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true") {
-        invoicePayload.margin_procedure = true;
-      }
 
       if (data.number) invoicePayload.number = data.number;
       if (data.payment_to) invoicePayload.payment_to = data.payment_to;

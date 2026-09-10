@@ -120,25 +120,30 @@ interface MarginSettings {
   positionTax: string;
   /** Pola dokumentu dot. marży do wstrzyknięcia w fakturę. */
   invoiceFields: {
-    margin_procedure?: boolean;
     procedure_vat_margin?: string;
     procedure_designations?: string[];
   };
 }
 
+function envFlagTrue(name: string): boolean {
+  return (process.env[name] || "").trim().toLowerCase() === "true";
+}
+
 /**
  * Ustawienia procedury marży (biuro podróży, art. 119) sterowane flagami env.
  *
- * - `VAT_MARGIN_MODE=true` → oznaczenia KSeF na dokumencie:
- *   `procedure_vat_margin` + `procedure_designations: ["MR_T"]` + `margin_procedure`.
+ * - `VAT_MARGIN_MODE=true` (lub legacy `FAKTUROWNIA_MARGIN_PROCEDURE=true`) →
+ *   `procedure_vat_margin` + `procedure_designations: ["MR_T"]`.
  *   Pozycje zamówienia/zaliczki: `tax: "np"` (nie `disabled` — KSeF blokuje „nie wyświetlaj”).
- * - `FAKTUROWNIA_MARGIN_PROCEDURE=true` (legacy) → tylko `margin_procedure: true`.
+ *
+ * Uwaga: NIE wysyłamy `margin_procedure` — aktualne API Fakturowni zwraca
+ * HTTP 422 „Nieprawidłowy atrybut: 'margin_procedure'”.
  *
  * Domyślnie wyłączone (pozycje `tax: "np"`).
  */
 function getMarginSettings(): MarginSettings {
-  const vatMarginMode = process.env.VAT_MARGIN_MODE === "true";
-  const legacyMargin = process.env.FAKTUROWNIA_MARGIN_PROCEDURE === "true";
+  const vatMarginMode =
+    envFlagTrue("VAT_MARGIN_MODE") || envFlagTrue("FAKTUROWNIA_MARGIN_PROCEDURE");
 
   // KSeF: stawka „nie wyświetlaj” (API: disabled) na zamówieniu blokuje wystawienie zaliczki.
   const positionTax = "np";
@@ -148,7 +153,6 @@ function getMarginSettings(): MarginSettings {
       vatMarginMode: true,
       positionTax,
       invoiceFields: {
-        margin_procedure: true,
         procedure_vat_margin: "procedura marży dla biur podróży",
         procedure_designations: ["MR_T"],
       },
@@ -158,7 +162,7 @@ function getMarginSettings(): MarginSettings {
   return {
     vatMarginMode: false,
     positionTax,
-    invoiceFields: legacyMargin ? { margin_procedure: true } : {},
+    invoiceFields: {},
   };
 }
 
@@ -399,61 +403,83 @@ export async function processPaymentInvoice(
     if (existingInvoice) {
       console.log("[InvoiceService] Invoice already exists for payment_history_id:", paymentHistoryId);
 
-      // Ponów wysyłkę PDF/maila jeśli faktura wystawiona, ale nie dotarła do klienta
-      const providerErr = String(existingInvoice.invoice_provider_error || "");
-      const markedSentViaUnreliableFallback =
-        existingInvoice.status === "wysłana" &&
-        (providerErr.includes("send_by_email") || providerErr.includes("PDF API niedostępne"));
-      const needsEmailRetry =
-        (existingInvoice.status !== "wysłana" || markedSentViaUnreliableFallback) &&
-        existingInvoice.fakturownia_invoice_id &&
-        !providerErr.startsWith("Brak konfiguracji");
+      // Wcześniejsza próba nie utworzyła dokumentu w Fakturowni — usuń stub i wystaw ponownie.
+      if (!existingInvoice.fakturownia_invoice_id) {
+        console.warn(
+          "[InvoiceService] Existing invoice has no fakturownia_invoice_id — deleting stub and retrying:",
+          {
+            invoiceId: existingInvoice.id,
+            error: existingInvoice.invoice_provider_error,
+          },
+        );
+        const { error: deleteStubError } = await supabase
+          .from("invoices")
+          .delete()
+          .eq("id", existingInvoice.id);
+        if (deleteStubError) {
+          console.error("[InvoiceService] Failed to delete failed invoice stub:", deleteStubError);
+          return {
+            success: false,
+            error: "Failed to clear failed invoice stub: " + deleteStubError.message,
+          };
+        }
+        // kontynuuj pełne wystawianie poniżej
+      } else {
+        // Ponów wysyłkę PDF/maila jeśli faktura wystawiona, ale nie dotarła do klienta
+        const providerErr = String(existingInvoice.invoice_provider_error || "");
+        const markedSentViaUnreliableFallback =
+          existingInvoice.status === "wysłana" &&
+          (providerErr.includes("send_by_email") || providerErr.includes("PDF API niedostępne"));
+        const needsEmailRetry =
+          (existingInvoice.status !== "wysłana" || markedSentViaUnreliableFallback) &&
+          !providerErr.startsWith("Brak konfiguracji");
 
-      if (needsEmailRetry) {
-        const fakturowniaConfig = getFakturowniaConfig();
-        if (validateFakturowniaConfig(fakturowniaConfig)) {
-          const { data: bookingForRetry } = await supabase
-            .from("bookings")
-            .select(
-              "id, booking_ref, trip_id, contact_email, invoice_type, invoice_name, invoice_nip, invoice_address, contact_first_name, contact_last_name, address, company_name, company_nip, company_address, paid_amount_cents, fakturownia_order_id",
-            )
-            .eq("id", bookingId)
-            .single();
+        if (needsEmailRetry) {
+          const fakturowniaConfig = getFakturowniaConfig();
+          if (validateFakturowniaConfig(fakturowniaConfig)) {
+            const { data: bookingForRetry } = await supabase
+              .from("bookings")
+              .select(
+                "id, booking_ref, trip_id, contact_email, invoice_type, invoice_name, invoice_nip, invoice_address, contact_first_name, contact_last_name, address, company_name, company_nip, company_address, paid_amount_cents, fakturownia_order_id",
+              )
+              .eq("id", bookingId)
+              .single();
 
-          if (bookingForRetry) {
-            const providerId = parseInt(existingInvoice.fakturownia_invoice_id!, 10);
-            if (Number.isFinite(providerId)) {
-              console.log("[InvoiceService] Retrying PDF/email for existing invoice:", existingInvoice.id);
-              const bgTask = fetchPdfAndSendEmail(
-                fakturowniaConfig,
-                supabase,
-                existingInvoice.id,
-                providerId,
-                undefined,
-                bookingForRetry as BookingData,
-                existingInvoice.invoice_number,
-              );
-              const isDev = process.env.NODE_ENV === "development";
-              if (isDev) {
-                await bgTask;
-              } else if (scheduleAfterResponse) {
-                scheduleAfterResponse(bgTask);
-              } else {
-                bgTask.catch((err) => {
-                  console.error("[InvoiceService] Invoice email retry failed:", err);
-                });
+            if (bookingForRetry) {
+              const providerId = parseInt(existingInvoice.fakturownia_invoice_id!, 10);
+              if (Number.isFinite(providerId)) {
+                console.log("[InvoiceService] Retrying PDF/email for existing invoice:", existingInvoice.id);
+                const bgTask = fetchPdfAndSendEmail(
+                  fakturowniaConfig,
+                  supabase,
+                  existingInvoice.id,
+                  providerId,
+                  undefined,
+                  bookingForRetry as BookingData,
+                  existingInvoice.invoice_number,
+                );
+                const isDev = process.env.NODE_ENV === "development";
+                if (isDev) {
+                  await bgTask;
+                } else if (scheduleAfterResponse) {
+                  scheduleAfterResponse(bgTask);
+                } else {
+                  bgTask.catch((err) => {
+                    console.error("[InvoiceService] Invoice email retry failed:", err);
+                  });
+                }
               }
             }
           }
         }
-      }
 
-      return {
-        success: true,
-        invoiceId: existingInvoice.id,
-        invoiceNumber: existingInvoice.invoice_number,
-        providerInvoiceId: existingInvoice.fakturownia_invoice_id || undefined,
-      };
+        return {
+          success: true,
+          invoiceId: existingInvoice.id,
+          invoiceNumber: existingInvoice.invoice_number,
+          providerInvoiceId: existingInvoice.fakturownia_invoice_id || undefined,
+        };
+      }
     }
 
     // ─── 2. Pobierz dane rezerwacji ───
@@ -789,6 +815,27 @@ export async function processPaymentInvoice(
           console.error("[InvoiceService] Background PDF/email task failed:", err);
         });
       }
+    } else if ((booking as BookingData).contact_email) {
+      // Fakturownia nie wystawiła dokumentu — i tak wyślij potwierdzenie płatności (bez PDF).
+      console.warn(
+        "[InvoiceService] Provider failed — sending payment confirmation without invoice PDF:",
+        providerError,
+      );
+      try {
+        const sendResult = await sendPaymentConfirmationForInvoice(
+          supabase,
+          invoice.id,
+          booking as BookingData,
+          {},
+        );
+        if (sendResult.sent) {
+          console.log("[InvoiceService] Payment confirmation sent without invoice attachment");
+        } else if (!sendResult.skipped) {
+          console.error("[InvoiceService] Payment confirmation without invoice failed:", sendResult.error);
+        }
+      } catch (emailErr) {
+        console.error("[InvoiceService] Payment confirmation without invoice threw:", emailErr);
+      }
     }
 
     return {
@@ -796,6 +843,7 @@ export async function processPaymentInvoice(
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoice_number,
       providerInvoiceId: fakturowniaResponse.invoiceId?.toString() || undefined,
+      error: providerError || undefined,
     };
   } catch (error) {
     console.error("[InvoiceService] Unexpected error:", error);
