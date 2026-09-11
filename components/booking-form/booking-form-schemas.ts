@@ -238,8 +238,9 @@ export const createBookingFormSchema = (requiredFields?: {
       terms: z.literal(true).optional(),
       conditions: z.literal(true).optional(),
       // Nowe zgody - sekcja "Zapoznałem się i akceptuję"
-      agreement_consent: z.literal(true),
+      program_consent: z.literal(true),
       conditions_de_pl_consent: z.literal(true),
+      agreement_consent: z.literal(true),
       standard_form_consent: z.literal(true),
       electronic_services_consent: z.literal(true),
       rodo_info_consent: z.literal(true),

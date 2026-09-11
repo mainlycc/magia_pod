@@ -364,8 +364,9 @@ export type StepValidationContext = {
 };
 
 const SUMMARY_CONSENT_FIELDS: FieldPath<BookingFormValues>[] = [
-  "consents.agreement_consent",
+  "consents.program_consent",
   "consents.conditions_de_pl_consent",
+  "consents.agreement_consent",
   "consents.standard_form_consent",
   "consents.electronic_services_consent",
   "consents.rodo_info_consent",

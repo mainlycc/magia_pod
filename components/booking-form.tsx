@@ -506,8 +506,9 @@ const createBookingFormSchema = (requiredFields?: {
       terms: z.literal(true).optional(),
       conditions: z.literal(true).optional(),
       // Nowe zgody - sekcja "Zapoznałem się i akceptuję"
-      agreement_consent: z.literal(true),
+      program_consent: z.literal(true),
       conditions_de_pl_consent: z.literal(true),
+      agreement_consent: z.literal(true),
       standard_form_consent: z.literal(true),
       electronic_services_consent: z.literal(true),
       rodo_info_consent: z.literal(true),
@@ -931,8 +932,9 @@ const formatValidationErrors = (errors: any): string => {
           })
           .replace(/^consents\.(.+)$/, (_, consent) => {
             const consentNames: Record<string, string> = {
-              agreement_consent: "Zgoda na umowę",
+              program_consent: "Zgoda na program imprezy",
               conditions_de_pl_consent: "Zgoda na warunki",
+              agreement_consent: "Zgoda na umowę",
               standard_form_consent: "Zgoda na formularz standardowy",
               electronic_services_consent: "Zgoda na usługi elektroniczne",
               rodo_info_consent: "Zgoda RODO",
@@ -1314,8 +1316,9 @@ export function BookingForm({
         rodo: true,
         terms: true,
         conditions: true,
-        agreement_consent: true,
+        program_consent: true,
         conditions_de_pl_consent: true,
+        agreement_consent: true,
         standard_form_consent: true,
         electronic_services_consent: true,
         rodo_info_consent: true,
@@ -4254,7 +4257,7 @@ export function BookingForm({
                         <div className="space-y-3 pl-4">
                           <FormField
                             control={control}
-                            name="consents.agreement_consent"
+                            name="consents.program_consent"
                             render={({ field }) => (
                               <FormItem className="flex items-start gap-3">
                                 <FormControl>
@@ -4265,7 +4268,7 @@ export function BookingForm({
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
-                                    Umową o udział w imprezie turystycznej oraz programem imprezy turystycznej
+                                    Program imprezy turystycznej
                                   </FormLabel>
                                   {documents.agreement && (
                                     <a
@@ -4296,13 +4299,42 @@ export function BookingForm({
                                 </FormControl>
                                 <div className="space-y-1 flex-1">
                                   <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
-                                    Warunkami Udziału w Imprezach Turystycznych GRUPY DE-PL
+                                    Warunki Udziału w Imprezie Turystycznej
                                   </FormLabel>
                                   {documents.conditions_de_pl && (
                                     <a
                                       href={documents.conditions_de_pl.url || `/api/documents/file/${documents.conditions_de_pl.file_name}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.agreement_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
+                                    Umowa o Udział w Imprezie Turystycznej
+                                  </FormLabel>
+                                  {agreementTemplate && (
+                                    <a
+                                      href="#podglad-umowy"
                                       className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
                                     >
                                       <ExternalLink className="h-3 w-3" />
@@ -4415,7 +4447,7 @@ export function BookingForm({
 
                   <Separator />
 
-                  <section className="space-y-4">
+                  <section id="podglad-umowy" className="space-y-4 scroll-mt-4">
                     <div>
                       <h3 className="font-medium text-sm uppercase text-muted-foreground">Podgląd umowy</h3>
                       <p className="text-sm text-muted-foreground mt-1">

@@ -350,6 +350,7 @@ describe("booking-form-utils", () => {
     it("powinien zwrócić pola zgód dla kroku podsumowania", () => {
       const fields = getFieldsToValidate("summary", "individual");
 
+      expect(fields).toContain("consents.program_consent");
       expect(fields).toContain("consents.agreement_consent");
       expect(fields).toContain("consents.rodo_info_consent");
     });
