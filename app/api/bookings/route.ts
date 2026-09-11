@@ -30,7 +30,7 @@ import {
   calculateInstallmentAmounts,
 } from "@/lib/utils/payment-calculator";
 import {
-  assertRegistrationAccess,
+  assertRegistrationAccessWithBypass,
   registrationAccessErrorStatus,
 } from "@/lib/trips/registration-access";
 
@@ -69,11 +69,37 @@ const participantSchema = z.object({
   selected_services: z.record(z.string(), z.unknown()).optional(),
 });
 
-const consentsSchema = z.object({
-  rodo: z.literal(true),
-  terms: z.literal(true),
-  conditions: z.literal(true),
-});
+const consentsSchema = z
+  .object({
+    // Legacy (stare klienty / testy)
+    rodo: z.literal(true).optional(),
+    terms: z.literal(true).optional(),
+    conditions: z.literal(true).optional(),
+    // Aktualny formularz — „Zapoznałem się i akceptuję”
+    program_consent: z.literal(true).optional(),
+    conditions_de_pl_consent: z.literal(true).optional(),
+    agreement_consent: z.literal(true).optional(),
+    standard_form_consent: z.literal(true).optional(),
+    electronic_services_consent: z.literal(true).optional(),
+    rodo_info_consent: z.literal(true).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasLegacy =
+      value.rodo === true && value.terms === true && value.conditions === true;
+    const hasCurrent =
+      value.program_consent === true &&
+      value.conditions_de_pl_consent === true &&
+      value.agreement_consent === true &&
+      value.standard_form_consent === true &&
+      value.electronic_services_consent === true &&
+      value.rodo_info_consent === true;
+    if (!hasLegacy && !hasCurrent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Wymagane zgody nie zostały zaakceptowane",
+      });
+    }
+  });
 
 const companySchema = z.object({
   name: z.string().min(2, "Podaj nazwę firmy").optional().or(z.literal("").transform(() => undefined)),
@@ -106,7 +132,11 @@ const invoiceSchema = z
 
 const bookingPayloadSchema = z.object({
   slug: z.string().min(1, "Brak identyfikatora wycieczki"),
-  registration_token: z.string().uuid("Brak lub niepoprawny token rejestracji"),
+  // Opcjonalny: admin/koordynator może wejść bez tokenu (bypass w assertRegistrationAccessWithBypass)
+  registration_token: z
+    .string()
+    .uuid("Brak lub niepoprawny token rejestracji")
+    .optional(),
   contact_first_name: z.string().min(2, "Podaj imię").optional().or(z.literal("").transform(() => undefined)),
   contact_last_name: z.string().min(2, "Podaj nazwisko").optional().or(z.literal("").transform(() => undefined)),
   contact_pesel: z
@@ -171,8 +201,10 @@ export async function POST(req: Request) {
     const seatsRequested = payload.participants.length;
 
     const adminSupabaseForToken = createAdminClient();
-    const tokenAccess = await assertRegistrationAccess(
+    const supabase = await createClient();
+    const tokenAccess = await assertRegistrationAccessWithBypass(
       adminSupabaseForToken,
+      supabase,
       payload.slug,
       payload.registration_token,
     );
@@ -182,8 +214,6 @@ export async function POST(req: Request) {
         { status: registrationAccessErrorStatus(tokenAccess.error) },
       );
     }
-
-    const supabase = await createClient();
 
     const { data: trip, error: tripErr } = await supabase
       .from("trips")

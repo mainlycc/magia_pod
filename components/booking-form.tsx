@@ -1314,9 +1314,8 @@ export function BookingForm({
       participants_count: undefined,
       participant_services: [],
       consents: {
-        rodo: false,
-        terms: false,
-        conditions: false,
+        // Stare pola (rodo/terms/conditions) celowo pomijamy —
+        // w schemacie są optional literal(true); false pada walidacją.
         program_consent: false,
         conditions_de_pl_consent: false,
         agreement_consent: false,

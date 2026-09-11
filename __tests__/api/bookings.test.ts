@@ -231,10 +231,14 @@ describe("POST /api/bookings", () => {
   });
 
   it("powinien zwrócić błąd gdy brak tokenu rejestracji", async () => {
-    createClient.mockResolvedValue(createMockSupabaseClient());
+    const mockTrip = createMockTrip();
+    createClient.mockResolvedValue(createMockSupabaseClient({ trip: mockTrip }));
+    createAdminClient.mockReturnValue(
+      createMockAdminClientForBookings(mockTrip, createMockBooking()),
+    );
 
     const requestBody = {
-      slug: "test-trip",
+      slug: "testowa-wycieczka",
       contact_email: "test@example.com",
       contact_phone: "123456789",
       participants: [
@@ -254,8 +258,9 @@ describe("POST /api/bookings", () => {
     const response = await POST(createMockRequest(requestBody));
     const data = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(data.error).toBe("Invalid payload");
+    // Token jest opcjonalny w Zod (bypass admina), ale bez tokenu i bez uprawnień → 403
+    expect(response.status).toBe(403);
+    expect(data.error).toBe("missing_token");
   });
 
   it("powinien zwrócić błąd gdy brak miejsc", async () => {
