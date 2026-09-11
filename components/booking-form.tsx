@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm, useWatch, type FieldPath } from "react-hook-form";
@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { ExternalLink, X } from "lucide-react";
 import { AgreementPreview } from "@/components/agreement-preview";
+import { BookingProcessingProgress } from "@/components/booking-processing-progress";
 import { parseHtmlToTemplate, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
 import { DEFAULT_AGREEMENT_TEMPLATE_HTML } from "@/lib/agreements/default-template";
@@ -978,6 +979,12 @@ export function BookingForm({
   const [error, setError] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<"reserve" | "pay" | "company" | null>(null);
   const isSubmitting = submittingAction !== null;
+  const [showProcessing, setShowProcessing] = useState(false);
+  const [processingMode, setProcessingMode] = useState<"payment" | "reservation">("payment");
+  const [bookingReady, setBookingReady] = useState(false);
+  const [redirectReady, setRedirectReady] = useState(false);
+  const pendingRedirectRef = useRef<string | null>(null);
+  const redirectHandledRef = useRef(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
@@ -1371,6 +1378,33 @@ export function BookingForm({
     name: "participants",
   });
 
+  const consentsWatch = useWatch({
+    control,
+    name: "consents",
+  });
+
+  const requiredConsentKeys = [
+    "program_consent",
+    "conditions_de_pl_consent",
+    "agreement_consent",
+    "standard_form_consent",
+    "electronic_services_consent",
+    "rodo_info_consent",
+  ] as const;
+
+  const allConsentsChecked = requiredConsentKeys.every(
+    (key) => consentsWatch?.[key] === true,
+  );
+
+  const handleSelectAllConsents = (checked: boolean) => {
+    for (const key of requiredConsentKeys) {
+      setValue(`consents.${key}`, checked, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  };
+
   const invoiceWatch = useWatch({
     control,
     name: "invoice",
@@ -1558,6 +1592,19 @@ export function BookingForm({
     setActiveStepIndex(finalPrevIndex);
   };
 
+  const handleProcessingComplete = useCallback(() => {
+    if (redirectHandledRef.current) return;
+    redirectHandledRef.current = true;
+    const url = pendingRedirectRef.current;
+    if (url) {
+      window.location.replace(url);
+      return;
+    }
+    setShowProcessing(false);
+    setSubmittingAction(null);
+    router.push(`/trip/${slug}`);
+  }, [router, slug]);
+
   const onSubmit = async (values: BookingFormValues, withPayment: boolean = false) => {
     console.log("onSubmit called", values);
     console.log("onSubmit applicant_type:", values.applicant_type);
@@ -1566,6 +1613,12 @@ export function BookingForm({
     setSubmittingAction(
       withPayment ? "pay" : applicantType === "company" ? "company" : "reserve",
     );
+    setProcessingMode(withPayment ? "payment" : "reservation");
+    setBookingReady(false);
+    setRedirectReady(false);
+    pendingRedirectRef.current = null;
+    redirectHandledRef.current = false;
+    setShowProcessing(true);
     try {
       const base = {
         slug: slug,
@@ -1897,6 +1950,8 @@ export function BookingForm({
       console.log("Booking API response:", data);
       console.log("redirect_url:", data?.redirect_url);
       console.log("booking_url:", data?.booking_url);
+
+      setBookingReady(true);
       
       // Wyświetl komunikat sukcesu
       if (withPayment) {
@@ -1905,55 +1960,50 @@ export function BookingForm({
           duration: 2000,
         });
 
-        // PRIORYTET 1: Jeśli jest redirect_url (Paynow), przekieruj od razu do płatności
+        // PRIORYTET 1: Paynow redirect_url
         if (data?.redirect_url && typeof data.redirect_url === "string" && data.redirect_url.trim() !== "") {
-          console.log("Redirecting to Paynow:", data.redirect_url);
-          // Użyj setTimeout, aby dać czas na wyświetlenie toast
-          setTimeout(() => {
-            window.location.replace(data.redirect_url as string);
-          }, 500);
+          console.log("Will redirect to Paynow after progress:", data.redirect_url);
+          pendingRedirectRef.current = data.redirect_url as string;
+          setRedirectReady(true);
           return;
         }
 
-        // PRIORYTET 2: Jeśli nie ma Paynow, przekieruj do strony rezerwacji (gdzie można załączyć umowę i zapłacić)
+        // PRIORYTET 2: strona rezerwacji (gdy brak Paynow)
         if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
-          console.log("Redirecting to booking page:", data.booking_url);
-          // Użyj setTimeout, aby dać czas na wyświetlenie toast
-          setTimeout(() => {
-            window.location.replace(data.booking_url as string);
-          }, 500);
+          console.log("Will redirect to booking page after progress:", data.booking_url);
+          pendingRedirectRef.current = data.booking_url as string;
+          setRedirectReady(true);
           return;
         }
 
         // Ostatni fallback: strona wycieczki
         console.warn("No redirect_url or booking_url, falling back to trip page");
         console.warn("Response data:", JSON.stringify(data, null, 2));
-        setTimeout(() => {
-          router.push(`/trip/${slug}`);
-        }, 1000);
+        pendingRedirectRef.current = `/trip/${slug}`;
+        setRedirectReady(true);
       } else {
-        // Tylko rezerwacja bez płatności - pokaż komunikat sukcesu i przekieruj do strony rezerwacji
+        // Tylko rezerwacja bez płatności
         toast.success("Rezerwacja została potwierdzona!", {
           description: `Kod rezerwacji: ${data?.booking_ref || ""}. Umowa została wysłana na Twój adres e-mail.`,
           duration: 5000,
         });
 
-        // Przekieruj do strony rezerwacji, gdzie można zapłacić później
         if (data?.booking_url && typeof data.booking_url === "string" && data.booking_url.trim() !== "") {
-          setTimeout(() => {
-            const base = data.booking_url as string;
-            const separator = base.includes("?") ? "&" : "?";
-            window.location.replace(`${base}${separator}created=1`);
-          }, 2000);
+          const base = data.booking_url as string;
+          const separator = base.includes("?") ? "&" : "?";
+          pendingRedirectRef.current = `${base}${separator}created=1`;
+          setRedirectReady(true);
         } else {
-          setTimeout(() => {
-            router.push(`/trip/${slug}`);
-          }, 2000);
+          pendingRedirectRef.current = `/trip/${slug}`;
+          setRedirectReady(true);
         }
       }
     } catch (err) {
+      setShowProcessing(false);
+      setBookingReady(false);
+      setRedirectReady(false);
+      pendingRedirectRef.current = null;
       setError(err instanceof Error ? err.message : "Błąd rezerwacji");
-    } finally {
       setSubmittingAction(null);
     }
   };
@@ -2084,6 +2134,16 @@ export function BookingForm({
 
   return (
     <>
+      {showProcessing && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#eef0f5]">
+          <BookingProcessingProgress
+            mode={processingMode}
+            bookingReady={bookingReady}
+            redirectReady={redirectReady}
+            onComplete={handleProcessingComplete}
+          />
+        </div>
+      )}
       {startAtAgreementPreview && (
         <Alert className="mb-4 border-amber-200 bg-amber-50 text-amber-950">
           <AlertTitle>Tryb podglądu umowy</AlertTitle>
@@ -4255,6 +4315,21 @@ export function BookingForm({
                     <div className="space-y-4">
                       <div>
                         <p className="text-sm font-medium mb-3">Zapoznałem się i akceptuję:</p>
+                        <div className="flex items-start gap-3 mb-3 pl-4 pb-3 border-b">
+                          <Checkbox
+                            checked={allConsentsChecked}
+                            onCheckedChange={(checked) =>
+                              handleSelectAllConsents(checked === true)
+                            }
+                            id="consents-select-all"
+                          />
+                          <label
+                            htmlFor="consents-select-all"
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            Zaznacz wszystkie
+                          </label>
+                        </div>
                         <div className="space-y-3 pl-4">
                           <FormField
                             control={control}

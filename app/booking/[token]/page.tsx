@@ -16,10 +16,7 @@ import {
 } from "@/components/client-panel";
 import { cn } from "@/lib/utils";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
-import {
-  calculateBookingTotalCents,
-  getFirstInstallmentPercent,
-} from "@/lib/utils/payment-calculator";
+import { getFirstInstallmentPercent } from "@/lib/utils/payment-calculator";
 import {
   collectForeignCurrencyAttractionLines,
   resolveAdditionalServicesCents,
@@ -89,6 +86,7 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
   const [paymentSynced, setPaymentSynced] = useState(false);
 
   const refreshBooking = async () => {
+
     const response = await fetch(`/api/bookings/by-token/${token}`, {
       cache: "no-store",
       headers: { "cache-control": "no-cache" },
