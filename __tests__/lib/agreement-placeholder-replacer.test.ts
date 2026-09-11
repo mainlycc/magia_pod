@@ -20,6 +20,20 @@ describe("replaceBookingPlaceholders — ceny z dopłatami", () => {
     expect(out).toBe("250.00 75.00");
   });
 
+  it("bierze procent zaliczki z paymentSchedule gdy brak firstInstallmentPercent", () => {
+    const html = "{{trip_deposit_amount}} {{trip_price_breakdown}}";
+    const formData = { participants_count: 1, participants: [] };
+    const out = replaceBookingPlaceholders(html, formData, 100000, null, null, {
+      paymentSchedule: [
+        { installment_number: 1, percent: 50, due_date: "2026-06-01" },
+        { installment_number: 2, percent: 50, due_date: "2026-07-01" },
+      ],
+    });
+    expect(out).toContain("500.00");
+    expect(out).toContain("Zaliczka (50%)");
+    expect(out).not.toContain("Zaliczka (30%)");
+  });
+
   it("bez dopłat zachowuje dotychczasowe liczenie (tylko baza × osoby)", () => {
     const html = "{{trip_total_price}} {{trip_deposit_amount}}";
     const formData = { participants_count: 2, participants: [] };

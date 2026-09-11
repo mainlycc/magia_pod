@@ -481,12 +481,14 @@ export function replaceBookingPlaceholders(
     requirePeselFallback?: boolean | null;
     /** Tekst zakresu ubezpieczenia dla {{insurance_scope}} */
     insuranceScope?: string | null;
-    /** Procent pierwszej raty / zaliczki (domyślnie 30). */
+    /** Procent pierwszej raty / zaliczki. Gdy brak — z paymentSchedule / 30. */
     firstInstallmentPercent?: number | null;
-    /** Harmonogram płatności wycieczki — do wyliczenia terminów rat. */
+    /** Harmonogram płatności wycieczki — do wyliczenia terminów rat i % zaliczki. */
     paymentSchedule?:
-      | Array<{ installment_number?: number; due_date?: string | null }>
+      | Array<{ installment_number?: number; percent?: number; due_date?: string | null }>
       | null;
+    paymentSplitEnabled?: boolean | null;
+    paymentSplitFirstPercent?: number | null;
   },
 ): string {
   if (!formData) return html;
@@ -609,7 +611,24 @@ export function replaceBookingPlaceholders(
     );
     const totalCents = tripPrice * participantsCount + addon;
     const totalPrice = (totalCents / 100).toFixed(2);
-    const firstPercent = options?.firstInstallmentPercent ?? 30;
+    const firstPercent =
+      typeof options?.firstInstallmentPercent === "number"
+        ? options.firstInstallmentPercent
+        : getFirstInstallmentPercent({
+            payment_schedule: Array.isArray(options?.paymentSchedule)
+              ? options.paymentSchedule
+                  .filter(
+                    (item): item is { installment_number?: number; percent: number; due_date?: string | null } =>
+                      typeof item?.percent === "number",
+                  )
+                  .map((item) => ({
+                    installment_number: item.installment_number,
+                    percent: item.percent,
+                  }))
+              : null,
+            payment_split_enabled: options?.paymentSplitEnabled ?? null,
+            payment_split_first_percent: options?.paymentSplitFirstPercent ?? null,
+          });
     const depositAmount = formatDepositAmountZloty(totalCents, firstPercent);
     result = result.replace(/\{\{trip_total_price\}\}/g, totalPrice);
     result = result.replace(/\{\{trip_deposit_amount\}\}/g, depositAmount);

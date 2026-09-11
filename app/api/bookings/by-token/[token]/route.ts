@@ -120,8 +120,17 @@ export async function GET(
     const { createAdminClient } = await import("@/lib/supabase/admin");
     const adminSupabase = createAdminClient();
 
-    // Dociągnij brakujące pola wycieczki (RPC może ich nie zwracać w części środowisk)
-    if (booking.trip_id && (!booking.trip_title || !booking.trip_start_date || booking.trip_price_cents == null)) {
+    // Dociągnij brakujące pola wycieczki.
+    // RPC get_booking_by_token zwraca tylko title/daty/cenę — bez harmonogramu płatności.
+    // Bez tego fallbacku strona potwierdzenia pokazuje domyślne 30% zamiast np. 50/50.
+    const needsTripBasics =
+      !booking.trip_title || !booking.trip_start_date || booking.trip_price_cents == null;
+    // `undefined` = RPC nie zwrócił pola; `null` = wycieczka naprawdę nie ma wartości
+    const needsPaymentFields =
+      booking.trip_payment_schedule === undefined ||
+      booking.trip_payment_split_first_percent === undefined;
+
+    if (booking.trip_id && (needsTripBasics || needsPaymentFields)) {
       const { data: tripRow, error: tripErr } = await adminSupabase
         .from("trips")
         .select(
@@ -143,12 +152,16 @@ export async function GET(
         booking.trip_reservation_success_message =
           booking.trip_reservation_success_message ?? tripRow.reservation_success_message ?? null;
         booking.trip_payment_split_enabled = booking.trip_payment_split_enabled ?? tripRow.payment_split_enabled ?? null;
-        booking.trip_payment_split_first_percent = booking.trip_payment_split_first_percent ?? tripRow.payment_split_first_percent ?? null;
-        booking.trip_payment_split_second_percent = booking.trip_payment_split_second_percent ?? tripRow.payment_split_second_percent ?? null;
+        booking.trip_payment_split_first_percent =
+          booking.trip_payment_split_first_percent ?? tripRow.payment_split_first_percent ?? null;
+        booking.trip_payment_split_second_percent =
+          booking.trip_payment_split_second_percent ?? tripRow.payment_split_second_percent ?? null;
         booking.trip_payment_schedule = booking.trip_payment_schedule ?? tripRow.payment_schedule ?? null;
         booking.trip_form_diets = booking.trip_form_diets ?? tripRow.form_diets ?? null;
-        booking.trip_form_extra_insurances = booking.trip_form_extra_insurances ?? tripRow.form_extra_insurances ?? null;
-        booking.trip_form_additional_attractions = booking.trip_form_additional_attractions ?? tripRow.form_additional_attractions ?? null;
+        booking.trip_form_extra_insurances =
+          booking.trip_form_extra_insurances ?? tripRow.form_extra_insurances ?? null;
+        booking.trip_form_additional_attractions =
+          booking.trip_form_additional_attractions ?? tripRow.form_additional_attractions ?? null;
       }
     }
 

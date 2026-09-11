@@ -1176,6 +1176,7 @@ export function BookingForm({
                 payment_schedule: paymentSchedule,
               };
               setTripFullData(fullData);
+              setPaymentSplitFirstPercent(getFirstInstallmentPercent(fullData));
 
               // Pobierz dane content wycieczki
               const { data: contentData } = await supabase

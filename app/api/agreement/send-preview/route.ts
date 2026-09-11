@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { templateToHtml, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import { replaceTripPlaceholders, replaceBookingPlaceholders } from "@/lib/agreement-placeholder-replacer";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
+import { getFirstInstallmentPercent } from "@/lib/utils/payment-calculator";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -66,18 +67,28 @@ export async function POST(req: Request) {
     // Generuj HTML z szablonu
     const html = templateToHtml(body.template);
     
-    // Kolejność ma znaczenie: najpierw dane z formularza (poprawna cena z dopłatami),
-    // potem fallbacki z wycieczki.
-    let htmlWithData = replaceBookingPlaceholders(
+    // Kolejność jak w /api/pdf: wycieczka bez cen, potem booking z % z harmonogramu.
+    let htmlWithData = replaceTripPlaceholders(
       html,
+      body.tripFullData,
+      body.tripContentData,
+      { skipFinancialPlaceholders: true },
+    );
+    htmlWithData = replaceBookingPlaceholders(
+      htmlWithData,
       body.formData,
       body.tripFullData?.price_cents || null,
       body.tripFullData?.start_date || null,
       null,
-      { paymentSchedule: body.tripFullData?.payment_schedule ?? null }
+      {
+        firstInstallmentPercent: body.tripFullData
+          ? getFirstInstallmentPercent(body.tripFullData)
+          : undefined,
+        paymentSchedule: body.tripFullData?.payment_schedule ?? null,
+        paymentSplitEnabled: body.tripFullData?.payment_split_enabled ?? null,
+        paymentSplitFirstPercent: body.tripFullData?.payment_split_first_percent ?? null,
+      },
     );
-
-    htmlWithData = replaceTripPlaceholders(htmlWithData, body.tripFullData, body.tripContentData);
 
     // Dodaj style CSS dla lepszego wyglądu PDF
     const styledHtml = `

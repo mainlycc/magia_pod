@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getFirstInstallmentPercent } from "@/lib/utils/payment-calculator";
 import type { TripConfig, RegistrationMode } from "./booking-form-types";
 
 export function useTripConfig(slug: string) {
@@ -28,9 +29,9 @@ export function useTripConfig(slug: string) {
         const supabase = createClient();
         let { data: trip, error: tripError } = await supabase
           .from("trips")
-          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total")
+          .select("id,registration_mode,require_pesel,form_show_additional_services,company_participants_info,slug,public_slug,price_cents,payment_split_enabled,payment_split_first_percent,payment_schedule,form_additional_attractions,form_diets,form_extra_insurances,form_required_participant_fields,form_required_contact_fields,seats_total")
           .or(`slug.eq.${slug},public_slug.eq.${slug}`)
-          .maybeSingle<TripConfig & { slug: string; public_slug: string | null; price_cents: number | null; payment_split_enabled: boolean | null; payment_split_first_percent: number | null; id: string; seats_total: number | null; form_additional_attractions?: unknown; form_diets?: unknown; form_extra_insurances?: unknown; form_required_participant_fields?: unknown; form_required_contact_fields?: unknown }>();
+          .maybeSingle<TripConfig & { slug: string; public_slug: string | null; price_cents: number | null; payment_split_enabled: boolean | null; payment_split_first_percent: number | null; payment_schedule?: Array<{ installment_number?: number; percent: number }> | null; id: string; seats_total: number | null; form_additional_attractions?: unknown; form_diets?: unknown; form_extra_insurances?: unknown; form_required_participant_fields?: unknown; form_required_contact_fields?: unknown }>();
 
         if (tripError) {
           console.error("Error loading trip config:", tripError);
@@ -72,12 +73,17 @@ export function useTripConfig(slug: string) {
             setApplicantType("individual");
           }
 
-          // Zapisz cenę i procent zaliczki
+          // Zapisz cenę i procent zaliczki (priorytet: payment_schedule)
           setTripPrice(trip.price_cents);
-          const splitEnabled = trip.payment_split_enabled ?? true;
-          if (splitEnabled) {
-            setPaymentSplitFirstPercent(trip.payment_split_first_percent ?? 30);
-          }
+          setPaymentSplitFirstPercent(
+            getFirstInstallmentPercent({
+              payment_schedule: Array.isArray(trip.payment_schedule)
+                ? trip.payment_schedule
+                : null,
+              payment_split_enabled: trip.payment_split_enabled ?? null,
+              payment_split_first_percent: trip.payment_split_first_percent ?? null,
+            }),
+          );
 
           // Pobierz dokumenty dla wycieczki
           try {
