@@ -29,9 +29,12 @@ function Calendar({
   modifiers,
   modifiersClassNames,
   locale = pl,
+  /** Daty przeszłe na szaro (domyślnie włączone). Wyłącz np. przy dacie urodzenia. */
+  dimPastDays = true,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  dimPastDays?: boolean
 }) {
   const defaultClassNames = getDefaultClassNames()
   const hideNav = captionLayout !== "label"
@@ -58,11 +61,15 @@ function Calendar({
         ...formatters,
       }}
       modifiers={{
-        past: (date) => startOfLocalDay(date) < todayStart,
+        ...(dimPastDays
+          ? { past: (date: Date) => startOfLocalDay(date) < todayStart }
+          : {}),
         ...modifiers,
       }}
       modifiersClassNames={{
-        past: "text-muted-foreground [&_button]:text-muted-foreground",
+        ...(dimPastDays
+          ? { past: "text-muted-foreground [&_button]:text-muted-foreground" }
+          : {}),
         ...modifiersClassNames,
       }}
       classNames={{

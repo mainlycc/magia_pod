@@ -176,6 +176,7 @@ export function ParticipantsStep({
                             value={(field.value as string) || ""}
                             onChange={(v) => field.onChange(v)}
                             className="w-full"
+                            dimPastDays={false}
                           />
                         </FormControl>
                         <FormMessage />

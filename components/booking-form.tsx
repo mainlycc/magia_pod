@@ -1314,15 +1314,15 @@ export function BookingForm({
       participants_count: undefined,
       participant_services: [],
       consents: {
-        rodo: true,
-        terms: true,
-        conditions: true,
-        program_consent: true,
-        conditions_de_pl_consent: true,
-        agreement_consent: true,
-        standard_form_consent: true,
-        electronic_services_consent: true,
-        rodo_info_consent: true,
+        rodo: false,
+        terms: false,
+        conditions: false,
+        program_consent: false,
+        conditions_de_pl_consent: false,
+        agreement_consent: false,
+        standard_form_consent: false,
+        electronic_services_consent: false,
+        rodo_info_consent: false,
       } as any,
       invoice: {
         use_other_data: false,
@@ -2847,6 +2847,7 @@ export function BookingForm({
                                       toYear={new Date().getFullYear()}
                                       defaultYear={1990}
                                       captionLayout="dropdown"
+                                      dimPastDays={false}
                                     />
                                   </FormControl>
                                   <FormMessage />

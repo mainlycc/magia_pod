@@ -26,6 +26,8 @@ type DatePickerProps = {
   toYear?: number
   defaultYear?: number
   captionLayout?: React.ComponentProps<typeof Calendar>["captionLayout"]
+  /** Daty przeszłe na szaro. Wyłącz przy dacie urodzenia (domyślnie true). */
+  dimPastDays?: boolean
 }
 
 function toDate(value?: string | null): Date | undefined {
@@ -67,6 +69,7 @@ export function DatePicker({
   toYear,
   defaultYear,
   captionLayout = "dropdown",
+  dimPastDays = true,
 }: DatePickerProps) {
   const selected = toDate(value)
   const fallbackMonth =
@@ -146,6 +149,7 @@ export function DatePicker({
           toYear={toYear}
           defaultMonth={fallbackMonth}
           selected={selected}
+          dimPastDays={dimPastDays}
           onSelect={(d) => {
             if (!d) return
             onChange(toIsoDateString(d))
