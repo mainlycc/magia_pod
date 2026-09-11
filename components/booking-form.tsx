@@ -43,8 +43,15 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { ExternalLink, X } from "lucide-react";
 import { AgreementPreview } from "@/components/agreement-preview";
+import {
+  BookingSubmitProgressDialog,
+  BOOKING_SUBMIT_API_STEP_INDEX,
+  type BookingSubmitProgressStatus,
+} from "@/components/booking-submit-progress-dialog";
 import { parseHtmlToTemplate, type AgreementTemplate } from "@/lib/agreement-template-parser";
 import type { TripFullData, TripContentData } from "@/contexts/trip-context";
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const DEFAULT_TEMPLATE = `<div style="text-align: center; font-size: 0.875rem; line-height: 1.5; margin-bottom: 1rem;">
 <p style="margin: 0;">ORGANIZATOR IMPREZY TURYSTYCZNEJ:</p>
@@ -825,6 +832,12 @@ export function BookingForm({ slug }: BookingFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgressOpen, setSubmitProgressOpen] = useState(false);
+  const [submitProgressWithPayment, setSubmitProgressWithPayment] = useState(false);
+  const [submitProgressStepIndex, setSubmitProgressStepIndex] = useState(0);
+  const [submitProgressStatus, setSubmitProgressStatus] =
+    useState<BookingSubmitProgressStatus>("running");
+  const [submitProgressError, setSubmitProgressError] = useState<string | null>(null);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [maxAvailableStep, setMaxAvailableStep] = useState(0);
   const [tripConfig, setTripConfig] = useState<TripConfig | null>(null);
@@ -1322,6 +1335,12 @@ export function BookingForm({ slug }: BookingFormProps) {
     console.log("onSubmit applicantType state:", applicantType);
     setError(null);
     setIsSubmitting(true);
+    setSubmitProgressWithPayment(withPayment);
+    setSubmitProgressStepIndex(0);
+    setSubmitProgressStatus("running");
+    setSubmitProgressError(null);
+    setSubmitProgressOpen(true);
+
     try {
       const base = {
         slug: slug,
@@ -1603,13 +1622,21 @@ export function BookingForm({ slug }: BookingFormProps) {
         with_payment: withPayment,
       };
 
-      const response = await fetch("/api/bookings", {
+      // Fetch startuje równolegle z animacją pierwszych kroków UX
+      const fetchPromise = fetch("/api/bookings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
+
+      await sleep(700);
+      setSubmitProgressStepIndex(1);
+      await sleep(700);
+      setSubmitProgressStepIndex(BOOKING_SUBMIT_API_STEP_INDEX);
+
+      const response = await fetchPromise;
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -1642,6 +1669,12 @@ export function BookingForm({ slug }: BookingFormProps) {
       console.log("Booking API response:", data);
       console.log("redirect_url:", data?.redirect_url);
       console.log("booking_url:", data?.booking_url);
+
+      setSubmitProgressStepIndex(3);
+      await sleep(450);
+      setSubmitProgressStepIndex(4);
+      await sleep(450);
+      setSubmitProgressStatus("success");
       
       // Wyświetl komunikat sukcesu
       if (withPayment) {
@@ -1695,8 +1728,10 @@ export function BookingForm({ slug }: BookingFormProps) {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Błąd rezerwacji");
-    } finally {
+      const message = err instanceof Error ? err.message : "Błąd rezerwacji";
+      setError(message);
+      setSubmitProgressError(message);
+      setSubmitProgressStatus("error");
       setIsSubmitting(false);
     }
   };
@@ -1741,6 +1776,19 @@ export function BookingForm({ slug }: BookingFormProps) {
 
   return (
     <>
+      <BookingSubmitProgressDialog
+        open={submitProgressOpen}
+        withPayment={submitProgressWithPayment}
+        activeStepIndex={submitProgressStepIndex}
+        status={submitProgressStatus}
+        errorMessage={submitProgressError}
+        onClose={() => {
+          setSubmitProgressOpen(false);
+          setSubmitProgressError(null);
+          setSubmitProgressStatus("running");
+          setSubmitProgressStepIndex(0);
+        }}
+      />
       <Tabs value={currentStep.id} onValueChange={handleTabsChange} className="w-full">
         <TabsList className={cn("grid w-full gap-2", hasAdditionalServices ? "grid-cols-1 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
           {visibleSteps.map((step, index) => {
@@ -3916,7 +3964,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                           )();
                         }}
                       >
-                        {isSubmitting ? "Wysyłanie..." : "ZAREZERWUJ"}
+                        {isSubmitting ? "Przetwarzanie…" : "ZAREZERWUJ"}
                       </Button>
                     ) : (
                       /* Dla osoby fizycznej: dwa przyciski */
@@ -3954,7 +4002,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                             )();
                           }}
                         >
-                          {isSubmitting ? "Wysyłanie..." : "Rezerwuj"}
+                          {isSubmitting ? "Przetwarzanie…" : "Rezerwuj"}
                         </Button>
                         <Button 
                           type="button"
@@ -3988,7 +4036,7 @@ export function BookingForm({ slug }: BookingFormProps) {
                             )();
                           }}
                         >
-                          {isSubmitting ? "Wysyłanie..." : "Rezerwuj i Zapłać"}
+                          {isSubmitting ? "Przetwarzanie…" : "Rezerwuj i Zapłać"}
                         </Button>
                       </div>
                     )}
