@@ -79,6 +79,7 @@ export function getBookingFormPreviewDefaults() {
       standard_form_consent: true,
       electronic_services_consent: true,
       rodo_info_consent: true,
+      insurance_terms_consent: true,
     },
   };
 }

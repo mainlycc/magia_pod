@@ -512,6 +512,7 @@ const createBookingFormSchema = (requiredFields?: {
       standard_form_consent: z.literal(true),
       electronic_services_consent: z.literal(true),
       rodo_info_consent: z.literal(true),
+      insurance_terms_consent: z.literal(true),
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,
@@ -818,6 +819,16 @@ const createBookingFormSchema = (requiredFields?: {
 const bookingFormSchemaForType = createBookingFormSchema();
 type BookingFormValues = z.infer<typeof bookingFormSchemaForType>;
 
+const REQUIRED_CONSENT_KEYS = [
+  "program_consent",
+  "conditions_de_pl_consent",
+  "agreement_consent",
+  "standard_form_consent",
+  "electronic_services_consent",
+  "rodo_info_consent",
+  "insurance_terms_consent",
+] as const;
+
 type RegistrationMode = "individual" | "company" | "both";
 
 type TripConfig = {
@@ -938,6 +949,7 @@ const formatValidationErrors = (errors: any): string => {
               standard_form_consent: "Zgoda na formularz standardowy",
               electronic_services_consent: "Zgoda na usługi elektroniczne",
               rodo_info_consent: "Zgoda RODO",
+              insurance_terms_consent: "Zgoda na Ogólne Warunki Ubezpieczenia",
             };
             return consentNames[consent] || consent;
           })
@@ -1322,6 +1334,7 @@ export function BookingForm({
         standard_form_consent: false,
         electronic_services_consent: false,
         rodo_info_consent: false,
+        insurance_terms_consent: false,
       } as any,
       invoice: {
         use_other_data: false,
@@ -1375,6 +1388,24 @@ export function BookingForm({
     control,
     name: "invoice",
   });
+
+  const consentsWatch = useWatch({
+    control,
+    name: "consents",
+  });
+
+  const allConsentsChecked = REQUIRED_CONSENT_KEYS.every(
+    (key) => consentsWatch?.[key] === true,
+  );
+
+  const setAllConsents = (checked: boolean) => {
+    for (const key of REQUIRED_CONSENT_KEYS) {
+      setValue(`consents.${key}`, checked as never, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    }
+  };
 
   const currentStep = steps[activeStepIndex];
 
@@ -4253,6 +4284,20 @@ export function BookingForm({
                     <SectionLabel>Zgody</SectionLabel>
                     
                     <div className="space-y-4">
+                      <div className="flex items-start gap-3 rounded-md border bg-muted/30 px-3 py-3">
+                        <Checkbox
+                          id="accept-all-consents"
+                          checked={allConsentsChecked}
+                          onCheckedChange={(checked) => setAllConsents(Boolean(checked))}
+                        />
+                        <label
+                          htmlFor="accept-all-consents"
+                          className="text-sm font-medium leading-none cursor-pointer select-none"
+                        >
+                          Zaznacz wszystkie zgody
+                        </label>
+                      </div>
+
                       <div>
                         <p className="text-sm font-medium mb-3">Zapoznałem się i akceptuję:</p>
                         <div className="space-y-3 pl-4">
@@ -4427,6 +4472,37 @@ export function BookingForm({
                                   {documents.rodo_info && (
                                     <a
                                       href={documents.rodo_info.url || `/api/documents/file/${documents.rodo_info.file_name}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      odnośnik
+                                    </a>
+                                  )}
+                                  <FormMessage />
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={control}
+                            name="consents.insurance_terms_consent"
+                            render={({ field }) => (
+                              <FormItem className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                  />
+                                </FormControl>
+                                <div className="space-y-1 flex-1">
+                                  <FormLabel className="azure-form-label-normal text-sm font-medium leading-none">
+                                    Ogólne Warunki Ubezpieczenia
+                                  </FormLabel>
+                                  {documents.insurance_terms && (
+                                    <a
+                                      href={documents.insurance_terms.url || `/api/documents/file/${documents.insurance_terms.file_name}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"

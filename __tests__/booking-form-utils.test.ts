@@ -353,6 +353,7 @@ describe("booking-form-utils", () => {
       expect(fields).toContain("consents.program_consent");
       expect(fields).toContain("consents.agreement_consent");
       expect(fields).toContain("consents.rodo_info_consent");
+      expect(fields).toContain("consents.insurance_terms_consent");
     });
 
     it("powinien zwrócić pustą tablicę dla usług dodatkowych", () => {

@@ -244,6 +244,7 @@ export const createBookingFormSchema = (requiredFields?: {
       standard_form_consent: z.literal(true),
       electronic_services_consent: z.literal(true),
       rodo_info_consent: z.literal(true),
+      insurance_terms_consent: z.literal(true),
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,

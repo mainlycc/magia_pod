@@ -370,6 +370,7 @@ const SUMMARY_CONSENT_FIELDS: FieldPath<BookingFormValues>[] = [
   "consents.standard_form_consent",
   "consents.electronic_services_consent",
   "consents.rodo_info_consent",
+  "consents.insurance_terms_consent",
 ];
 
 function appendInvoiceFields(

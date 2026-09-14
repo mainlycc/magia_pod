@@ -82,6 +82,7 @@ const consentsSchema = z
     standard_form_consent: z.literal(true).optional(),
     electronic_services_consent: z.literal(true).optional(),
     rodo_info_consent: z.literal(true).optional(),
+    insurance_terms_consent: z.literal(true).optional(),
   })
   .superRefine((value, ctx) => {
     const hasLegacy =
@@ -92,7 +93,8 @@ const consentsSchema = z
       value.agreement_consent === true &&
       value.standard_form_consent === true &&
       value.electronic_services_consent === true &&
-      value.rodo_info_consent === true;
+      value.rodo_info_consent === true &&
+      value.insurance_terms_consent === true;
     if (!hasLegacy && !hasCurrent) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
