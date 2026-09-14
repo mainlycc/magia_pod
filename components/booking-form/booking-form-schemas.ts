@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+/** Wymagana zgoda: false jest dozwolone w stanie formularza; błąd po polsku dopiero przy walidacji (submit). */
+const requiredConsentSchema = z
+  .boolean()
+  .refine((value) => value === true, {
+    message: "Zaakceptuj tę zgodę",
+  });
+
 export const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
   city: z.string().min(2, "Podaj miasto"),
@@ -238,13 +245,13 @@ export const createBookingFormSchema = (requiredFields?: {
       terms: z.literal(true).optional(),
       conditions: z.literal(true).optional(),
       // Nowe zgody - sekcja "Zapoznałem się i akceptuję"
-      program_consent: z.literal(true),
-      conditions_de_pl_consent: z.literal(true),
-      agreement_consent: z.literal(true),
-      standard_form_consent: z.literal(true),
-      electronic_services_consent: z.literal(true),
-      rodo_info_consent: z.literal(true),
-      insurance_terms_consent: z.literal(true),
+      program_consent: requiredConsentSchema,
+      conditions_de_pl_consent: requiredConsentSchema,
+      agreement_consent: requiredConsentSchema,
+      standard_form_consent: requiredConsentSchema,
+      electronic_services_consent: requiredConsentSchema,
+      rodo_info_consent: requiredConsentSchema,
+      insurance_terms_consent: requiredConsentSchema,
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,
@@ -309,7 +316,7 @@ export const createBookingFormSchema = (requiredFields?: {
         }
       }
 
-      // Adres wymagany tylko gdy skonfigurowano
+      // Adres wymagany tylko gdy wycieczka ma address: true
       if (requiredContactFields?.address) {
         const street = value.contact.address?.street?.trim() ?? "";
         const city = value.contact.address?.city?.trim() ?? "";

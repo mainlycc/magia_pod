@@ -463,6 +463,13 @@ const participantServiceSchema = z.object({
   participant_last_name: z.string().optional(),
 });
 
+/** Wymagana zgoda: false jest dozwolone w stanie formularza; błąd po polsku dopiero przy walidacji (submit). */
+const requiredConsentSchema = z
+  .boolean()
+  .refine((value) => value === true, {
+    message: "Zaakceptuj tę zgodę",
+  });
+
 const createBookingFormSchema = (requiredFields?: {
   pesel?: boolean;
   document?: boolean;
@@ -506,13 +513,13 @@ const createBookingFormSchema = (requiredFields?: {
       terms: z.literal(true).optional(),
       conditions: z.literal(true).optional(),
       // Nowe zgody - sekcja "Zapoznałem się i akceptuję"
-      program_consent: z.literal(true),
-      conditions_de_pl_consent: z.literal(true),
-      agreement_consent: z.literal(true),
-      standard_form_consent: z.literal(true),
-      electronic_services_consent: z.literal(true),
-      rodo_info_consent: z.literal(true),
-      insurance_terms_consent: z.literal(true),
+      program_consent: requiredConsentSchema,
+      conditions_de_pl_consent: requiredConsentSchema,
+      agreement_consent: requiredConsentSchema,
+      standard_form_consent: requiredConsentSchema,
+      electronic_services_consent: requiredConsentSchema,
+      rodo_info_consent: requiredConsentSchema,
+      insurance_terms_consent: requiredConsentSchema,
     }),
     // Faktura jest częścią payloadu formularza – domyślnie wyłączona, ale zawsze obecna
     invoice: invoiceSchema,
@@ -576,8 +583,8 @@ const createBookingFormSchema = (requiredFields?: {
           });
         }
       }
-      // Adres osoby zgłaszającej — konfigurowalny (domyślnie wymagany)
-      const addressRequired = requiredContactFields?.address !== false;
+      // Adres wymagany tylko gdy wycieczka ma address: true (zgodnie z UI i getFieldsToValidate)
+      const addressRequired = requiredContactFields?.address === true;
       const street = value.contact.address?.street?.trim() ?? "";
       const city = value.contact.address?.city?.trim() ?? "";
       const zip = value.contact.address?.zip?.trim() ?? "";
@@ -1346,7 +1353,7 @@ export function BookingForm({
     mode: "onBlur",
   });
 
-  const { control, handleSubmit, trigger, setValue } = form;
+  const { control, handleSubmit, trigger, setValue, clearErrors, setFocus, setError: setFormFieldError } = form;
 
   // Synchronizuj applicant_type w formularzu ze stanem applicantType
   useEffect(() => {
@@ -1401,9 +1408,15 @@ export function BookingForm({
   const setAllConsents = (checked: boolean) => {
     for (const key of REQUIRED_CONSENT_KEYS) {
       setValue(`consents.${key}`, checked as never, {
-        shouldValidate: true,
+        // Waliduj tylko przy zaznaczaniu — przy odznaczaniu nie pokazuj błędów od razu
+        shouldValidate: checked,
         shouldDirty: true,
       });
+    }
+    if (!checked) {
+      for (const key of REQUIRED_CONSENT_KEYS) {
+        clearErrors(`consents.${key}`);
+      }
     }
   };
 
@@ -1501,7 +1514,8 @@ export function BookingForm({
     };
   }, [slug, registrationToken, applicantType, tripConfig?.seats_total, insuranceSelectionKey, form]);
 
-  const canGoToStep = (nextIndex: number) => nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
+  const canGoToStep = (nextIndex: number) =>
+    nextIndex <= maxAvailableStep || nextIndex <= activeStepIndex;
 
   const getStepValidationContext = (): StepValidationContext => ({
     requiredContactFields: tripConfig?.form_required_contact_fields ?? {
@@ -1517,6 +1531,14 @@ export function BookingForm({
     companyHasRepresentative: form.getValues("company.has_representative"),
   });
 
+  const isPathInStepFields = (issuePath: string, stepFields: readonly string[]) =>
+    stepFields.some(
+      (field) =>
+        issuePath === field ||
+        issuePath.startsWith(`${field}.`) ||
+        field.startsWith(`${issuePath}.`),
+    );
+
   const validateCurrentStep = async (): Promise<boolean> => {
     const fieldsToValidate = getFieldsToValidate(
       currentStep.id,
@@ -1527,31 +1549,80 @@ export function BookingForm({
       return true;
     }
 
-    // `getFieldsToValidate` zwraca poprawne ścieżki pól, ale typ `trigger` potrafi się rozjechać
-    // przez inferencję generików `useForm` w tym pliku (Next/TS build). Runtimeowo to są tylko nazwy pól.
-    const isValid = await trigger(fieldsToValidate as any, { shouldFocus: true });
-    if (!isValid) {
-      toast.error("Uzupełnij wymagane pola", {
-        description: formatValidationErrors(form.formState.errors),
-        duration: 5000,
+    // Walidacja całego schematu + filtrowanie błędów do bieżącego kroku.
+    // Sam `trigger(fields)` bywa zawodny przy superRefine / opcjonalnych polach (Zod 4).
+    const parsed = bookingFormSchemaWithConfig.safeParse(form.getValues());
+    if (parsed.success) {
+      for (const field of fieldsToValidate) {
+        clearErrors(field as any);
+      }
+      return true;
+    }
+
+    for (const field of fieldsToValidate) {
+      clearErrors(field as any);
+    }
+
+    let hasStepError = false;
+    const stepErrorMessages: string[] = [];
+    let firstErrorPath: FieldPath<BookingFormValues> | null = null;
+    for (const issue of parsed.error.issues) {
+      const path = issue.path.join(".");
+      if (!path || !isPathInStepFields(path, fieldsToValidate)) continue;
+      hasStepError = true;
+      stepErrorMessages.push(issue.message);
+      if (!firstErrorPath) {
+        firstErrorPath = path as FieldPath<BookingFormValues>;
+      }
+      setFormFieldError(path as FieldPath<BookingFormValues>, {
+        type: "manual",
+        message: issue.message,
       });
     }
-    return isValid;
+
+    if (!hasStepError) {
+      return true;
+    }
+
+    if (firstErrorPath) {
+      try {
+        setFocus(firstErrorPath as any, { shouldSelect: true });
+      } catch {
+        // Pole może być niestandardowe (np. DatePicker) — toast i tak pokaże błąd
+      }
+    }
+
+    const uniqueMessages = [...new Set(stepErrorMessages)].slice(0, 5);
+    toast.error("Uzupełnij wymagane pola", {
+      description:
+        uniqueMessages.join("\n") +
+        (stepErrorMessages.length > 5
+          ? `\n... i ${stepErrorMessages.length - 5} więcej`
+          : ""),
+      duration: 5000,
+    });
+    return false;
   };
 
   const handleTabsChange = async (value: string) => {
     const nextIndex = steps.findIndex((step) => step.id === value);
-    if (nextIndex === -1) return;
+    if (nextIndex === -1 || nextIndex === activeStepIndex) return;
 
-    if (nextIndex > activeStepIndex) {
-      const isValid = await validateCurrentStep();
-      if (!isValid) return;
-    }
-
-    if (canGoToStep(nextIndex)) {
+    // Wstecz / już odwiedzone kroki — bez ponownej walidacji
+    if (nextIndex < activeStepIndex || nextIndex <= maxAvailableStep) {
+      if (!canGoToStep(nextIndex)) return;
       setActiveStepIndex(nextIndex);
-      setMaxAvailableStep((prev) => Math.max(prev, nextIndex));
+      return;
     }
+
+    // Do przodu wolno tylko o jeden krok i tylko po walidacji bieżącego
+    if (nextIndex > activeStepIndex + 1) return;
+
+    const isValid = await validateCurrentStep();
+    if (!isValid) return;
+
+    setActiveStepIndex(nextIndex);
+    setMaxAvailableStep((prev) => Math.max(prev, nextIndex));
   };
 
   const goToNextStep = async () => {
@@ -1567,7 +1638,7 @@ export function BookingForm({
       }
       break;
     }
-    
+
     const finalNextIndex = Math.min(nextIndex, steps.length - 1);
     setActiveStepIndex(finalNextIndex);
     setMaxAvailableStep((prev) => Math.max(prev, finalNextIndex));
@@ -2147,7 +2218,7 @@ export function BookingForm({
                   "text-left",
                   originalIndex > maxAvailableStep && "cursor-not-allowed opacity-50",
                 )}
-                disabled={originalIndex > maxAvailableStep + 1}
+                disabled={originalIndex > maxAvailableStep}
               >
                 <span className="text-sm font-semibold">
                   {index + 1}. {stepLabel}

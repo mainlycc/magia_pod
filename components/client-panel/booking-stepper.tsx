@@ -44,11 +44,11 @@ export function BookingStepper({
             <button
               key={step.id}
               type="button"
-              disabled={index > maxAvailableIndex + 1}
+              disabled={index > maxAvailableIndex}
               onClick={() => onStepClick?.(step.id)}
               className={cn(
                 "relative h-1.5 flex-1 overflow-hidden rounded-full bg-[#eceef3]",
-                index <= maxAvailableIndex + 1 ? "cursor-pointer" : "cursor-not-allowed opacity-50",
+                index <= maxAvailableIndex ? "cursor-pointer" : "cursor-not-allowed opacity-50",
               )}
               aria-label={`Krok ${stepNumber}: ${step.title}`}
             >
@@ -70,7 +70,7 @@ export function BookingStepper({
           const stepNumber = index + 1;
           const active = index === activeIndex;
           const done = index < activeIndex;
-          const disabled = index > maxAvailableIndex + 1;
+          const disabled = index > maxAvailableIndex;
 
           return (
             <button
