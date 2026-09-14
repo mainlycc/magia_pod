@@ -78,8 +78,9 @@ export async function GET(
       }
     }
 
-    // Pobierz dokumenty specyficzne dla wycieczki
-    const { data: tripDocs, error: tripDocsError } = await supabase
+    // Odczyt po adminie: RLS na trip_documents / global_documents jest tylko
+    // dla authenticated — gość z linkiem rezerwacji (anon) inaczej dostaje pustą listę.
+    const { data: tripDocs, error: tripDocsError } = await adminClient
       .from("trip_documents")
       .select("*")
       .eq("trip_id", tripId);
@@ -88,8 +89,7 @@ export async function GET(
       console.error("Error fetching trip documents:", tripDocsError);
     }
 
-    // Pobierz wszystkie dokumenty globalne
-    const { data: globalDocs, error: globalDocsError } = await supabase
+    const { data: globalDocs, error: globalDocsError } = await adminClient
       .from("global_documents")
       .select("*");
 
@@ -107,7 +107,7 @@ export async function GET(
       (globalDocs || []).map((doc) => [doc.document_type, doc])
     );
 
-    const { data: emailSettingsRows, error: emailSettingsError } = await supabase
+    const { data: emailSettingsRows, error: emailSettingsError } = await adminClient
       .from("trip_document_email_settings")
       .select("document_type, attach_on_reservation")
       .eq("trip_id", tripId);
