@@ -1,23 +1,29 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 
-export default function CoordMessagePage({ params }: { params: { id: string } }) {
+export default function CoordMessagePage() {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const tripId = params.id;
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const send = async () => {
+    if (!tripId) {
+      setError("Brak ID wycieczki");
+      return;
+    }
     setSending(true);
     setError(null);
-    const res = await fetch(`/api/trips/${params.id}/message`, {
+    const res = await fetch(`/api/trips/${tripId}/message`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subject, body }),
