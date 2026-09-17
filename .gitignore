@@ -33,6 +33,7 @@ yarn-error.log*
 .env*.local
 .env.test
 .env.production.test
+scripts/.admin-credentials-ONCE.txt
 
 # vercel
 .vercel

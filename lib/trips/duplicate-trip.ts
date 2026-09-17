@@ -1,4 +1,6 @@
+import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { syncFormExtraInsurancesForTrip } from "@/lib/insurance-local/sync-form-extra-insurances";
 
 export type DuplicateTripResult = {
   id: string;
@@ -6,23 +8,34 @@ export type DuplicateTripResult = {
   slug: string;
 };
 
-const TRIP_OMIT_COLUMNS = new Set(["id", "created_at"]);
+/** Kolumny, których nie wolno kopiować 1:1 z wycieczki źródłowej. */
+const TRIP_OMIT_COLUMNS = new Set(["id", "created_at", "updated_at", "registration_token"]);
 
 async function generateNextNumericSlug(adminClient: SupabaseClient): Promise<string> {
   const { data: existingTrips, error } = await adminClient.from("trips").select("slug");
   if (error) throw new Error(`fetch_slugs_failed: ${error.message}`);
 
   let maxNumericSlug = 0;
+  const usedSlugs = new Set<string>();
+
   for (const row of existingTrips ?? []) {
     const slug = row.slug as string | null;
-    if (slug && /^\d+$/.test(slug)) {
+    if (!slug) continue;
+    usedSlugs.add(slug);
+    if (/^\d+$/.test(slug)) {
       const numericValue = parseInt(slug, 10);
       if (!Number.isNaN(numericValue) && numericValue > maxNumericSlug) {
         maxNumericSlug = numericValue;
       }
     }
   }
-  return String(maxNumericSlug + 1);
+
+  let newSlug = String(maxNumericSlug + 1);
+  while (usedSlugs.has(newSlug)) {
+    const n = parseInt(newSlug, 10);
+    newSlug = String(Number.isNaN(n) ? maxNumericSlug + 1 : n + 1);
+  }
+  return newSlug;
 }
 
 function extractStoragePathFromUrl(url: string, bucket: string): string | null {
@@ -43,11 +56,10 @@ async function copyStorageFile(
   sourcePath: string,
   destPath: string,
   contentType: string,
-): Promise<boolean> {
+): Promise<void> {
   const { data, error } = await adminClient.storage.from(bucket).download(sourcePath);
   if (error || !data) {
-    console.error(`[duplicateTrip] Failed to download ${bucket}/${sourcePath}:`, error);
-    return false;
+    throw new Error(`storage_download_failed: ${bucket}/${sourcePath}`);
   }
 
   const buffer = Buffer.from(await data.arrayBuffer());
@@ -57,16 +69,12 @@ async function copyStorageFile(
   });
 
   if (uploadError) {
-    console.error(`[duplicateTrip] Failed to upload ${bucket}/${destPath}:`, uploadError);
-    return false;
+    throw new Error(`storage_upload_failed: ${bucket}/${destPath}: ${uploadError.message}`);
   }
-
-  return true;
 }
 
 async function copyGalleryUrls(
   adminClient: SupabaseClient,
-  sourceTripId: string,
   newTripId: string,
   galleryUrls: string[] | null | undefined,
 ): Promise<string[]> {
@@ -77,20 +85,19 @@ async function copyGalleryUrls(
   for (const url of galleryUrls) {
     const sourcePath = extractStoragePathFromUrl(url, "trip-gallery");
     if (!sourcePath) {
+      console.warn(`[duplicateTrip] Skipping gallery URL outside trip-gallery bucket: ${url}`);
       continue;
     }
 
     const ext = sourcePath.split(".").pop() || "jpg";
-    const destPath = `${newTripId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+    const destPath = `${newTripId}/${randomUUID()}.${ext}`;
     const contentType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
 
-    const copied = await copyStorageFile(adminClient, "trip-gallery", sourcePath, destPath, contentType);
-    if (copied) {
-      const {
-        data: { publicUrl },
-      } = adminClient.storage.from("trip-gallery").getPublicUrl(destPath);
-      newUrls.push(publicUrl);
-    }
+    await copyStorageFile(adminClient, "trip-gallery", sourcePath, destPath, contentType);
+    const {
+      data: { publicUrl },
+    } = adminClient.storage.from("trip-gallery").getPublicUrl(destPath);
+    newUrls.push(publicUrl);
   }
 
   return newUrls;
@@ -106,27 +113,21 @@ async function copyTripDocuments(
     .select("document_type, file_name, display_name")
     .eq("trip_id", sourceTripId);
 
-  if (error || !docs?.length) return;
+  if (error) throw new Error(`copy_trip_documents_failed: ${error.message}`);
+  if (!docs?.length) return;
 
   for (const doc of docs) {
     const ext = doc.file_name.split(".").pop() || "pdf";
-    const destPath = `trips/${newTripId}/${doc.document_type}-${Date.now()}.${ext}`;
-    const copied = await copyStorageFile(
-      adminClient,
-      "documents",
-      doc.file_name,
-      destPath,
-      "application/pdf",
-    );
+    const destPath = `trips/${newTripId}/${doc.document_type}-${randomUUID()}.${ext}`;
+    await copyStorageFile(adminClient, "documents", doc.file_name, destPath, "application/pdf");
 
-    if (!copied) continue;
-
-    await adminClient.from("trip_documents").insert({
+    const { error: insertError } = await adminClient.from("trip_documents").insert({
       trip_id: newTripId,
       document_type: doc.document_type,
       file_name: destPath,
       display_name: doc.display_name,
     });
+    if (insertError) throw new Error(`copy_trip_documents_failed: ${insertError.message}`);
   }
 }
 
@@ -140,15 +141,17 @@ async function copyTripDocumentEmailSettings(
     .select("document_type, attach_on_reservation")
     .eq("trip_id", sourceTripId);
 
-  if (error || !settings?.length) return;
+  if (error) throw new Error(`copy_document_email_settings_failed: ${error.message}`);
+  if (!settings?.length) return;
 
-  await adminClient.from("trip_document_email_settings").insert(
+  const { error: insertError } = await adminClient.from("trip_document_email_settings").insert(
     settings.map((s) => ({
       trip_id: newTripId,
       document_type: s.document_type,
       attach_on_reservation: s.attach_on_reservation,
     })),
   );
+  if (insertError) throw new Error(`copy_document_email_settings_failed: ${insertError.message}`);
 }
 
 async function copyInsuranceVariants(
@@ -161,9 +164,10 @@ async function copyInsuranceVariants(
     .select("variant_id, price_grosz, is_enabled")
     .eq("trip_id", sourceTripId);
 
-  if (error || !variants?.length) return;
+  if (error) throw new Error(`copy_insurance_variants_failed: ${error.message}`);
+  if (!variants?.length) return;
 
-  await adminClient.from("trip_insurance_variants").insert(
+  const { error: insertError } = await adminClient.from("trip_insurance_variants").insert(
     variants.map((v) => ({
       trip_id: newTripId,
       variant_id: v.variant_id,
@@ -171,6 +175,7 @@ async function copyInsuranceVariants(
       is_enabled: v.is_enabled,
     })),
   );
+  if (insertError) throw new Error(`copy_insurance_variants_failed: ${insertError.message}`);
 }
 
 async function copyInsuranceOwuDocuments(
@@ -183,26 +188,20 @@ async function copyInsuranceOwuDocuments(
     .select("insurance_type, file_name, display_name")
     .eq("trip_id", sourceTripId);
 
-  if (error || !docs?.length) return;
+  if (error) throw new Error(`copy_insurance_owu_documents_failed: ${error.message}`);
+  if (!docs?.length) return;
 
   for (const doc of docs) {
-    const destPath = `insurance-owu/${newTripId}/type-${doc.insurance_type}-${Date.now()}.pdf`;
-    const copied = await copyStorageFile(
-      adminClient,
-      "documents",
-      doc.file_name,
-      destPath,
-      "application/pdf",
-    );
+    const destPath = `insurance-owu/${newTripId}/type-${doc.insurance_type}-${randomUUID()}.pdf`;
+    await copyStorageFile(adminClient, "documents", doc.file_name, destPath, "application/pdf");
 
-    if (!copied) continue;
-
-    await adminClient.from("trip_insurance_owu_documents").insert({
+    const { error: insertError } = await adminClient.from("trip_insurance_owu_documents").insert({
       trip_id: newTripId,
       insurance_type: doc.insurance_type,
       file_name: destPath,
       display_name: doc.display_name,
     });
+    if (insertError) throw new Error(`copy_insurance_owu_documents_failed: ${insertError.message}`);
   }
 }
 
@@ -216,15 +215,17 @@ async function copyInsuranceOwuEmailSettings(
     .select("insurance_type, attach_on_reservation")
     .eq("trip_id", sourceTripId);
 
-  if (error || !settings?.length) return;
+  if (error) throw new Error(`copy_insurance_owu_email_settings_failed: ${error.message}`);
+  if (!settings?.length) return;
 
-  await adminClient.from("trip_insurance_owu_email_settings").insert(
+  const { error: insertError } = await adminClient.from("trip_insurance_owu_email_settings").insert(
     settings.map((s) => ({
       trip_id: newTripId,
       insurance_type: s.insurance_type,
       attach_on_reservation: s.attach_on_reservation,
     })),
   );
+  if (insertError) throw new Error(`copy_insurance_owu_email_settings_failed: ${insertError.message}`);
 }
 
 async function copyAgreementTemplates(
@@ -237,15 +238,24 @@ async function copyAgreementTemplates(
     .select("registration_type, template_html")
     .eq("trip_id", sourceTripId);
 
-  if (error || !templates?.length) return;
+  if (error) throw new Error(`copy_agreement_templates_failed: ${error.message}`);
+  if (!templates?.length) return;
 
-  await adminClient.from("trip_agreement_templates").insert(
+  const { error: insertError } = await adminClient.from("trip_agreement_templates").insert(
     templates.map((t) => ({
       trip_id: newTripId,
       registration_type: t.registration_type,
       template_html: t.template_html,
     })),
   );
+  if (insertError) throw new Error(`copy_agreement_templates_failed: ${insertError.message}`);
+}
+
+async function cleanupFailedDuplicate(adminClient: SupabaseClient, tripId: string): Promise<void> {
+  const { error } = await adminClient.from("trips").delete().eq("id", tripId);
+  if (error) {
+    console.error(`[duplicateTrip] Failed to cleanup incomplete trip ${tripId}:`, error);
+  }
 }
 
 export async function duplicateTripFull(
@@ -280,6 +290,7 @@ export async function duplicateTripFull(
   tripPayload.is_public = false;
   tripPayload.public_slug = null;
   tripPayload.gallery_urls = [];
+  tripPayload.registration_token = randomUUID();
 
   const { data: newTrip, error: insertError } = await adminClient
     .from("trips")
@@ -293,24 +304,36 @@ export async function duplicateTripFull(
 
   const newTripId = newTrip.id as string;
 
-  await Promise.all([
-    copyInsuranceVariants(adminClient, sourceTripId, newTripId),
-    copyInsuranceOwuEmailSettings(adminClient, sourceTripId, newTripId),
-    copyTripDocumentEmailSettings(adminClient, sourceTripId, newTripId),
-    copyAgreementTemplates(adminClient, sourceTripId, newTripId),
-    copyTripDocuments(adminClient, sourceTripId, newTripId),
-    copyInsuranceOwuDocuments(adminClient, sourceTripId, newTripId),
-  ]);
+  try {
+    await Promise.all([
+      copyInsuranceVariants(adminClient, sourceTripId, newTripId),
+      copyInsuranceOwuEmailSettings(adminClient, sourceTripId, newTripId),
+      copyTripDocumentEmailSettings(adminClient, sourceTripId, newTripId),
+      copyAgreementTemplates(adminClient, sourceTripId, newTripId),
+      copyTripDocuments(adminClient, sourceTripId, newTripId),
+      copyInsuranceOwuDocuments(adminClient, sourceTripId, newTripId),
+    ]);
 
-  const newGalleryUrls = await copyGalleryUrls(
-    adminClient,
-    sourceTripId,
-    newTripId,
-    sourceGalleryUrls,
-  );
+    // Dopasuj form_extra_insurances do nowych UUID wierszy trip_insurance_variants
+    const syncedInsurances = await syncFormExtraInsurancesForTrip(newTripId);
+    if (syncedInsurances === null) {
+      throw new Error("sync_form_extra_insurances_failed");
+    }
 
-  if (newGalleryUrls.length > 0) {
-    await adminClient.from("trips").update({ gallery_urls: newGalleryUrls }).eq("id", newTripId);
+    const newGalleryUrls = await copyGalleryUrls(adminClient, newTripId, sourceGalleryUrls);
+
+    if (newGalleryUrls.length > 0) {
+      const { error: galleryUpdateError } = await adminClient
+        .from("trips")
+        .update({ gallery_urls: newGalleryUrls })
+        .eq("id", newTripId);
+      if (galleryUpdateError) {
+        throw new Error(`gallery_update_failed: ${galleryUpdateError.message}`);
+      }
+    }
+  } catch (err) {
+    await cleanupFailedDuplicate(adminClient, newTripId);
+    throw err;
   }
 
   return {
