@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widok oferty wycieczki — przed / po</title>
+<style>
+  :root{
+    --bg:#eef0f5; --paper:#fff; --paper-alt:#f7f8fb;
+    --ink:#0a0a0a; --ink-soft:#3f3f46; --ink-mute:#a1a1aa;
+    --line:#dadce3; --line-soft:#eceef3;
+    --accent:#2596BE; --accent-dark:#1e7b9c; --accent-soft:#c9e5f0; --accent-ice:#e5f2f7;
+    --radius-card:18px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       font-size:15px;line-height:1.5;padding:28px 22px 60px}
+  h1{font-size:24px;margin:0 0 6px;letter-spacing:-.02em}
+  .lead{color:var(--ink-soft);max-width:900px;margin:0 0 26px}
+  .lead b{color:var(--ink)}
+  h2{font-size:17px;margin:34px 0 4px;letter-spacing:-.01em}
+  .h2note{color:var(--ink-soft);font-size:13.5px;margin:0 0 14px;max-width:900px}
+  .compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;align-items:start}
+  .col{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .tag{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;
+        letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;margin-bottom:12px}
+  .tag.before{background:#fdeaea;color:#9b1c1c}
+  .tag.after{background:#e6f4ea;color:#166534}
+  .note{font-size:13px;color:var(--ink-soft);margin:12px 0 0}
+  .note b{color:var(--ink)}
+  .measures{font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .measures li{margin-bottom:3px}
+  h3{font-size:14px;margin:18px 0 8px;letter-spacing:-.01em}
+  h3:first-child{margin-top:0}
+
+  /* ---------- panel ceny ---------- */
+  .price-old{background:var(--accent);border-radius:22px;padding:24px;color:#fff;
+             box-shadow:0 20px 50px -24px rgba(37,150,190,.6)}
+  .price-new{background:var(--accent-dark);border-radius:18px;padding:24px;color:#fff;
+             box-shadow:0 20px 50px -24px rgba(30,123,156,.55)}
+  .price-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;opacity:.9}
+  .price-new .price-label{font-size:12px;opacity:1}
+  .price-value{font-size:44px;font-weight:600;line-height:1;margin-top:5px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .price-value small{font-size:17px;font-weight:500;opacity:.9}
+  .btn-old{margin-top:12px;width:100%;background:#0a0a0a;color:#fff;border:0;border-radius:14px;
+           padding:14px;font-size:14px;font-weight:600;font-family:inherit}
+  .btn-new{margin-top:12px;width:100%;background:#0a0a0a;color:#fff;border:0;border-radius:14px;
+           padding:16px;font-size:15px;font-weight:600;font-family:inherit;letter-spacing:.01em}
+  .contrast{font-size:12px;color:var(--ink-soft);margin-top:10px;font-variant-numeric:tabular-nums}
+  .contrast s{color:#9b1c1c;text-decoration-thickness:1px}
+  .contrast b{color:#166534}
+
+  /* ---------- wireframe kolumn ---------- */
+  .wire{display:grid;gap:16px;grid-template-columns:32fr 41fr 24fr}
+  .wire .stack{display:flex;flex-direction:column;gap:8px}
+  .box{border:1px solid var(--line);background:var(--paper-alt);border-radius:8px;
+       font-size:11px;color:var(--ink-soft);padding:7px 9px;line-height:1.35}
+  .box.tall{padding:12px 9px}
+  .box.cta{background:#0a0a0a;color:#fff;border-color:#0a0a0a;text-align:center;font-weight:600}
+  .box.cta-accent{background:var(--accent-dark);color:#fff;border-color:var(--accent-dark);text-align:center;font-weight:600}
+  .void{border:1px dashed #b9c0cc;background:repeating-linear-gradient(45deg,#f4f6f9,#f4f6f9 6px,#eef0f5 6px,#eef0f5 12px);
+        border-radius:8px;color:#7a8494;font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px}
+  .stickyhint{font-size:11px;color:var(--accent-dark);font-weight:600;margin-top:4px}
+
+  /* ---------- program ---------- */
+  .prog{font-size:14px;color:var(--ink-soft);line-height:1.5}
+  .prog p{margin:0 0 12px}
+  .prog .day{font-weight:700;color:var(--ink)}
+  .prog-new .day-head{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:600;color:var(--ink);
+        padding-top:18px;margin:22px 0 12px;border-top:1px solid var(--line)}
+  .prog-new .day-head:first-child{border-top:0;padding-top:0;margin-top:0}
+  .prog-new .day-head span.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+  .prog-new .day-head em{font-style:normal;color:var(--ink-soft);font-weight:500;font-size:14px}
+  .prog-new ul{list-style:none;margin:0 0 4px;padding:0}
+  .prog-new li{position:relative;padding-left:20px;margin-bottom:8px;color:var(--ink-soft)}
+  .prog-new li::before{content:"";position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;
+        background:var(--accent-soft);box-shadow:0 0 0 1px rgba(37,150,190,.35)}
+  .prog-new li b{color:var(--ink);font-weight:600}
+  .extra{margin-top:22px;padding:14px 16px;background:var(--paper-alt);border:1px solid var(--line);border-radius:12px;font-size:13.5px;color:var(--ink-soft)}
+  .extra b{color:var(--ink)}
+
+  /* ---------- galeria ---------- */
+  .gal{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .gal .main{grid-column:1/-1;height:118px;border-radius:12px;background:linear-gradient(115deg,#3b4a63,#7c5b3a 60%,#c99a5b)}
+  .gal .th{height:64px;border-radius:8px;background:linear-gradient(115deg,#4a3a2e,#9b6b3f)}
+  .dashed{border:2px dashed var(--line)}
+  .solid{border:1px solid var(--line)}
+  .gal-new .th{border-radius:12px;height:64px}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:var(--accent-ice);color:var(--accent);
+        border-radius:999px;padding:5px 9px;font-size:10px;font-weight:600}
+  .chip i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:block}
+  .galwrap{position:relative;border-radius:12px;overflow:hidden}
+  .chiprow{position:absolute;left:10px;bottom:10px;right:10px}
+  .footer{margin-top:34px;font-size:13px;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+
+<h1>Widok oferty wycieczki — trzy poprawki</h1>
+<p class="lead">Pomiar: zrzut 1680&nbsp;px szerokości, kontener treści 1536&nbsp;px, siatka 12&nbsp;kolumn (kolumna 106&nbsp;px, odstęp 24&nbsp;px), wysokość strony 1516&nbsp;px. Kolory bez zmian — używam tych samych, tylko ciemniejszego i jaśniejszego wariantu morskiego, które już siedzą w kodzie (<code>--client-accent</code>, <code>--client-accent-dark</code>, <code>--client-accent-ice</code>).</p>
+
+<h2>1. Kolumny: dwie trzecie dołu strony jest puste</h2>
+<p class="h2note">Zmierzone wysokości treści: lewa kolumna kończy się na 885&nbsp;px, środkowa na 1491&nbsp;px, prawa na 1022&nbsp;px. Pod ostatnią kartą lewej kolumny zostaje <b>631&nbsp;px pustego tła</b> (42% wysokości strony), pod przyciskiem w prawej — <b>494&nbsp;px</b> (33%).</p>
+
+<div class="compare">
+  <div class="col">
+    <span class="tag before">Przed</span>
+    <div class="wire">
+      <div class="stack">
+        <div class="box tall">Galeria<br>358 px</div>
+        <div class="box">Informacje o wyjeździe 194 px</div>
+        <div class="box">Zakwaterowanie 134 px</div>
+        <div class="void" style="height:270px">631 px pustego tła</div>
+      </div>
+      <div class="stack">
+        <div class="box">Numer rezerwacji / Termin / Dni–noce 213 px</div>
+        <div class="box" style="height:400px">Program — jeden blok tekstu 1153 px</div>
+      </div>
+      <div class="stack">
+        <div class="box tall">Świadczenia w cenie 478 px</div>
+        <div class="box">Dodatkowe koszty 194 px</div>
+        <div class="box cta">panel ceny 114 px</div>
+        <div class="box cta">Zarezerwuj 38 px</div>
+        <div class="void" style="height:190px">494 px pustego tła</div>
+      </div>
+    </div>
+    <p class="note">Dolna połowa strony czyta się jak niedokończona: dwie z trzech kolumn urywają się w połowie, a strona nie ma stopki ani kontaktu.</p>
+  </div>
+
+  <div class="col">
+    <span class="tag after">Po</span>
+    <div class="wire">
+      <div class="stack">
+        <div class="box tall">Galeria 358 px</div>
+        <div class="box">Informacje o wyjeździe 194 px</div>
+        <div class="box">Zakwaterowanie 134 px</div>
+        <div class="box">Świadczenia w cenie 478 px</div>
+      </div>
+      <div class="stack">
+        <div class="box">Numer rezerwacji / Termin / Dni–noce 213 px</div>
+        <div class="box" style="height:400px">Program — bloki dni, listy 1153 px</div>
+        <div class="box cta-accent">Pasek na końcu: „Zarezerwuj” + kontakt 72 px</div>
+      </div>
+      <div class="stack">
+        <div class="box">Dodatkowe koszty 194 px</div>
+        <div class="box cta">panel ceny 114 px</div>
+        <div class="box cta">Zarezerwuj 48 px</div>
+        <div class="stickyhint">↑ ten zestaw jest przyklejony (sticky) — widzi go cały czas, gdy czyta program</div>
+      </div>
+    </div>
+    <p class="note">Trzy ruchy: (1) cena z przyciskiem przyklejone do góry prawej kolumny, (2) „Świadczenia w cenie” przeniesione do lewej kolumny pod galerię, (3) na dole programu pasek z powtórzonym „Zarezerwuj”, telefonem i mailem. Nic nie znika — tylko przestaje wisieć w pustce.</p>
+  </div>
+</div>
+
+<h2>2. Panel ceny i przycisk: dwa elementy udają główną akcję, a drobne napisy na morskim są nieczytelne</h2>
+<p class="h2note">Biały tekst na <code>#2596BE</code> ma kontrast <b>3,4:1</b>, a etykieta „CENA ZA OSOBĘ” (11&nbsp;px, biała 90%) — <b>2,8:1</b>. WCAG wymaga 4,5:1. Ten sam kolor w ciemniejszym wariancie <code>#1e7b9c</code> daje <b>4,8:1</b> — czyli ten sam kolor, tylko czytelny.</p>
+
+<div class="compare">
+  <div class="col">
+    <span class="tag before">Przed</span>
+    <div class="price-old">
+      <div class="price-label">Cena za osobę</div>
+      <div class="price-value">595,00 <small>PLN</small></div>
+    </div>
+    <button class="btn-old">Zarezerwuj</button>
+    <div class="contrast">
+      etykieta 11 px <s>2,8:1</s> · „PLN” <s>2,7:1</s> · cena 44 px 3,4:1 (duży tekst, przechodzi)<br>
+      promienie: panel 22 px, przycisk 14 px · wysokość przycisku 38 px · odstęp 12 px
+    </div>
+  </div>
+
+  <div class="col">
+    <span class="tag after">Po</span>
+    <div class="price-new">
+      <div class="price-label">Cena za osobę</div>
+      <div class="price-value">595,00 <small>PLN</small></div>
+    </div>
+    <button class="btn-new">Zarezerwuj miejsce</button>
+    <div class="contrast">
+      etykieta 12 px <b>4,8:1</b> · cena 44 px 4,8:1 · przycisk czarny 19,8:1<br>
+      promienie: panel 18 px, przycisk 14 px (jak karty) · przycisk 48 px wysokości
+    </div>
+  </div>
+</div>
+
+<h2>3. Program: 1153 px tekstu bez jednego nagłówka, który się wyróżnia</h2>
+<p class="h2note">Zmierzone: „Dzień 1 (03.12.2026, czwartek)” ma taką samą wysokość tuszu jak zwykły tekst (13&nbsp;px) — jest tylko pogrubiony. Pozycje zaczynają się znakiem „–” w tekście, więc nie mają wcięcia ani prawdziwych punktorów, a pogrubienia w środku zdań są w różnych miejscach w każdej linii. Punktor listy w karcie obok ma kolor <code>#d1d5db</code> — kontrast 1,5:1, czyli praktycznie go nie widać.</p>
+
+<div class="compare">
+  <div class="col">
+    <span class="tag before">Przed</span>
+    <div class="prog">
+      <p class="day">Dzień 1 (03.12.2026, czwartek)</p>
+      <p>– Wyjazd z Kalisza o godz. 6:00. Przejazd do Niemiec z przerwą</p>
+      <p>– <b>Moritzburg</b> – jeden z najpiękniejszych pałaców na wodzie, porównywany do wspaniałych zamków nad Loarą. Spacer po romantycznym parku angielskim, otaczającym posiadłość myśliwską Wetinów</p>
+      <p>– <b>Miśnia</b> – urokliwe miasteczko, znane w całym świecie z „białej jak śnieg, lśniącej jak rosa i cienkiej niczym skorupka jajka” saksońskiej porcelany.</p>
+      <p>– Wizyta w najsłynniejszej <b>manufacturze</b> porcelany jest okazją do podpatrzenia artystów tworzących unikatowe dzieła sztuki. Spacer po klimatycznej miśnieńskiej starówce</p>
+      <p class="day" style="margin-top:18px">Dzień 2 (04.12.2026, piątek)</p>
+      <p>– Po śniadaniu wykwaterowanie, następnie czas na odkrywanie tajemnic stolicy Saksonii „bez nudy”. Na trasie <b>m.in</b>:</p>
+    </div>
+    <p class="note">Dzień, lista i akapit wyglądają tak samo. Oko nie ma się czego złapać — czyta się to jak umowę.</p>
+  </div>
+
+  <div class="col">
+    <span class="tag after">Po</span>
+    <div class="prog-new">
+      <div class="day-head"><span class="dot"></span>Dzień 1 <em>· czwartek, 3 grudnia 2026</em></div>
+      <ul>
+        <li>Wyjazd z Kalisza o godz. 6:00. Przejazd do Niemiec z przerwą.</li>
+        <li><b>Moritzburg</b> — jeden z najpiękniejszych pałaców na wodzie. Spacer po romantycznym parku angielskim wokół posiadłości myśliwskiej Wetinów.</li>
+        <li><b>Miśnia</b> — miasteczko znane z „białej jak śnieg, lśniącej jak rosa i cienkiej niczym skorupka jajka” saksońskiej porcelany.</li>
+        <li>Wizyta w najsłynniejszej <b>manufakturze porcelany</b> i spacer po miśnieńskiej starówce.</li>
+        <li>Przejazd do Drezna, zakwaterowanie w hotelu, obiadokolacja.</li>
+      </ul>
+      <div class="day-head"><span class="dot"></span>Dzień 2 <em>· piątek, 4 grudnia 2026</em></div>
+      <ul>
+        <li>Śniadanie i wykwaterowanie.</li>
+        <li>Drezno: <b>Zwinger</b>, <b>Opera Sempera</b>, <b>Frauenkirche</b>, Tarasy Brühla, Pochód Książęcy.</li>
+        <li>Kiermasz świąteczny <b>Striezelmarkt</b> — domki Pflaumentoffel, piramida bożonarodzeniowa 14 m.</li>
+        <li>Wyjazd z Drezna, powrót do Kalisza w godzinach wieczornych.</li>
+      </ul>
+      <div class="extra"><b>Atrakcje dodatkowe (dodatkowo płatne)</b> — Pałac Zwingera, Muzeum Higieny, Muzeum Komunikacji, Szkłana Manufaktura. Ceny biletów przy każdej pozycji.</div>
+    </div>
+    <p class="note">Nagłówek dnia 16&nbsp;px z kropką akcentu i linią, pozycje jako prawdziwa lista (wcięcie 20&nbsp;px, punktor w kolorze morskim), pogrubione tylko nazwy miejsc, na końcu osobna ramka na atrakcje dodatkowe.</p>
+  </div>
+</div>
+
+<h2>4. Galeria: przerywana ramka i etykieta „Główne zdjęcie”</h2>
+<p class="h2note">Zdjęcia mają dziś <code>border-2 dashed</code> — to wygląd pola do wrzucania pliku z panelu edycji, nie z widoku dla klienta. Etykieta „Główne zdjęcie” (10&nbsp;px, morski na jasnomorskim) ma kontrast 2,7:1 i nic nie wnosi dla osoby oglądającej ofertę.</p>
+
+<div class="compare">
+  <div class="col">
+    <span class="tag before">Przed</span>
+    <div class="gal">
+      <div class="galwrap main dashed" style="height:118px">
+        <div class="chiprow"><span class="chip"><i></i>Główne zdjęcie</span></div>
+      </div>
+      <div class="th dashed"></div>
+      <div class="th dashed"></div>
+    </div>
+    <div class="measures" style="margin-top:10px">
+      <ul style="padding-left:16px;margin:6px 0">
+        <li>promienie: 12 px (duże) i 8 px (małe)</li>
+        <li>etykieta: 10 px, kontrast 2,7:1</li>
+      </ul>
+    </div>
+  </div>
+  <div class="col">
+    <span class="tag after">Po</span>
+    <div class="gal gal-new">
+      <div class="main solid"></div>
+      <div class="th solid"></div>
+      <div class="th solid"></div>
+    </div>
+    <div class="measures" style="margin-top:10px">
+      <ul style="padding-left:16px;margin:6px 0">
+        <li>jedna ramka: 1 px <code>#dadce3</code>, bez przerywania</li>
+        <li>promień 12 px dla wszystkich trzech kadrów</li>
+        <li>etykiety nie ma w widoku klienta</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<p class="footer">Kolory: <span class="measures">#eef0f5 (tło) · #ffffff (karty) · #0a0a0a (tekst) · #3f3f46 (tekst pomocniczy) · #2596BE (akcent) · #1e7b9c (ciemniejszy akcent) · #e5f2f7 (tło akcentu) · #dadce3 (linie)</span></p>
+
+</body>
+</html>

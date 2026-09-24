@@ -33,6 +33,7 @@ import {
   assertRegistrationAccessWithBypass,
   registrationAccessErrorStatus,
 } from "@/lib/trips/registration-access";
+import { normalizeBookingPersonNames } from "@/lib/names/normalize-person-name";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -199,7 +200,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const payload = parsed.data;
+    // CAPSLOCK / same-case imiona i nazwiska → Joanna (zapis do DB, PDF, maili)
+    const payload = normalizeBookingPersonNames(parsed.data);
     const seatsRequested = payload.participants.length;
 
     const adminSupabaseForToken = createAdminClient();
@@ -460,8 +462,8 @@ export async function POST(req: Request) {
     const participantsPayload = payload.participants.map((participant) => {
       const participantData: any = {
         booking_id: booking.id,
-        first_name: participant.first_name.trim(),
-        last_name: participant.last_name.trim(),
+        first_name: participant.first_name,
+        last_name: participant.last_name,
         birth_date: participant.birth_date,
         pesel: participant.pesel && participant.pesel.trim() !== "" ? participant.pesel.trim() : null,
         email: participant.email && participant.email.trim() !== "" ? participant.email.trim() : null,

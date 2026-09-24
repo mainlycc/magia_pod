@@ -749,24 +749,31 @@ export default function UczestnicyPage() {
     return map
   }, [participants])
 
-  // Posortowana lista: zachowujemy kolejność umów jak przyszła z backendu,
-  // ale w obrębie każdej umowy pokazujemy "pierwszego uczestnika" zawsze wyżej.
+  // Posortowana lista: rosnąco po dacie zgłoszenia (bookings.created_at).
+  // W obrębie tej samej umowy: najpierw "pierwszy uczestnik", potem chronologicznie.
   const sortedParticipants = useMemo(() => {
-    const bookingOrderIndex = new Map<string, number>()
-    let idx = 0
-    for (const p of participants) {
-      const bookingId = p.bookings?.id ?? p.booking_id
-      if (!bookingId) continue
-      if (!bookingOrderIndex.has(bookingId)) bookingOrderIndex.set(bookingId, idx++)
-    }
-
     return [...participants].sort((a: any, b: any) => {
       const aBookingId = a?.bookings?.id ?? a?.booking_id ?? ""
       const bBookingId = b?.bookings?.id ?? b?.booking_id ?? ""
 
-      const aOrder = bookingOrderIndex.get(aBookingId) ?? Number.POSITIVE_INFINITY
-      const bOrder = bookingOrderIndex.get(bBookingId) ?? Number.POSITIVE_INFINITY
-      if (aOrder !== bOrder) return aOrder - bOrder
+      const aBookingCreated = a?.bookings?.created_at
+        ? new Date(a.bookings.created_at).getTime()
+        : Number.POSITIVE_INFINITY
+      const bBookingCreated = b?.bookings?.created_at
+        ? new Date(b.bookings.created_at).getTime()
+        : Number.POSITIVE_INFINITY
+      if (
+        Number.isFinite(aBookingCreated) &&
+        Number.isFinite(bBookingCreated) &&
+        aBookingCreated !== bBookingCreated
+      ) {
+        return aBookingCreated - bBookingCreated
+      }
+
+      // Ta sama umowa (lub brak daty) — booking_id jako stabilny klucz grupy
+      if (aBookingId !== bBookingId) {
+        return String(aBookingId).localeCompare(String(bBookingId))
+      }
 
       const aPrimaryId = primaryParticipantIdByBookingId.get(aBookingId)
       const bPrimaryId = primaryParticipantIdByBookingId.get(bBookingId)
