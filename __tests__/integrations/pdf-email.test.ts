@@ -1,10 +1,7 @@
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, beforeAll, jest } from "@jest/globals";
 import { NextRequest } from "next/server";
 import { createMockRequest, createMockSupabaseClient, resetMocks } from "@/tests/helpers/api-helpers";
 import { createMockBooking, createMockTrip } from "@/tests/helpers/test-data";
-
-import { POST as POSTPDF } from "@/app/api/pdf/route";
-import { POST as POSTEmail } from "@/app/api/email/route";
 
 // Mock Supabase - zmienne muszą być zdefiniowane przed jest.mock
 let mockSupabaseClient: any = null;
@@ -33,10 +30,48 @@ jest.mock("resend", () => ({
     },
   })),
 }));
+jest.mock("@/lib/pdf-generator", () => ({
+  generatePdfFromHtml: jest.fn((_html: string, filename: string) =>
+    Promise.resolve({ base64: Buffer.from("%PDF-1.4 test").toString("base64"), filename }),
+  ),
+}));
 
+/** Klient admina dla /api/pdf: wiersz wycieczki, puste warianty ubezpieczeń i udany upload. */
+function createPdfAdminClient(tripRow: unknown) {
+  return {
+    from: jest.fn((table: string) => {
+      const result =
+        table === "trips"
+          ? { data: tripRow, error: null }
+          : { data: table === "trip_insurance_variants" ? [] : null, error: null };
+      const builder: any = {};
+      for (const method of ["select", "eq", "in", "order", "update"]) {
+        builder[method] = jest.fn(() => builder);
+      }
+      builder.single = jest.fn(() => Promise.resolve(result));
+      builder.maybeSingle = jest.fn(() => Promise.resolve(result));
+      builder.then = (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject);
+      return builder;
+    }),
+    storage: {
+      from: jest.fn(() => ({
+        upload: jest.fn(() => Promise.resolve({ data: { path: "test-path.pdf" }, error: null })),
+      })),
+    },
+  };
+}
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+type PdfRoute = typeof import("@/app/api/pdf/route");
+type EmailRoute = typeof import("@/app/api/email/route");
+
+// Trasy importowane dynamicznie, żeby załadowały się po zarejestrowaniu mocków
+let POSTPDF: PdfRoute["POST"];
+let POSTEmail: EmailRoute["POST"];
+
+beforeAll(async () => {
+  ({ POST: POSTPDF } = await import("@/app/api/pdf/route"));
+  ({ POST: POSTEmail } = await import("@/app/api/email/route"));
+});
 
 describe("PDF Generation", () => {
   beforeEach(() => {
@@ -58,35 +93,12 @@ describe("PDF Generation", () => {
       booking: mockBooking,
     });
 
-    mockAdminClient = {
-      from: jest.fn(() => ({
-        select: jest.fn(() => ({
-          eq: jest.fn(() => ({
-            single: jest.fn(() => Promise.resolve({ data: mockBooking, error: null })),
-          })),
-        })),
-        update: jest.fn(() => ({
-          eq: jest.fn(() => Promise.resolve({ data: null, error: null })),
-        })),
-      })),
-      storage: {
-        from: jest.fn((bucket: string) => ({
-          upload: jest.fn(() => Promise.resolve({ 
-            data: { 
-              path: "test-path.pdf",
-              id: "test-id",
-              fullPath: "test-path.pdf"
-            },
-            error: null,
-            // Upewnij się, że error jest null, nie undefined
-          })),
-        })),
-      },
-    };
+    mockAdminClient = createPdfAdminClient(mockTrip);
 
     // Endpoint PDF oczekuje pełnego payloadu PdfPayload
     const requestBody = {
       booking_ref: mockBooking.booking_ref,
+      trip_id: mockTrip.id,
       trip: {
         title: mockTrip.title,
         start_date: mockTrip.start_date,
@@ -316,35 +328,12 @@ describe("PDF and Email Integration", () => {
       booking: mockBooking,
     });
 
-    mockAdminClient = {
-      from: jest.fn(() => ({
-        select: jest.fn(() => ({
-          eq: jest.fn(() => ({
-            single: jest.fn(() => Promise.resolve({ data: mockBooking, error: null })),
-          })),
-        })),
-        update: jest.fn(() => ({
-          eq: jest.fn(() => Promise.resolve({ data: null, error: null })),
-        })),
-      })),
-      storage: {
-        from: jest.fn((bucket: string) => ({
-          upload: jest.fn(() => Promise.resolve({ 
-            data: { 
-              path: "test-path.pdf",
-              id: "test-id",
-              fullPath: "test-path.pdf"
-            },
-            error: null,
-            // Upewnij się, że error jest null, nie undefined
-          })),
-        })),
-      },
-    };
+    mockAdminClient = createPdfAdminClient(mockTrip);
 
     // Najpierw wygeneruj PDF - endpoint oczekuje pełnego payloadu
     const pdfRequestBody = {
       booking_ref: mockBooking.booking_ref,
+      trip_id: mockTrip.id,
       trip: {
         title: mockTrip.title,
         start_date: mockTrip.start_date,

@@ -13,7 +13,7 @@ describe("agreement-template-parser round-trip", () => {
       s.fields?.some((f) => f.value.includes("{{trip_title}}")),
     );
     const pricingTable = tableSections.find((s) =>
-      s.fields?.some((f) => f.value.includes("{{trip_total_price}}")),
+      s.fields?.some((f) => f.value.includes("{{trip_price_breakdown}}")),
     );
 
     expect(tripInfoTable).toBeDefined();

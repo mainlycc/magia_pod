@@ -1,6 +1,4 @@
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
-import { GET as GETTrips, POST as POSTTrip } from "@/app/api/trips/route";
-import { GET as GETTrip, PATCH as PATCHTrip } from "@/app/api/trips/[id]/route";
+import { describe, it, expect, beforeEach, beforeAll, jest } from "@jest/globals";
 import { NextRequest } from "next/server";
 import { createMockRequest, createMockSupabaseClient, resetMocks } from "@/tests/helpers/api-helpers";
 import { createMockTrip } from "@/tests/helpers/test-data";
@@ -12,7 +10,23 @@ jest.mock("@/lib/supabase/server", () => ({
   createClient: jest.fn(() => Promise.resolve(mockSupabaseClient)),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+jest.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: jest.fn(() => mockSupabaseClient),
+}));
+
+type TripsRoute = typeof import("@/app/api/trips/route");
+type TripRoute = typeof import("@/app/api/trips/[id]/route");
+
+// Trasy importowane dynamicznie, żeby załadowały się po zarejestrowaniu mocków
+let GETTrips: TripsRoute["GET"];
+let POSTTrip: TripsRoute["POST"];
+let GETTrip: TripRoute["GET"];
+let PATCHTrip: TripRoute["PATCH"];
+
+beforeAll(async () => {
+  ({ GET: GETTrips, POST: POSTTrip } = await import("@/app/api/trips/route"));
+  ({ GET: GETTrip, PATCH: PATCHTrip } = await import("@/app/api/trips/[id]/route"));
+});
 
 describe("GET /api/trips", () => {
   beforeEach(() => {
@@ -163,7 +177,6 @@ describe("POST /api/trips", () => {
 
     const requestBody = {
       title: "Nowa Wycieczka",
-      slug: "nowa-wycieczka",
       description: "Opis wycieczki",
       start_date: "2024-06-01",
       end_date: "2024-06-07",
@@ -344,7 +357,8 @@ describe("PATCH /api/trips/[id]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data).toHaveProperty("title", "Zaktualizowana Wycieczka");
+    expect(data).toEqual({ ok: true });
+    expect(mockSupabaseClient.from).toHaveBeenCalledWith("trips");
   });
 
   it("powinien zwrócić 403 dla użytkownika bez uprawnień admina", async () => {
