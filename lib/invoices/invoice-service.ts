@@ -5,6 +5,7 @@
  *
  * Pierwsza płatność:
  *   1. Utwórz zamówienie (order) w Fakturownia – podstawa dla KSeF
+ *      (cena wycieczki × osoby + usługi dodatkowe z selected_services)
  *   2. Zapisz order_id w bookings.fakturownia_order_id
  *   3. Wystaw fakturę zaliczkową (kind: "advance") powiązaną z zamówieniem
  *
@@ -17,12 +18,16 @@
  *   - Pobierz PDF z Fakturownia (krótki delay + ponawianie / odświeżanie pdf_url)
  *   - Zapisz PDF w Supabase Storage
  *   - Wyślij PDF emailem do klienta (Resend bez wewnętrznego HTTP)
+ *
+ * Po zmianie usług dodatkowych uczestnika:
+ *   - syncFakturowniaOrderForBooking aktualizuje kwotę istniejącego zamówienia (estimate)
  */
 
 import {
   buildFakturowniaConfigFromEnv,
   createOrder,
   createInvoice,
+  updateOrder,
   buildInvoicePdfUrl,
   buildInvoiceHtmlViewUrl,
   downloadPdf,
@@ -43,6 +48,7 @@ import {
   INVOICE_VAT_MARGIN_NOTE,
 } from "@/lib/invoices/format-invoice-service-name";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { calculateBookingTotalCents } from "@/lib/utils/payment-calculator";
 
 // ===================== TYPES =====================
 
@@ -91,6 +97,37 @@ interface TripData {
   start_date: string | null;
   end_date: string | null;
   reservation_number: string | null;
+  form_diets?: unknown;
+  form_extra_insurances?: unknown;
+  form_additional_attractions?: unknown;
+}
+
+type ParticipantForOrder = {
+  selected_services?: unknown;
+};
+
+/**
+ * Pełna kwota zamówienia Fakturownia: cena wycieczki × osoby + usługi dodatkowe
+ * z selected_services (diety / ubezpieczenia / atrakcje PLN), spójnie z umową i płatnościami.
+ */
+function resolveFakturowniaOrderTotal(
+  trip: TripData,
+  participants: ParticipantForOrder[] | null | undefined
+): { participantsCount: number; totalPriceCents: number } {
+  const list = participants ?? [];
+  const participantsCount = list.length > 0 ? list.length : 1;
+  const totalPriceCents = calculateBookingTotalCents(
+    trip.price_cents || 0,
+    participantsCount,
+    list,
+    undefined,
+    {
+      form_diets: trip.form_diets,
+      form_extra_insurances: trip.form_extra_insurances,
+      form_additional_attractions: trip.form_additional_attractions,
+    }
+  );
+  return { participantsCount, totalPriceCents };
 }
 
 interface ParentInvoice {
@@ -320,6 +357,7 @@ async function recoverMissingFakturowniaOrderId(
   booking: BookingData,
   trip: TripData,
   participantsCount: number,
+  totalPriceCents: number,
   existingInvoices: InvoiceRowLite[],
   serviceName: string
 ): Promise<{ orderId: number } | { error: string }> {
@@ -348,7 +386,6 @@ async function recoverMissingFakturowniaOrderId(
   const buyerName = prepareBuyerName(booking);
   const buyerNip = prepareBuyerNip(booking);
   const buyerAddress = prepareBuyerAddress(booking);
-  const totalPriceCents = (trip.price_cents || 0) * participantsCount;
   const totalPriceZloty = totalPriceCents / 100;
 
   const orderResponse = await createOrder(config, {
@@ -378,7 +415,126 @@ async function recoverMissingFakturowniaOrderId(
   return { orderId: orderResponse.orderId };
 }
 
+export interface SyncFakturowniaOrderResult {
+  synced: boolean;
+  skipped?: string;
+  orderId?: number;
+  totalPriceCents?: number;
+  error?: string;
+}
+
+/**
+ * Synchronizuje kwotę istniejącego zamówienia Fakturownia z aktualną sumą rezerwacji
+ * (cena wycieczki × osoby + usługi dodatkowe). Wywoływane po zmianie selected_services.
+ * Jeśli zamówienia jeszcze nie ma — no-op (zostanie utworzone przy pierwszej fakturze).
+ */
+export async function syncFakturowniaOrderForBooking(
+  bookingId: string
+): Promise<SyncFakturowniaOrderResult> {
+  const supabase = createAdminClient();
+
+  const { data: booking, error: bookingError } = await supabase
+    .from("bookings")
+    .select("id, trip_id, fakturownia_order_id, booking_ref")
+    .eq("id", bookingId)
+    .single();
+
+  if (bookingError || !booking) {
+    return { synced: false, error: "Booking not found: " + bookingId };
+  }
+
+  if (!booking.fakturownia_order_id) {
+    return { synced: false, skipped: "no_fakturownia_order" };
+  }
+
+  const orderId = parseInt(String(booking.fakturownia_order_id), 10);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    return { synced: false, error: "Invalid fakturownia_order_id on booking" };
+  }
+
+  const fakturowniaConfig = getFakturowniaConfig();
+  if (!validateFakturowniaConfig(fakturowniaConfig)) {
+    return { synced: false, skipped: "fakturownia_config_missing" };
+  }
+
+  const { data: trip, error: tripError } = await supabase
+    .from("trips")
+    .select(
+      "id, title, price_cents, start_date, end_date, reservation_number, form_diets, form_extra_insurances, form_additional_attractions"
+    )
+    .eq("id", booking.trip_id)
+    .single();
+
+  if (tripError || !trip) {
+    return { synced: false, error: "Trip not found: " + booking.trip_id };
+  }
+
+  const { data: participants } = await supabase
+    .from("participants")
+    .select("id, selected_services")
+    .eq("booking_id", bookingId)
+    .eq("is_active", true);
+
+  const { participantsCount, totalPriceCents } = resolveFakturowniaOrderTotal(
+    trip as TripData,
+    participants as ParticipantForOrder[] | null
+  );
+  const totalPriceZloty = totalPriceCents / 100;
+
+  const { data: agreementRow } = await supabase
+    .from("agreements")
+    .select("agreement_seq")
+    .eq("booking_id", bookingId)
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("generated_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const agreementSeq =
+    typeof agreementRow?.agreement_seq === "number" ? agreementRow.agreement_seq : null;
+
+  const serviceName = buildInvoiceServiceName({
+    title: trip.title,
+    startDate: trip.start_date,
+    endDate: trip.end_date,
+    reservationNumber: trip.reservation_number,
+    agreementSeq,
+  });
+
+  console.log("[InvoiceService] Syncing Fakturownia order total:", {
+    bookingId,
+    orderId,
+    participantsCount,
+    totalPriceCents,
+  });
+
+  const updateResponse = await updateOrder(fakturowniaConfig, orderId, {
+    positions: [buildTripPosition(serviceName, participantsCount, totalPriceZloty)],
+  });
+
+  if (!updateResponse.success) {
+    console.error("[InvoiceService] Failed to sync Fakturownia order:", updateResponse.error);
+    return {
+      synced: false,
+      orderId,
+      totalPriceCents,
+      error: updateResponse.error || "update_order_failed",
+    };
+  }
+
+  console.log("[InvoiceService] Fakturownia order synced:", { orderId, totalPriceCents });
+  return { synced: true, orderId, totalPriceCents };
+}
+
 // ===================== MAIN FLOW =====================
+
+/**
+ * Automatyczne wystawianie faktur po wpłatach (Paynow, wpłaty dodane przez admina).
+ * `INVOICES_AUTO_ISSUE_DISABLED=true` wyłącza je — zostaje tylko ręczne generowanie w panelu.
+ */
+export function isAutoInvoiceEnabled(): boolean {
+  return process.env.INVOICES_AUTO_ISSUE_DISABLED !== "true";
+}
 
 export async function processPaymentInvoice(
   params: ProcessPaymentInvoiceParams
@@ -513,7 +669,9 @@ export async function processPaymentInvoice(
     // ─── 3. Pobierz dane wycieczki ───
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, title, price_cents, start_date, end_date, reservation_number")
+      .select(
+        "id, title, price_cents, start_date, end_date, reservation_number, form_diets, form_extra_insurances, form_additional_attractions"
+      )
       .eq("id", booking.trip_id)
       .single();
 
@@ -541,13 +699,25 @@ export async function processPaymentInvoice(
       agreementSeq,
     });
 
-    // ─── 4. Pobierz liczbę uczestników ───
+    // ─── 4. Pobierz uczestników (w tym usługi dodatkowe) ───
     const { data: participants } = await supabase
       .from("participants")
-      .select("id")
+      .select("id, selected_services")
       .eq("booking_id", bookingId)
       .eq("is_active", true);
-    const participantsCount = participants?.length || 1;
+
+    const { participantsCount, totalPriceCents } = resolveFakturowniaOrderTotal(
+      trip as TripData,
+      participants as ParticipantForOrder[] | null
+    );
+    const totalPriceZloty = totalPriceCents / 100;
+
+    console.log("[InvoiceService] Order total for booking:", {
+      bookingId,
+      participantsCount,
+      tripPriceCents: trip.price_cents,
+      totalPriceCents,
+    });
 
     // ─── 5. Pobierz poprzednie faktury dla tej rezerwacji ───
     const { data: existingInvoices } = await supabase
@@ -594,14 +764,13 @@ export async function processPaymentInvoice(
     const marginFields = marginSettings.invoiceFields;
 
     const paymentAmountZloty = amountCents / 100;
-    const totalPriceCents = (trip.price_cents || 0) * participantsCount;
-    const totalPriceZloty = totalPriceCents / 100;
 
     // ─── 8. Utwórz lub pobierz zamówienie Fakturownia ───
     let fakturowniaOrderId: number | undefined;
 
     if (isFirstInvoice) {
       // Pierwsza faktura – utwórz zamówienie reprezentujące pełny koszt rezerwacji
+      // (cena wycieczki + usługi dodatkowe uczestników)
       console.log("[InvoiceService] Creating Fakturownia order for booking:", bookingId);
 
       const orderResponse = await createOrder(fakturowniaConfig, {
@@ -653,8 +822,9 @@ export async function processPaymentInvoice(
           fakturowniaConfig,
           bookingId,
           booking as BookingData,
-          trip,
+          trip as TripData,
           participantsCount,
+          totalPriceCents,
           (existingInvoices || []) as InvoiceRowLite[],
           serviceName
         );

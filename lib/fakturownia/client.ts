@@ -379,6 +379,93 @@ export async function createOrder(
   }
 }
 
+/**
+ * Aktualizuje pozycje istniejącego zamówienia (estimate) w Fakturowni.
+ * Używane przy synchronizacji kwoty po zmianie usług dodatkowych uczestników.
+ * Zachowuje id pierwszej pozycji (jeśli jest), żeby nie tworzyć duplikatów.
+ */
+export async function updateOrder(
+  config: FakturowniaConfig,
+  orderId: number | string,
+  data: { positions: FakturowniaInvoiceItem[]; description?: string }
+): Promise<FakturowniaOrderResponse> {
+  try {
+    if (!data.positions || data.positions.length === 0) {
+      return { success: false, error: "Brak pozycji do aktualizacji zamówienia" };
+    }
+
+    const details = await getInvoice(config, orderId);
+    if (!details.success || !details.rawResponse) {
+      return {
+        success: false,
+        error: details.error || "Nie udało się odczytać zamówienia przed aktualizacją",
+      };
+    }
+
+    const raw = details.rawResponse as Record<string, unknown>;
+    const existingPositions = Array.isArray(raw.positions) ? (raw.positions as any[]) : [];
+    const firstExistingId = existingPositions[0]?.id;
+
+    const mappedPositions = data.positions.map((item, index) => {
+      const mapped = mapPositionForApi(item);
+      if (index === 0 && firstExistingId != null) {
+        return { ...mapped, id: firstExistingId };
+      }
+      return mapped;
+    });
+
+    const invoicePayload: Record<string, unknown> = {
+      positions: mappedPositions,
+    };
+    if (data.description !== undefined) {
+      invoicePayload.description = data.description;
+    }
+
+    const baseUrl = getBaseUrl(config);
+    console.log("[Fakturownia Client] Updating order:", {
+      orderId,
+      positions: mappedPositions.length,
+      firstPositionId: firstExistingId ?? null,
+    });
+
+    const response = await fetch(`${baseUrl}/invoices/${orderId}.json`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        api_token: config.apiToken,
+        invoice: invoicePayload,
+      }),
+    });
+
+    const responseData = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      console.error("[Fakturownia] Raw order update error:", JSON.stringify(responseData, null, 2));
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${serializeError(responseData)}`,
+        rawResponse: responseData,
+      };
+    }
+
+    console.log("[Fakturownia Client] Order updated:", { orderId });
+
+    return {
+      success: true,
+      orderId: typeof orderId === "number" ? orderId : parseInt(String(orderId), 10),
+      rawResponse: responseData,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Nieznany błąd",
+    };
+  }
+}
+
 // ===================== INVOICES =====================
 
 /**

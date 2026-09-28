@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPaynowPaymentStatus } from "@/lib/paynow";
+import { withPaynowStatusConfirmed } from "@/lib/paynow/extract-payment-id";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
 import { createInvoiceForPaynowPayment } from "@/lib/payments/invoice-after-paynow-payment";
+import { isAutoInvoiceEnabled } from "@/lib/invoices/invoice-service";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
 export const dynamic = 'force-dynamic';
@@ -131,9 +133,16 @@ export async function POST(request: NextRequest) {
       
       const paymentStatus = await getPaynowPaymentStatus(foundPaymentId);
 
-      if (!paymentStatus) {
+      if (!paymentStatus.found) {
         return NextResponse.json(
-          { error: "failed_to_check_status", message: "Nie udało się sprawdzić statusu płatności w Paynow" },
+          {
+            error: "failed_to_check_status",
+            message:
+              paymentStatus.reason === "not_found"
+                ? "Nie znaleziono płatności w Paynow (sprawdź środowisko sandbox vs production)"
+                : "Nie udało się sprawdzić statusu płatności w Paynow",
+            reason: paymentStatus.reason,
+          },
           { status: 500 }
         );
       }
@@ -218,6 +227,22 @@ export async function POST(request: NextRequest) {
           paymentHistoryRowIdForInvoice = existingPayment[0].id;
           invoiceAmountCents = existingPayment[0].amount_cents || paymentStatus.amount || 0;
           console.log(`[Paynow Check Status] Payment history entry already exists for payment ${foundPaymentId} (id: ${existingPayment[0].id}, amount: ${existingPayment[0].amount_cents})`);
+
+          const confirmedNotes = withPaynowStatusConfirmed(existingPayment[0].notes);
+          if (confirmedNotes !== existingPayment[0].notes) {
+            const { error: confirmError } = await adminClient
+              .from("payment_history")
+              .update({
+                notes: confirmedNotes,
+                ...(existingPayment[0].amount_cents || !paymentStatus.amount
+                  ? {}
+                  : { amount_cents: paymentStatus.amount }),
+              })
+              .eq("id", existingPayment[0].id);
+            if (confirmError) {
+              console.error(`[Paynow Check Status] ❌ Failed to mark payment history ${existingPayment[0].id} as CONFIRMED:`, confirmError);
+            }
+          }
         } else {
           console.log(`[Paynow Check Status] Skipping payment history insert - no amount provided (amount: ${paymentStatus.amount})`);
         }
@@ -316,11 +341,14 @@ export async function POST(request: NextRequest) {
         }
 
         // Wystaw fakturę — fallback gdy webhook Paynow nie dotarł (np. localhost)
-        if (
-          paymentHistoryRowIdForInvoice &&
+        const shouldIssueInvoice =
+          Boolean(paymentHistoryRowIdForInvoice) &&
           invoiceAmountCents > 0 &&
-          (newPaymentStatus === "paid" || newPaymentStatus === "partial")
-        ) {
+          (newPaymentStatus === "paid" || newPaymentStatus === "partial");
+
+        if (shouldIssueInvoice && !isAutoInvoiceEnabled()) {
+          console.log("[Paynow Check Status] Auto invoice disabled (INVOICES_AUTO_ISSUE_DISABLED) — skipping");
+        } else if (shouldIssueInvoice && paymentHistoryRowIdForInvoice) {
           try {
             await createInvoiceForPaynowPayment({
               bookingId: booking.id,

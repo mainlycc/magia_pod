@@ -14,10 +14,16 @@ type CreatePaynowPaymentResult = {
   redirectUrl?: string;
 };
 
+export type PaynowEnvironment = "sandbox" | "production";
+
+export function getPaynowEnvironment(): PaynowEnvironment {
+  return process.env.PAYNOW_ENV === "production" ? "production" : "sandbox";
+}
+
 function getPaynowConfig() {
   const apiKey = process.env.PAYNOW_API_KEY;
   const signatureKey = process.env.PAYNOW_SIGNATURE_KEY;
-  const environment = process.env.PAYNOW_ENV ?? "sandbox";
+  const environment = getPaynowEnvironment();
 
   if (!apiKey || !signatureKey) {
     throw new Error("Paynow is not configured - missing PAYNOW_API_KEY or PAYNOW_SIGNATURE_KEY");
@@ -35,8 +41,18 @@ function getPaynowConfig() {
     apiKey: apiKey.trim(),
     signatureKey: signatureKey.trim(),
     baseUrl,
+    environment,
   };
 }
+
+export type PaynowStatusLookup =
+  | { found: true; status: string; amount?: number; externalId?: string }
+  | {
+      found: false;
+      reason: "not_found" | "error";
+      httpStatus?: number;
+      message?: string;
+    };
 
 export async function createPaynowPayment(
   input: CreatePaynowPaymentInput,
@@ -155,18 +171,19 @@ export async function createPaynowPayment(
 }
 
 /**
- * Sprawdza status płatności Paynow przez API
+ * Sprawdza status płatności Paynow przez API.
+ * Zwraca found:false przy 404 / błędzie HTTP (zamiast null).
  */
 export async function getPaynowPaymentStatus(
   paymentId: string,
-): Promise<{ status: string; amount?: number; externalId?: string } | null> {
-  const { apiKey, signatureKey, baseUrl } = getPaynowConfig();
+): Promise<PaynowStatusLookup> {
+  const { apiKey, signatureKey, baseUrl, environment } = getPaynowConfig();
 
   // Paynow v3 wymaga sygnatury również dla GET requestów
   // Sygnatura dla GET: headers (alfabetycznie: Api-Key, Idempotency-Key) + parameters + body (pusty string dla GET)
   // Idempotency-Key jest wymagany również dla GET requestów
   const idempotencyKey = paymentId; // Używamy paymentId jako Idempotency-Key
-  
+
   const signaturePayload = {
     headers: {
       "Api-Key": apiKey,
@@ -185,6 +202,7 @@ export async function getPaynowPaymentStatus(
   // Debug logging - tylko w development
   if (process.env.NODE_ENV === "development") {
     console.log("Paynow get payment status request debug:", {
+      environment,
       url: `${baseUrl}/v3/payments/${paymentId}/status`,
       signaturePayload: signaturePayloadJson,
       signatureLength: signature.length,
@@ -199,7 +217,7 @@ export async function getPaynowPaymentStatus(
     headers: {
       "Content-Type": "application/json",
       "Api-Key": apiKey,
-      "Signature": signature,
+      Signature: signature,
       "Idempotency-Key": idempotencyKey,
     },
   });
@@ -207,11 +225,18 @@ export async function getPaynowPaymentStatus(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error(`Failed to get Paynow payment status: ${res.status} ${text}`);
-    // Jeśli 404, może to oznaczać że płatność nie istnieje lub paymentId jest niepoprawny
     if (res.status === 404) {
-      console.error(`Payment ${paymentId} not found in Paynow`);
+      console.error(
+        `Payment ${paymentId} not found in Paynow (${environment}). Jeśli płatności są z produkcji, ustaw PAYNOW_ENV=production i klucze produkcyjne.`,
+      );
+      return { found: false, reason: "not_found", httpStatus: 404, message: text };
     }
-    return null;
+    return {
+      found: false,
+      reason: "error",
+      httpStatus: res.status,
+      message: text,
+    };
   }
 
   const data = (await res.json()) as {
@@ -222,6 +247,7 @@ export async function getPaynowPaymentStatus(
   };
 
   return {
+    found: true,
     status: data.status,
     amount: data.amount,
     externalId: data.externalId,

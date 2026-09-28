@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { syncFakturowniaOrderForBooking } from "@/lib/invoices/invoice-service"
+import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments"
 
 async function checkAdmin(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
   const { data: claims } = await supabase.auth.getClaims()
@@ -32,7 +34,7 @@ export async function POST(
     const adminClient = createAdminClient()
     const { data: participant, error: fetchError } = await adminClient
       .from("participants")
-      .select("id, is_active")
+      .select("id, is_active, booking_id")
       .eq("id", id)
       .single()
 
@@ -51,7 +53,54 @@ export async function POST(
       return NextResponse.json({ error: "update_failed" }, { status: 500 })
     }
 
-    return NextResponse.json({ id, is_active: newIsActive })
+    let fakturowniaOrderSync: Awaited<ReturnType<typeof syncFakturowniaOrderForBooking>> | null =
+      null
+    let paymentRecalc:
+      | Awaited<ReturnType<typeof recalculateBookingPaymentsFromHistory>>
+      | null = null
+    if (participant.booking_id) {
+      try {
+        paymentRecalc = await recalculateBookingPaymentsFromHistory(
+          adminClient,
+          participant.booking_id,
+        )
+        if (!paymentRecalc.ok) {
+          console.error(
+            "payment status recalc failed after toggle-active:",
+            paymentRecalc.error,
+          )
+        }
+      } catch (recalcErr) {
+        console.error("payment status recalc threw after toggle-active:", recalcErr)
+        paymentRecalc = {
+          ok: false,
+          error: recalcErr instanceof Error ? recalcErr.message : "recalc_threw",
+        }
+      }
+
+      try {
+        fakturowniaOrderSync = await syncFakturowniaOrderForBooking(participant.booking_id)
+        if (fakturowniaOrderSync.error) {
+          console.error(
+            "fakturownia order sync failed after toggle-active:",
+            fakturowniaOrderSync.error
+          )
+        }
+      } catch (orderSyncErr) {
+        console.error("fakturownia order sync threw after toggle-active:", orderSyncErr)
+        fakturowniaOrderSync = {
+          synced: false,
+          error: orderSyncErr instanceof Error ? orderSyncErr.message : "sync_threw",
+        }
+      }
+    }
+
+    return NextResponse.json({
+      id,
+      is_active: newIsActive,
+      payment_recalc: paymentRecalc,
+      fakturownia_order_sync: fakturowniaOrderSync,
+    })
   } catch (err) {
     console.error("Error in POST /api/participants/[id]/toggle-active:", err)
     return NextResponse.json({ error: "unexpected" }, { status: 500 })

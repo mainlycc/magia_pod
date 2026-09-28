@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
-import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
+import { isAutoInvoiceEnabled, processPaymentInvoice } from "@/lib/invoices/invoice-service";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
 
 const paymentSchema = z.object({
@@ -139,7 +139,9 @@ export async function POST(
   }
 
   // Wystaw fakturę dla każdej wpłaty (asynchronicznie, nie blokujemy odpowiedzi)
-  if (payment && payload.amount_cents > 0) {
+  if (payment && payload.amount_cents > 0 && !isAutoInvoiceEnabled()) {
+    console.log("[Payments API] Auto invoice disabled (INVOICES_AUTO_ISSUE_DISABLED) — skipping");
+  } else if (payment && payload.amount_cents > 0) {
     processPaymentInvoice({
       bookingId: id,
       paymentHistoryId: payment.id,

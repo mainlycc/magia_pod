@@ -4,12 +4,14 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
+import { withPaynowStatusConfirmed } from "@/lib/paynow/extract-payment-id";
 import { formatAgreementNumber } from "@/lib/agreements/format-agreement-number";
 import {
   ensureAgreementForBooking,
   resolvePdfBaseUrl,
 } from "@/lib/agreements/ensure-agreement";
 import { createInvoiceForPaynowPayment } from "@/lib/payments/invoice-after-paynow-payment";
+import { isAutoInvoiceEnabled } from "@/lib/invoices/invoice-service";
 import { sendPaymentConfirmationEmail } from "@/lib/payments/send-payment-confirmation-email";
 
 // Wymuś dynamiczne renderowanie - wyłącz cache całkowicie
@@ -352,6 +354,20 @@ export async function POST(request: NextRequest) {
       paymentHistoryInserted = true; // Wpis już istnieje
       paymentHistoryRowIdForInvoice = existingHistory[0].id;
       console.log(`[Paynow Webhook] Payment history entry already exists for payment ${payload.paymentId} (id: ${existingHistory[0].id}, amount: ${existingHistory[0].amount_cents}), skipping insert`);
+
+      const confirmedNotes = withPaynowStatusConfirmed(existingHistory[0].notes);
+      if (confirmedNotes !== existingHistory[0].notes) {
+        const { error: confirmError } = await supabase
+          .from("payment_history")
+          .update({
+            notes: confirmedNotes,
+            ...(existingHistory[0].amount_cents ? {} : { amount_cents: amountCents }),
+          })
+          .eq("id", existingHistory[0].id);
+        if (confirmError) {
+          console.error(`[Paynow Webhook] ❌ Failed to mark payment history ${existingHistory[0].id} as CONFIRMED:`, confirmError);
+        }
+      }
     }
   } else {
     console.log(`[Paynow Webhook] Skipping payment history insert - shouldUpdatePaymentHistory=${shouldUpdatePaymentHistory}, amountCents=${amountCents}`);
@@ -538,12 +554,18 @@ export async function POST(request: NextRequest) {
 
   // Wystaw fakturę zaliczkową automatycznie dla każdej potwierdzonej płatności
   // Każda wpłata = osobna faktura zaliczkowa (advance lub advance_to_advance)
-  if (
+  const autoInvoiceEnabled = isAutoInvoiceEnabled();
+  const shouldIssueInvoice =
     (newPaymentStatus === "paid" || newPaymentStatus === "partial") &&
     paymentHistoryInserted &&
-    paymentHistoryRowIdForInvoice &&
-    amountCents > 0
-  ) {
+    Boolean(paymentHistoryRowIdForInvoice) &&
+    amountCents > 0;
+
+  if (shouldIssueInvoice && !autoInvoiceEnabled) {
+    console.log("[Paynow Webhook] Auto invoice disabled (INVOICES_AUTO_ISSUE_DISABLED) — skipping");
+  }
+
+  if (shouldIssueInvoice && autoInvoiceEnabled && paymentHistoryRowIdForInvoice) {
     try {
       await createInvoiceForPaynowPayment({
         bookingId: booking.id,
@@ -634,11 +656,7 @@ export async function POST(request: NextRequest) {
 
   // Mail potwierdzenia płatności wysyłany razem z fakturą (invoice-service).
   // Tutaj tylko fallback gdy faktura nie będzie wystawiana.
-  const willSendInvoiceEmail =
-    (newPaymentStatus === "paid" || newPaymentStatus === "partial") &&
-    paymentHistoryInserted &&
-    Boolean(paymentHistoryRowIdForInvoice) &&
-    amountCents > 0;
+  const willSendInvoiceEmail = shouldIssueInvoice && autoInvoiceEnabled;
 
   if (
     status === "CONFIRMED" &&

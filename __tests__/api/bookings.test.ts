@@ -64,7 +64,9 @@ function createTripsTableMock(mockTrip: ReturnType<typeof createMockTrip> | null
 function createMockAdminClientForBookings(
   mockTrip: ReturnType<typeof createMockTrip> | null,
   mockBooking: ReturnType<typeof createMockBooking>,
+  options?: { existingParticipants?: Array<Record<string, unknown>> },
 ) {
+  const existingParticipants = options?.existingParticipants ?? [];
   return {
     rpc: jest.fn((fnName: string) => {
       if (fnName === "create_booking") {
@@ -107,6 +109,16 @@ function createMockAdminClientForBookings(
       }
       if (table === "participants") {
         return {
+          select: jest.fn(() => ({
+            eq: jest.fn(() => ({
+              neq: jest.fn(() =>
+                Promise.resolve({
+                  data: existingParticipants,
+                  error: null,
+                }),
+              ),
+            })),
+          })),
           insert: jest.fn(() => ({
             select: jest.fn(() =>
               Promise.resolve({
@@ -301,6 +313,61 @@ describe("POST /api/bookings", () => {
 
     expect(response.status).toBe(409);
     expect(data.error).toBe("Not enough seats");
+  });
+
+  it("powinien zwrócić błąd gdy uczestnik o tym samym imieniu, nazwisku i dacie urodzenia już istnieje", async () => {
+    const mockTrip = createMockTrip();
+    const mockBooking = createMockBooking();
+
+    createClient.mockResolvedValue(
+      createMockSupabaseClient({
+        trip: mockTrip,
+        trips: [mockTrip],
+        reservedTrip: { id: mockTrip.id },
+      }),
+    );
+    createAdminClient.mockReturnValue(
+      createMockAdminClientForBookings(mockTrip, mockBooking, {
+        existingParticipants: [
+          {
+            first_name: "Anna",
+            last_name: "Nowak",
+            birth_date: "2012-05-15",
+            is_active: true,
+          },
+        ],
+      }),
+    );
+
+    const requestBody = {
+      slug: mockTrip.slug,
+      registration_token: mockTrip.registration_token,
+      contact_first_name: "Jan",
+      contact_last_name: "Kowalski",
+      contact_email: "jan.kowalski@example.com",
+      contact_phone: "123456789",
+      participants: [
+        {
+          first_name: "Anna",
+          last_name: "Nowak",
+          birth_date: "2012-05-15",
+        },
+      ],
+      consents: {
+        rodo: true,
+        terms: true,
+        conditions: true,
+      },
+      with_payment: false,
+    };
+
+    const response = await POST(createMockRequest(requestBody));
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toBe("duplicate_participant");
+    expect(data.message).toMatch(/Anna Nowak/);
+    expect(data.message).toMatch(/już zapisany/);
   });
 
   it("powinien zwrócić błąd gdy token rejestracji jest niepoprawny", async () => {

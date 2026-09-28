@@ -26,6 +26,7 @@ import { useTransition } from "react"
 import { Loader2Icon, RefreshCwIcon, CheckCircle2Icon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
+import { VerifyPaynowButton } from "@/components/verify-paynow-button"
 
 type BookingWithTrip = {
   id: string
@@ -296,12 +297,19 @@ export default function PlatnosciPage() {
             </span>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => loadData()} disabled={loading}>
-          <RefreshCwIcon
-            className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`}
+        <div className="flex items-center gap-2">
+          <VerifyPaynowButton
+            tripId={selectedTrip.id}
+            disabled={bookings.length === 0}
+            onSynced={() => void loadData()}
           />
-          Odśwież
-        </Button>
+          <Button variant="outline" size="sm" onClick={() => loadData()} disabled={loading}>
+            <RefreshCwIcon
+              className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`}
+            />
+            Odśwież
+          </Button>
+        </div>
       </div>
       <ReusableTable
         columns={columns}

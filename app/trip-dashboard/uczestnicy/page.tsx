@@ -43,6 +43,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ParticipantAdditionalServicesEditor } from "./participant-additional-services-editor"
+import {
+  VerifyPaynowButton,
+  getPaynowCheckDisplay,
+  paynowCheckBadgeClass,
+  paynowCheckLabel,
+  paynowConfirmedAmountCents,
+  type PaynowCheckRow,
+  type VerifyPaynowResponse,
+} from "@/components/verify-paynow-button"
 import { Switch } from "@/components/ui/switch"
 import { isParticipantActive } from "@/lib/participants/active"
 
@@ -109,6 +118,7 @@ type Participant = {
     paid_amount_cents: number
     contact_email: string
     contact_phone: string | null
+    address: { street?: string; city?: string; zip?: string } | null
     agreements?: BookingAgreement[]
     trips: {
       id: string
@@ -144,6 +154,14 @@ type PaymentHistoryEntry = {
 const formatCurrency = (cents: number | null | undefined): string => {
   if (cents === null || cents === undefined) return "0.00 zł"
   return `${(cents / 100).toFixed(2)} zł`
+}
+
+const formatAddress = (
+  address: { street?: string; city?: string; zip?: string } | null | undefined
+): string | null => {
+  if (!address || typeof address !== "object") return null
+  const formatted = [address.street, address.zip, address.city].filter(Boolean).join(", ")
+  return formatted || null
 }
 
 const formatDate = (date: string | null | undefined): string => {
@@ -269,6 +287,22 @@ export default function UczestnicyPage() {
   const [messageSubject, setMessageSubject] = useState("")
   const [messageBody, setMessageBody] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
+  /** Wynik ostatniego „Sprawdź w Paynow” — bookingId → faktyczny status z Paynow */
+  const [paynowCheckByBookingId, setPaynowCheckByBookingId] = useState<
+    Record<string, PaynowCheckRow>
+  >({})
+
+  const applyPaynowVerifyResult = (result: VerifyPaynowResponse) => {
+    const next: Record<string, PaynowCheckRow> = {}
+    for (const b of result.bookings) {
+      next[b.bookingId] = {
+        display: getPaynowCheckDisplay(b),
+        confirmedAmountCents: paynowConfirmedAmountCents(b),
+        bookingRef: b.bookingRef,
+      }
+    }
+    setPaynowCheckByBookingId(next)
+  }
 
   const sendGroupMessage = async () => {
     if (!selectedTrip) return
@@ -336,6 +370,7 @@ export default function UczestnicyPage() {
       setLoading(false)
       return
     }
+    setPaynowCheckByBookingId({})
     loadData()
   }, [selectedTrip])
 
@@ -380,6 +415,7 @@ export default function UczestnicyPage() {
             paid_amount_cents,
             contact_email,
             contact_phone,
+            address,
             agreements:agreements(id, status, pdf_url, sent_at, signed_at, agreement_seq, updated_at, generated_at),
             trips:trips(
               id,
@@ -547,6 +583,32 @@ export default function UczestnicyPage() {
     if (normalized === "manual") return "Ręcznie"
     if (normalized === "paynow") return "Paynow"
     return paymentMethod ?? "-"
+  }
+
+  /** Status wpisu Paynow z notatek — PENDING to tylko próba, nie prawdziwa wpłata */
+  const getPaynowHistoryStatus = (
+    notes: string | null | undefined,
+  ): "confirmed" | "pending" | "rejected" | "other" | null => {
+    if (!notes || !/paynow/i.test(notes)) return null
+    if (/status:\s*CONFIRMED/i.test(notes)) return "confirmed"
+    if (/status:\s*(PENDING|NEW|WAITING)/i.test(notes)) return "pending"
+    if (/status:\s*(REJECTED|EXPIRED|ABANDONED|ERROR)/i.test(notes)) return "rejected"
+    return "other"
+  }
+
+  const paynowHistoryStatusLabel = (status: ReturnType<typeof getPaynowHistoryStatus>): string => {
+    switch (status) {
+      case "confirmed":
+        return "potwierdzona"
+      case "pending":
+        return "nieukończona (tylko start bramki)"
+      case "rejected":
+        return "odrzucona / nieudana"
+      case "other":
+        return "nieznany status"
+      default:
+        return ""
+    }
   }
 
   const requestDeletePayment = (bookingId: string, paymentId: string) => {
@@ -1038,14 +1100,28 @@ export default function UczestnicyPage() {
             {stats.inactiveCount > 0 ? `, ${stats.inactiveCount} wył.` : ""})
           </CardTitle>
           {isCoordinator ? (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/coord/trips/${selectedTrip.id}/message`}>
-                <Mail className="mr-2 h-4 w-4" />
-                Wyślij wiadomość grupową
-              </Link>
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <VerifyPaynowButton
+                tripId={selectedTrip.id}
+                disabled={stats.totalParticipants === 0}
+                onResult={applyPaynowVerifyResult}
+                onSynced={() => void loadData()}
+              />
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/coord/trips/${selectedTrip.id}/message`}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Wyślij wiadomość grupową
+                </Link>
+              </Button>
+            </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <VerifyPaynowButton
+                tripId={selectedTrip.id}
+                disabled={stats.totalParticipants === 0}
+                onResult={applyPaynowVerifyResult}
+                onSynced={() => void loadData()}
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -1104,6 +1180,7 @@ export default function UczestnicyPage() {
                     <TableHead>Uczestnik</TableHead>
                     <TableHead>Numer umowy</TableHead>
                     <TableHead>Zamawiający</TableHead>
+                    <TableHead>Email zamówienia</TableHead>
                     <TableHead>Data zgłoszenia</TableHead>
                     <TableHead>Stan wpłaty</TableHead>
                   </TableRow>
@@ -1195,20 +1272,64 @@ export default function UczestnicyPage() {
                                 .filter(Boolean)
                                 .join(" ") || "-")}
                           </TableCell>
+                          <TableCell className="truncate">
+                            {booking?.contact_email || "-"}
+                          </TableCell>
                           <TableCell className="whitespace-nowrap">
                             {formatDate(booking?.created_at)}
                           </TableCell>
                           <TableCell>
                             {isActive ? (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-xs whitespace-nowrap",
-                                  getPaymentStatusBadgeClass(paymentStatus)
-                                )}
-                              >
-                                {formatCurrency(paidAmount)} / {formatCurrency(totalAmount)} ({paidPercent}%)
-                              </Badge>
+                              (() => {
+                                const paynowRow = booking?.id
+                                  ? paynowCheckByBookingId[booking.id]
+                                  : undefined
+
+                                // Po sprawdzeniu Paynow — kolumna pokazuje faktyczny status z Paynow
+                                if (paynowRow) {
+                                  const paidFromPaynow =
+                                    paynowRow.display === "paid"
+                                      ? paynowRow.confirmedAmountCents
+                                      : paynowRow.display === "manual"
+                                        ? paidAmount
+                                        : 0
+                                  const percent =
+                                    totalAmount > 0
+                                      ? Math.round((paidFromPaynow / totalAmount) * 100)
+                                      : 0
+                                  return (
+                                    <div className="flex flex-col items-start gap-1">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-xs whitespace-nowrap",
+                                          paynowCheckBadgeClass(paynowRow.display)
+                                        )}
+                                      >
+                                        {paynowCheckLabel(paynowRow.display)}
+                                      </Badge>
+                                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                        {formatCurrency(paidFromPaynow)} / {formatCurrency(totalAmount)}
+                                        {paynowRow.display === "paid" || paynowRow.display === "manual"
+                                          ? ` (${percent}%)`
+                                          : ""}
+                                      </span>
+                                    </div>
+                                  )
+                                }
+
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "text-xs whitespace-nowrap",
+                                      getPaymentStatusBadgeClass(paymentStatus)
+                                    )}
+                                  >
+                                    {formatCurrency(paidAmount)} / {formatCurrency(totalAmount)} ({paidPercent}%)
+                                  </Badge>
+                                )
+                              })()
                             ) : (
                               <span className="text-xs text-muted-foreground">Nie w rozliczeniach</span>
                             )}
@@ -1279,18 +1400,17 @@ export default function UczestnicyPage() {
                                     </div>
                                     <div>
                                       <span className="text-muted-foreground">Email:</span>{" "}
-                                      {participant.email || "-"}
+                                      {participant.email || booking?.contact_email || "-"}
                                     </div>
                                     <div>
                                       <span className="text-muted-foreground">Adres:</span>{" "}
-                                      {participant.address
-                                        ? (() => {
-                                            const a = participant.address as any
-                                            return [a.street, a.zip, a.city]
-                                              .filter(Boolean)
-                                              .join(", ") || "-"
-                                          })()
-                                        : "-"}
+                                      {formatAddress(
+                                        participant.address as
+                                          | { street?: string; city?: string; zip?: string }
+                                          | null
+                                      ) ||
+                                        formatAddress(booking?.address) ||
+                                        "-"}
                                     </div>
 
                                     {/* Warunkowo na podstawie konfiguracji formularza */}
@@ -1303,7 +1423,7 @@ export default function UczestnicyPage() {
                                     {requiredFields.phone && (
                                       <div>
                                         <span className="text-muted-foreground">Telefon:</span>{" "}
-                                        {participant.phone || "-"}
+                                        {participant.phone || booking?.contact_phone || "-"}
                                       </div>
                                     )}
                                     {showParticipantGender && (
@@ -1701,16 +1821,47 @@ export default function UczestnicyPage() {
                                                     count > 1
                                                       ? Math.round(pmt.amount_cents / count)
                                                       : pmt.amount_cents
+                                                  const paynowStatus = getPaynowHistoryStatus(pmt.notes)
+                                                  const isUnconfirmedPaynow =
+                                                    paynowStatus === "pending" || paynowStatus === "rejected"
 
                                                   return (
-                                                    <TableRow key={pmt.id}>
+                                                    <TableRow
+                                                      key={pmt.id}
+                                                      className={cn(isUnconfirmedPaynow && "opacity-70")}
+                                                    >
                                                       <TableCell className="whitespace-nowrap">
                                                         {formatDate(pmt.payment_date)}
                                                       </TableCell>
-                                                      <TableCell className="whitespace-nowrap">
-                                                        {formatPaymentSource(pmt.payment_method)}
+                                                      <TableCell>
+                                                        <div className="flex flex-col gap-0.5">
+                                                          <span className="whitespace-nowrap">
+                                                            {formatPaymentSource(pmt.payment_method)}
+                                                          </span>
+                                                          {paynowStatus && (
+                                                            <Badge
+                                                              variant="outline"
+                                                              className={cn(
+                                                                "w-fit text-[10px] px-1.5 py-0",
+                                                                paynowStatus === "confirmed" &&
+                                                                  "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
+                                                                paynowStatus === "pending" &&
+                                                                  "border-amber-500/40 bg-amber-500/10 text-amber-800",
+                                                                paynowStatus === "rejected" &&
+                                                                  "border-destructive/40 bg-destructive/10 text-destructive",
+                                                              )}
+                                                            >
+                                                              {paynowHistoryStatusLabel(paynowStatus)}
+                                                            </Badge>
+                                                          )}
+                                                        </div>
                                                       </TableCell>
-                                                      <TableCell className="text-right whitespace-nowrap">
+                                                      <TableCell
+                                                        className={cn(
+                                                          "text-right whitespace-nowrap",
+                                                          isUnconfirmedPaynow && "line-through text-muted-foreground",
+                                                        )}
+                                                      >
                                                         {formatCurrency(perParticipantAmountCents)}
                                                       </TableCell>
                                                       <TableCell>
@@ -1729,6 +1880,10 @@ export default function UczestnicyPage() {
                                                             <FileText className="h-3 w-3" />
                                                             {pmt.invoice.invoice_number || "—"}
                                                           </Button>
+                                                        ) : isUnconfirmedPaynow ? (
+                                                          <span className="text-xs text-muted-foreground">
+                                                            Nie liczy się do wpłaty
+                                                          </span>
                                                         ) : (
                                                           <Button
                                                             variant="outline"

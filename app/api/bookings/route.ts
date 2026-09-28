@@ -34,6 +34,10 @@ import {
   registrationAccessErrorStatus,
 } from "@/lib/trips/registration-access";
 import { normalizeBookingPersonNames } from "@/lib/names/normalize-person-name";
+import {
+  buildDuplicateParticipantMessage,
+  findDuplicateParticipantIdentities,
+} from "@/lib/participants/duplicate-identity";
 
 const addressSchema = z.object({
   street: z.string().min(2, "Podaj ulicę"),
@@ -235,6 +239,49 @@ export async function POST(req: Request) {
     const seatsAvailable = Math.max(0, (trip.seats_total ?? 0) - (trip.seats_reserved ?? 0));
     if (seatsRequested > seatsAvailable) {
       return NextResponse.json({ error: "Not enough seats" }, { status: 409 });
+    }
+
+    // Duplikaty uczestników: imię + nazwisko + data urodzenia (nie dotyczy zamawiającego)
+    const adminForDuplicates = createAdminClient();
+    const { data: existingParticipantRows, error: existingParticipantsErr } =
+      await adminForDuplicates
+        .from("participants")
+        .select("first_name, last_name, birth_date, is_active, bookings!inner(trip_id, status)")
+        .eq("bookings.trip_id", trip.id)
+        .neq("bookings.status", "cancelled");
+
+    if (existingParticipantsErr) {
+      console.error("Error checking duplicate participants:", existingParticipantsErr);
+      return NextResponse.json(
+        { error: "Failed to validate participants", details: existingParticipantsErr.message },
+        { status: 500 },
+      );
+    }
+
+    const duplicateParticipants = findDuplicateParticipantIdentities(
+      payload.participants.map((p) => ({
+        first_name: p.first_name,
+        last_name: p.last_name,
+        birth_date: p.birth_date,
+      })),
+      (existingParticipantRows ?? []).map((p) => ({
+        first_name: p.first_name ?? "",
+        last_name: p.last_name ?? "",
+        birth_date: p.birth_date ?? "",
+        is_active: p.is_active,
+      })),
+    );
+
+    if (duplicateParticipants.length > 0) {
+      const message = buildDuplicateParticipantMessage(duplicateParticipants);
+      return NextResponse.json(
+        {
+          error: "duplicate_participant",
+          message,
+          duplicates: duplicateParticipants,
+        },
+        { status: 409 },
+      );
     }
 
     const bookingRef = generateRef();

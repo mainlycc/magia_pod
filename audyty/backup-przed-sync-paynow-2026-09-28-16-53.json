@@ -1,0 +1,637 @@
+{
+  "trips": [
+    {
+      "id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "title": "Zatoka atrakcji 230626"
+    },
+    {
+      "id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "title": "Saksonia w świątecznym blasku, Kalisz 210926"
+    }
+  ],
+  "bookings": [
+    {
+      "id": "a990a999-bd04-4484-ad28-9ed58b7840ac",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUB34OJO-NE4TR",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "6f3735bc-6b00-4bc4-ba2f-655d72433fa8",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUJZ18FY-M28KP",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "62a3bece-f8fc-4f91-b8f3-c20dc4b5ab66",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MU44JG0S-H0THS",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "93bf41ab-046a-4752-872e-ec9c0f11ecad",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUA5B2XQ-EWJYF",
+      "payment_status": "partial",
+      "paid_amount_cents": 18660,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "0a4821b4-b3bb-4962-a79b-267c0c5bc723",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUCIIHDU-EIRVF",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 96500,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "5f7728bb-dafe-4863-bcd3-6a859cad8101",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUK13150-6SV2F",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 96500,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "acaac92e-abc8-4f49-9fc6-0df7be666a46",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUH708N0-FZPJI",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "6776b579-0143-4163-980f-9324cfddbffd",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUE7RW54-O4P6A",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "31dabb02-a499-4757-b870-f88353c0a5b8",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUK3JTSH-G05L0",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 96500,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "906a66ff-c2db-4332-94b8-8cd8a26bc65a",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MULCC57N-0AFAE",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "7d781852-e958-406f-83cb-41a601591f19",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUF46HBQ-PM61P",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "e444702f-e0aa-43e4-a997-5bb7ee2d5698",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUC62R3H-NRYST",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "034c8678-2af9-441e-a77e-e20359f0aa11",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUCF3BWG-IS08K",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "802a2a05-ab65-4b69-9b8f-ba35a2dc175c",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUD2Z8VA-8W988",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "2e2541c2-73af-4bed-82fa-24fd8f8a83c8",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUA7UPPL-NYK10",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "1c035c1a-9574-4104-ad48-2ca5b117e726",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUB4K67R-5KYSK",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "23011bc9-dfc1-421b-ab69-927c26a9d860",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUC8W3L2-Y6B9G",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "97a06fdd-735e-40f4-8b1f-26c7a00e386a",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MU8U07JB-P5G6N",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "6ba977fd-75d8-4236-9b1e-103210af96bf",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUAEZWU9-IGIGN",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "d3c3490e-3ac8-440f-864e-b9d9888df050",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUCTB7S4-TPP0I",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "579f802c-33f8-4d82-8369-ff2796762a74",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUBKWOK5-8W5UU",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "5f16e592-3c4d-4c99-adc9-77d8102d47e2",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUI429UL-209MA",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "3256b1b5-feb1-4988-aebb-522a902bf4fd",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUE1GJJF-5E1KH",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "fe3adfc1-a554-4c17-a2e3-cdf1c078304b",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUE37ZMN-XKBTZ",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "6bbbf050-9ab2-4b3b-a778-5df666ff96f6",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUCVDDK9-D9P0Y",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "4df9dd18-aa4b-48d7-b399-9cb58d6eb7bc",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUBN5X5G-JM34H",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "d184e4d5-6571-467a-b8b4-d33504b117fe",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUDWUD6A-1IK15",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "871d53c5-53dc-406f-a6ad-3217deafca35",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUE7Z633-DAY82",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 96500,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "27a9ff32-c567-4c42-b4dd-743dbf412270",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUL3QHWW-34LTH",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "867ee4c8-8a0c-43fc-b2da-f42fea897865",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUEEMXXC-0UELT",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "d0d1f2ce-3cc1-46b2-bd2b-89aab6ca9227",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUEEJ85I-EEWMJ",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "6098f409-60d2-477d-95f1-ea3e601e6114",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUL4ZWXZ-LWZDL",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "59eab2ee-673d-4ea2-888e-90573e66ed03",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUE0VSL0-HRFQM",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "f6f8e41a-fcf0-4f1f-bb15-649b0368e377",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUEK2WBF-Y5D91",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "fe97aa68-7b7c-467f-87b0-df8691441653",
+      "trip_id": "55b20ba6-e465-4774-9e3d-d03fe1c5d9a9",
+      "booking_ref": "BK-MUBLVOAS-UF6LN",
+      "payment_status": "unpaid",
+      "paid_amount_cents": 0,
+      "first_payment_status": "unpaid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "c2288d80-823f-41ba-8621-7868674ee3ca",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUK69MRA-5IN2V",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 96500,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "9b03a33c-d7e5-49d8-b738-200a0c809d53",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUECYKGK-O6WZ5",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "bcafbe8b-3ac3-493c-8fa8-58bba2b50e8a",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUJLDMF6-A5KN1",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "f3f9107b-fd3e-420c-9cff-d34507041181",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUI28NPX-2OU5G",
+      "payment_status": "paid",
+      "paid_amount_cents": 92000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "2583d655-63f3-43d5-8d8f-20c3548de06a",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUL871ME-WBL8I",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 95000,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    },
+    {
+      "id": "0661de8c-8d32-4a50-aef6-3b5cd3456367",
+      "trip_id": "1cc39a8a-ee4b-4aa9-919c-cbdf8e2c7b85",
+      "booking_ref": "BK-MUHEHZUW-K0Q7A",
+      "payment_status": "overpaid",
+      "paid_amount_cents": 96500,
+      "first_payment_status": "paid",
+      "second_payment_status": "unpaid"
+    }
+  ],
+  "history": [
+    {
+      "id": "0eda64c5-a86a-44b0-9cbe-af477343793a",
+      "booking_id": "d0d1f2ce-3cc1-46b2-bd2b-89aab6ca9227",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PD30-CO4-FV2-4XR - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "8fbe7f9b-8e4b-4ec6-b3a1-aaf2b39da256",
+      "booking_id": "f6f8e41a-fcf0-4f1f-bb15-649b0368e377",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PEPL-270-79G-331 - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "dcdc3294-d92d-482e-a924-08f3f86dc2d7",
+      "booking_id": "0661de8c-8d32-4a50-aef6-3b5cd3456367",
+      "amount_cents": 96500,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PE6U-6NQ-XN6-18D - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "cc95c8b2-8a58-487b-b16a-45ba5b707eae",
+      "booking_id": "97a06fdd-735e-40f4-8b1f-26c7a00e386a",
+      "amount_cents": 18390,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PQHY-98R-PE8-6ZV - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "bfa2a245-8bd8-41a0-8a15-5eca15dc5ed2",
+      "booking_id": "5f16e592-3c4d-4c99-adc9-77d8102d47e2",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P6FF-7UD-J2I-E33 - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "9e22a7e4-1390-4f42-96c8-f6b8afd37878",
+      "booking_id": "1c035c1a-9574-4104-ad48-2ca5b117e726",
+      "amount_cents": 18390,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PU5Q-LJ6-B4V-BDF - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "023d1a5e-875c-4ac0-97d4-d80716de1117",
+      "booking_id": "4df9dd18-aa4b-48d7-b399-9cb58d6eb7bc",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PIQ5-CM9-CWA-61O - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "6577e41f-ce4e-4762-a77c-fa42a736f8c9",
+      "booking_id": "5f7728bb-dafe-4863-bcd3-6a859cad8101",
+      "amount_cents": 96500,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P11V-PXN-012-MZU - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "7e997f0d-34cc-4f50-84b9-d1dc09fe91e1",
+      "booking_id": "034c8678-2af9-441e-a77e-e20359f0aa11",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PR19-SP3-8R5-JLQ - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "395b9943-f3f5-42e7-a1b6-9093a3b068b6",
+      "booking_id": "6bbbf050-9ab2-4b3b-a778-5df666ff96f6",
+      "amount_cents": 18660,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PGKH-X4R-Z64-LC3 - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "f90fca53-5582-4fb7-ba96-27ddefdfa3c3",
+      "booking_id": "0a4821b4-b3bb-4962-a79b-267c0c5bc723",
+      "amount_cents": 96500,
+      "payment_method": "manual",
+      "notes": null
+    },
+    {
+      "id": "263e1408-c527-4210-ac19-dddeb5313ca5",
+      "booking_id": "3256b1b5-feb1-4988-aebb-522a902bf4fd",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P111-GL4-8XM-AWV - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "4270eefc-8dab-4a87-84d4-a86eccf770d1",
+      "booking_id": "6098f409-60d2-477d-95f1-ea3e601e6114",
+      "amount_cents": 18660,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PLM9-Q05-2JD-M5L - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "7c448d9a-d367-4ecd-968f-e8bc963ab8d8",
+      "booking_id": "6776b579-0143-4163-980f-9324cfddbffd",
+      "amount_cents": 18660,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PS4C-U06-FGV-4A1 - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "b6434b8b-58ac-4326-8e54-c79d4cf194e7",
+      "booking_id": "9b03a33c-d7e5-49d8-b738-200a0c809d53",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PRX3-T5J-AUW-116 - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "f51b1af3-856e-44a8-a564-7d6d5809e007",
+      "booking_id": "867ee4c8-8a0c-43fc-b2da-f42fea897865",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PJ11-VFT-4UH-A7E - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "137ad689-4f16-4d5a-a184-be158a795645",
+      "booking_id": "7d781852-e958-406f-83cb-41a601591f19",
+      "amount_cents": 18390,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PJ1W-XR9-IO4-FN9 - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "2778f6c0-e04c-43dc-a63c-306baed7dae6",
+      "booking_id": "579f802c-33f8-4d82-8369-ff2796762a74",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PT6H-2C1-50P-XRX - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "4aefb827-1711-4926-8ded-c4dc9018e461",
+      "booking_id": "e444702f-e0aa-43e4-a997-5bb7ee2d5698",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PK6W-DHG-J2Q-9OW - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "5ca65a81-77ef-46b5-b314-0b4684b05990",
+      "booking_id": "f3f9107b-fd3e-420c-9cff-d34507041181",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PI1G-DPZ-YG5-S6T - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "11d9ebf2-1385-41a4-9493-ff2a1c345390",
+      "booking_id": "802a2a05-ab65-4b69-9b8f-ba35a2dc175c",
+      "amount_cents": 17850,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PILU-NEO-6N0-HAI - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "1dabb7ba-ab12-4aa3-adec-895c1179e79e",
+      "booking_id": "d184e4d5-6571-467a-b8b4-d33504b117fe",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PVVI-Y9S-QF2-I0K - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "83830e4e-bca2-4149-9cfd-50860bd5fdc4",
+      "booking_id": "fe3adfc1-a554-4c17-a2e3-cdf1c078304b",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P5T0-JOZ-AKP-CDY - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "18364598-4db4-4bce-af1d-fb8915c93a97",
+      "booking_id": "31dabb02-a499-4757-b870-f88353c0a5b8",
+      "amount_cents": 96500,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PGTJ-1UN-2P4-48F - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "334d5b1a-3f0e-4341-808f-5cdeda88e867",
+      "booking_id": "93bf41ab-046a-4752-872e-ec9c0f11ecad",
+      "amount_cents": 18660,
+      "payment_method": "manual",
+      "notes": null
+    },
+    {
+      "id": "e23d4826-304c-4cac-8755-55121b2614b3",
+      "booking_id": "2583d655-63f3-43d5-8d8f-20c3548de06a",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P8AT-IXJ-A8I-TB0 - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "cee27712-dfca-49c0-91e0-7823313ff1e1",
+      "booking_id": "871d53c5-53dc-406f-a6ad-3217deafca35",
+      "amount_cents": 96500,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P8HJ-7Z4-MEJ-Q8E - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "a3926d4b-ea54-4b45-9ede-9d4aa993f18e",
+      "booking_id": "a990a999-bd04-4484-ad28-9ed58b7840ac",
+      "amount_cents": 18660,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PP3E-TJU-7R3-M3Y - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "8e8fc4d2-6be2-49ac-8aef-b8054e16ab49",
+      "booking_id": "fe97aa68-7b7c-467f-87b0-df8691441653",
+      "amount_cents": 18390,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P3L0-OOG-6ZE-V0J - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "2df35710-5931-4aed-a22b-9020e9faf172",
+      "booking_id": "23011bc9-dfc1-421b-ab69-927c26a9d860",
+      "amount_cents": 95000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PQZA-VWB-5EX-7J9 - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "bd5a7d97-3368-418a-8c7a-0b9409d4c462",
+      "booking_id": "bcafbe8b-3ac3-493c-8fa8-58bba2b50e8a",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PPMX-KYK-R6S-D9C - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "cd698dcf-3b48-4333-a44e-59399973625f",
+      "booking_id": "d3c3490e-3ac8-440f-864e-b9d9888df050",
+      "amount_cents": 18390,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P808-RPL-K2B-Z40 - status: PENDING (initialized) - zaliczka 30%"
+    },
+    {
+      "id": "29352ed4-63cf-432a-b995-bc1ef3a83cfb",
+      "booking_id": "6f3735bc-6b00-4bc4-ba2f-655d72433fa8",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PR9P-SMU-M33-47G - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "48f62d98-6d31-4fbe-a78f-9135516604f2",
+      "booking_id": "c2288d80-823f-41ba-8621-7868674ee3ca",
+      "amount_cents": 96500,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PVNG-TQK-EZL-7FD - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "98ef081a-bf70-48d6-a829-117a149ba44d",
+      "booking_id": "59eab2ee-673d-4ea2-888e-90573e66ed03",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment PNEP-KTK-X2J-EJR - status: PENDING (initialized) - zaliczka 100%"
+    },
+    {
+      "id": "8fe6d5b0-760c-48f1-b694-5ab091059fe9",
+      "booking_id": "906a66ff-c2db-4332-94b8-8cd8a26bc65a",
+      "amount_cents": 92000,
+      "payment_method": "paynow",
+      "notes": "Paynow payment P1PI-DQI-OTM-8EQ - status: PENDING (initialized) - zaliczka 100%"
+    }
+  ]
+}

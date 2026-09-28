@@ -4,8 +4,12 @@ import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAYMENT_STATUS_VALUES } from "@/lib/payment-status";
-import { processPaymentInvoice } from "@/lib/invoices/invoice-service";
-import { deriveInstallmentStatuses } from "@/lib/bookings/recalculate-booking-payments";
+import { isAutoInvoiceEnabled, processPaymentInvoice } from "@/lib/invoices/invoice-service";
+import {
+  calculateBookingAmountDueCents,
+  deriveInstallmentStatuses,
+  derivePaymentStatus,
+} from "@/lib/bookings/recalculate-booking-payments";
 
 const updateSchema = z.object({
   payment_status: z.enum(PAYMENT_STATUS_VALUES).optional(),
@@ -115,11 +119,24 @@ export async function PATCH(
     payload.first_payment_status !== undefined ||
     payload.second_payment_status !== undefined
   ) {
-    // Pobierz aktualny stan bookingu + cenę wycieczki
+    // Pobierz booking + pełną należność (cena × osoby + usługi)
     const { data: currentBooking } = await supabase
       .from("bookings")
       .select(
-        "first_payment_status, second_payment_status, first_payment_amount_cents, second_payment_amount_cents, paid_amount_cents, trips:trips(price_cents)"
+        `
+        first_payment_status,
+        second_payment_status,
+        first_payment_amount_cents,
+        second_payment_amount_cents,
+        paid_amount_cents,
+        trips:trips(
+          price_cents,
+          form_diets,
+          form_extra_insurances,
+          form_additional_attractions
+        ),
+        participants:participants(is_active, selected_services)
+      `,
       )
       .eq("id", id)
       .single();
@@ -128,14 +145,22 @@ export async function PATCH(
       const trip = Array.isArray(currentBooking.trips)
         ? currentBooking.trips[0]
         : currentBooking.trips;
-      const totalCents = trip?.price_cents ?? 0;
+      const participants = Array.isArray(currentBooking.participants)
+        ? currentBooking.participants
+        : [];
+      const amountDueCents = calculateBookingAmountDueCents(trip, participants);
       const paidCents = payload.paid_amount_cents ?? currentBooking.paid_amount_cents ?? 0;
       const firstAmount = currentBooking.first_payment_amount_cents ?? 0;
       const secondAmount = currentBooking.second_payment_amount_cents ?? 0;
 
       // Przelicz statusy rat na podstawie wpłaconej kwoty (ta sama logika co historia wpłat / reconcile)
       if (payload.paid_amount_cents !== undefined) {
-        const derived = deriveInstallmentStatuses(paidCents, totalCents, firstAmount, secondAmount);
+        const derived = deriveInstallmentStatuses(
+          paidCents,
+          amountDueCents,
+          firstAmount,
+          secondAmount,
+        );
         if (derived.first_payment_status !== null) {
           updateData.first_payment_status = derived.first_payment_status;
         }
@@ -144,17 +169,11 @@ export async function PATCH(
         }
       }
 
-      // Przelicz ogólny payment_status
-      if (totalCents > 0) {
-        if (paidCents >= totalCents) {
-          updateData.payment_status = paidCents > totalCents ? "overpaid" : "paid";
-        } else if (paidCents > 0) {
-          updateData.payment_status = "partial";
-        } else {
-          updateData.payment_status = "unpaid";
-        }
+      // Przelicz ogólny payment_status względem pełnej należności
+      if (amountDueCents > 0 || paidCents > 0) {
+        updateData.payment_status = derivePaymentStatus(paidCents, amountDueCents);
       } else {
-        // Fallback po statusach rat
+        // Fallback po statusach rat (brak ceny wycieczki i usług)
         const first =
           updateData.first_payment_status ??
           payload.first_payment_status ??
@@ -238,25 +257,29 @@ export async function PATCH(
         console.log(`[PATCH /bookings/${id}] Payment history created: ${paymentHistory.id}`);
 
         // 2. Uruchom proces fakturowania (asynchronicznie)
-        processPaymentInvoice({
-          bookingId: id,
-          paymentHistoryId: paymentHistory.id,
-          amountCents: addedCents,
-          scheduleAfterResponse: (task) => waitUntil(task),
-        })
-          .then((result) => {
-            if (result.success) {
-              console.log(`[PATCH /bookings/${id}] ✓ Invoice created:`, {
-                invoiceId: result.invoiceId,
-                invoiceNumber: result.invoiceNumber,
-              });
-            } else {
-              console.error(`[PATCH /bookings/${id}] Invoice creation failed:`, result.error);
-            }
+        if (!isAutoInvoiceEnabled()) {
+          console.log(`[PATCH /bookings/${id}] Auto invoice disabled (INVOICES_AUTO_ISSUE_DISABLED) — skipping`);
+        } else {
+          processPaymentInvoice({
+            bookingId: id,
+            paymentHistoryId: paymentHistory.id,
+            amountCents: addedCents,
+            scheduleAfterResponse: (task) => waitUntil(task),
           })
-          .catch((err) => {
-            console.error(`[PATCH /bookings/${id}] Invoice process error:`, err);
-          });
+            .then((result) => {
+              if (result.success) {
+                console.log(`[PATCH /bookings/${id}] ✓ Invoice created:`, {
+                  invoiceId: result.invoiceId,
+                  invoiceNumber: result.invoiceNumber,
+                });
+              } else {
+                console.error(`[PATCH /bookings/${id}] Invoice creation failed:`, result.error);
+              }
+            })
+            .catch((err) => {
+              console.error(`[PATCH /bookings/${id}] Invoice process error:`, err);
+            });
+        }
       }
     } catch (err) {
       // Błąd fakturowania nie powinien blokować odpowiedzi PATCH

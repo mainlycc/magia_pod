@@ -1965,12 +1965,21 @@ export function BookingForm({
             "Nie udało się zapisać rezerwacji. Spróbuj ponownie za chwilę.",
           "Failed to add participants":
             "Nie udało się zapisać uczestników. Sprawdź wprowadzone dane i spróbuj ponownie.",
+          "Failed to validate participants":
+            "Nie udało się zweryfikować listy uczestników. Spróbuj ponownie za chwilę.",
           "Invalid payload":
             "Formularz zawiera błędy. Sprawdź wprowadzone dane.",
           "Unexpected error":
             "Wystąpił nieoczekiwany błąd. Spróbuj ponownie za chwilę.",
+          duplicate_participant:
+            "Ten uczestnik jest już zapisany na tę wycieczkę. Nie możesz dodać tej samej osoby drugi raz.",
         };
-        let message = errorMap[rawError as string] ?? rawError;
+        let message =
+          rawError === "duplicate_participant" &&
+          typeof data?.message === "string" &&
+          data.message.trim() !== ""
+            ? data.message
+            : (errorMap[rawError as string] ?? rawError);
 
         // Jeśli są szczegóły błędu walidacji, dodaj je do komunikatu
         if (data?.details) {
@@ -2054,7 +2063,12 @@ export function BookingForm({
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Błąd rezerwacji");
+      const message = err instanceof Error ? err.message : "Błąd rezerwacji";
+      setError(message);
+      toast.error("Nie można utworzyć rezerwacji", {
+        description: message,
+        duration: 8000,
+      });
     } finally {
       setSubmittingAction(null);
     }

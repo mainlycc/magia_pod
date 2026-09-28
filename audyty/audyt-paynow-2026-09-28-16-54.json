@@ -1,0 +1,1384 @@
+{
+  "environment": "production",
+  "statusCounts": {
+    "NEW": 3,
+    "PENDING": 1,
+    "REJECTED": 4,
+    "CONFIRMED": 42
+  },
+  "issues": [
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUE5LJTJ-CJYRV",
+      "who": "czexa14@wp.pl",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "PHN7-PV6-EA8-98Y: lokalnie PENDING, Paynow NEW"
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUJLDRY4-45OUM",
+      "who": "czexa14@wp.pl",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "PYWC-6EQ-NKG-OTW: lokalnie PENDING, Paynow REJECTED"
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUFOUJN4-3PPIB",
+      "who": "Milena Śmiejczak",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "P2AP-PVQ-S7D-RCT: lokalnie PENDING, Paynow NEW"
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEESIKH-F2DQQ",
+      "who": "Natalia Kępa",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "P7E4-J4F-JOS-0ZT: lokalnie PENDING, Paynow NEW"
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUI429UL-209MA",
+      "who": "Jagoda Balcerkiewicz",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "P6FF-7UD-J2I-E33: lokalnie PENDING, Paynow REJECTED"
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUJKYXAI-0W3BH",
+      "who": "czexa14@wp.pl",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "PE9U-YMK-6SO-DTV: lokalnie PENDING, Paynow REJECTED"
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUHEHZUW-K0Q7A",
+      "who": "Lena Wieczorek",
+      "type": "Nieaktualny status w notatce (bez wpływu na sumę)",
+      "detail": "PE6U-6NQ-XN6-18D: lokalnie PENDING, Paynow REJECTED"
+    }
+  ],
+  "perBooking": [
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUJZ18FY-M28KP",
+      "who": "Hanna Matuk",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PR9P-SMU-M33-47G",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MU44JG0S-H0THS",
+      "who": "szymon_kurkiewicz@op.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MU9L9CSQ-ATJCQ",
+      "who": "Michalina Wajs",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUB34OJO-NE4TR",
+      "who": "Bartłomiej Szymczak",
+      "status": "partial",
+      "paid": 18660,
+      "paynowConfirmed": 18660,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PP3E-TJU-7R3-M3Y",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18660,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUB3QI30-9BYPF",
+      "who": "Julia Rybak",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUJLGKSK-04L13",
+      "who": "Zuzanna Hanyż",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PN59-04E-FP5-SLL",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUE9FKN1-U8VTJ",
+      "who": "Nikola Maury",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P48I-G3G-DCH-FDA",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUA5B2XQ-EWJYF",
+      "who": "Szymon Gałecki",
+      "status": "partial",
+      "paid": 18660,
+      "paynowConfirmed": 0,
+      "manual": 18660,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUK13150-6SV2F",
+      "who": "Aleksandra Benec",
+      "status": "paid",
+      "paid": 96500,
+      "paynowConfirmed": 96500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P11V-PXN-012-MZU",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 96500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUH708N0-FZPJI",
+      "who": "Anna Kędzierska",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUCIIHDU-EIRVF",
+      "who": "Zuzanna Gulczyńska",
+      "status": "paid",
+      "paid": 96500,
+      "paynowConfirmed": 0,
+      "manual": 96500,
+      "payments": []
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUE7RW54-O4P6A",
+      "who": "Jan Wośko",
+      "status": "partial",
+      "paid": 18660,
+      "paynowConfirmed": 18660,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PS4C-U06-FGV-4A1",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18660,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUFW9F03-H69IX",
+      "who": "Wiktoria Bocheńska",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PS1X-A5S-RCN-0B2",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUK3JTSH-G05L0",
+      "who": "Gabriel Niedziela",
+      "status": "paid",
+      "paid": 96500,
+      "paynowConfirmed": 96500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PGTJ-1UN-2P4-48F",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 96500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEEWASM-TTQLE",
+      "who": "marlena.kepa@interia.pl",
+      "status": "overpaid",
+      "paid": 134100,
+      "paynowConfirmed": 134100,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PWOR-2DQ-5QA-P29",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 134100,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUI3RLDG-PKLUJ",
+      "who": "robert.smiejczak@interia.pl",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PYIR-W7H-4GJ-HSX",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUA4HD96-TT3NG",
+      "who": "stempin_m@poczta.onet.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEDMBM3-OO8YS",
+      "who": "Julia Czwordon",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MULCC57N-0AFAE",
+      "who": "Karolina Kamieniarz",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P1PI-DQI-OTM-8EQ",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUC62R3H-NRYST",
+      "who": "Yasmin Samara",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PK6W-DHG-J2Q-9OW",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUD2Z8VA-8W988",
+      "who": "Łukasz Kaźmierczak",
+      "status": "partial",
+      "paid": 17850,
+      "paynowConfirmed": 17850,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PILU-NEO-6N0-HAI",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 17850,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUE5LJTJ-CJYRV",
+      "who": "czexa14@wp.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PHN7-PV6-EA8-98Y",
+          "localStatus": "PENDING",
+          "apiStatus": "NEW",
+          "amount": 130500,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUCZ6AA2-NOSY7",
+      "who": "Zuzanna Dyba",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUF46HBQ-PM61P",
+      "who": "Adrianna Bylica",
+      "status": "partial",
+      "paid": 18390,
+      "paynowConfirmed": 18390,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PJ1W-XR9-IO4-FN9",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18390,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUCF3BWG-IS08K",
+      "who": "Aleksandra Michalska",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PR19-SP3-8R5-JLQ",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUA7UPPL-NYK10",
+      "who": "joanna_cholewa@op.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUA5N9NT-Z6DB4",
+      "who": "Zuzanna Płóciennik",
+      "status": "paid",
+      "paid": 135900,
+      "paynowConfirmed": 135900,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "POT2-DJU-GOI-XXI",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 135900,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUC8W3L2-Y6B9G",
+      "who": "Wojciech Wiśniewski",
+      "status": "paid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PQZA-VWB-5EX-7J9",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUK77YRO-PMU81",
+      "who": "Maja Pokusińska",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P9H9-WMU-NX7-RQ1",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUE5NFCM-392PH",
+      "who": "czexa14@wp.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUB4K67R-5KYSK",
+      "who": "Gabriela Księżak",
+      "status": "partial",
+      "paid": 18390,
+      "paynowConfirmed": 18390,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PU5Q-LJ6-B4V-BDF",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18390,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEJ43IJ-K1M92",
+      "who": "Michalina Wolarz",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P1E1-OV3-I65-L7M",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUAEZWU9-IGIGN",
+      "who": "mainly.agn@gmail.com",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MU8U07JB-P5G6N",
+      "who": "Maja Pleśnierowicz",
+      "status": "partial",
+      "paid": 18390,
+      "paynowConfirmed": 18390,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PQHY-98R-PE8-6ZV",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18390,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUJLDRY4-45OUM",
+      "who": "czexa14@wp.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PYWC-6EQ-NKG-OTW",
+          "localStatus": "PENDING",
+          "apiStatus": "REJECTED",
+          "amount": 130500,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUED0FT7-C4C02",
+      "who": "Iga Błaszczyk",
+      "status": "paid",
+      "paid": 134100,
+      "paynowConfirmed": 134100,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P988-10M-79W-G9P",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 134100,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUFOUJN4-3PPIB",
+      "who": "Milena Śmiejczak",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P2AP-PVQ-S7D-RCT",
+          "localStatus": "PENDING",
+          "apiStatus": "NEW",
+          "amount": 130500,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEH0LKG-TF7H8",
+      "who": "Diana Pietrusiak",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PHXJ-N98-WCR-BTX",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUBKWOK5-8W5UU",
+      "who": "Kornelia Jastrzebska",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PT6H-2C1-50P-XRX",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUE1GJJF-5E1KH",
+      "who": "Kornel Juskowiak",
+      "status": "paid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P111-GL4-8XM-AWV",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEESIKH-F2DQQ",
+      "who": "Natalia Kępa",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P7E4-J4F-JOS-0ZT",
+          "localStatus": "PENDING",
+          "apiStatus": "NEW",
+          "amount": 134100,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUCQLBG5-XABHB",
+      "who": "Anna Świtoń",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUCTB7S4-TPP0I",
+      "who": "Klaudia Gancarz",
+      "status": "partial",
+      "paid": 18390,
+      "paynowConfirmed": 18390,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P808-RPL-K2B-Z40",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18390,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUI429UL-209MA",
+      "who": "Jagoda Balcerkiewicz",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P6FF-7UD-J2I-E33",
+          "localStatus": "PENDING",
+          "apiStatus": "REJECTED",
+          "amount": 95000,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUBN5X5G-JM34H",
+      "who": "Pola Przymusińska",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PIQ5-CM9-CWA-61O",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUE37ZMN-XKBTZ",
+      "who": "Piotr Starczyński",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P5T0-JOZ-AKP-CDY",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUFUEOVL-IM9LT",
+      "who": "Julita Nowak",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUE5D5I7-2DPG4",
+      "who": "Jan Jędrzejak",
+      "status": "paid",
+      "paid": 134100,
+      "paynowConfirmed": 0,
+      "manual": 134100,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUDWUD6A-1IK15",
+      "who": "Alicja Sydow",
+      "status": "paid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PVVI-Y9S-QF2-I0K",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUCVDDK9-D9P0Y",
+      "who": "Katarzyna Cholewa",
+      "status": "partial",
+      "paid": 18660,
+      "paynowConfirmed": 18660,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PGKH-X4R-Z64-LC3",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18660,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUL3QHWW-34LTH",
+      "who": "Małgorzata Jezierska",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUEEMXXC-0UELT",
+      "who": "ingakazmierczak9@gmail.com",
+      "status": "overpaid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PJ11-VFT-4UH-A7E",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUEEJ85I-EEWMJ",
+      "who": "Inga Kazmierczak",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PD30-CO4-FV2-4XR",
+          "localStatus": "PENDING",
+          "apiStatus": "PENDING",
+          "amount": 95000,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUE7Z633-DAY82",
+      "who": "Alicja Staszczuk",
+      "status": "paid",
+      "paid": 96500,
+      "paynowConfirmed": 96500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P8HJ-7Z4-MEJ-Q8E",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 96500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUD1OU20-HVZTG",
+      "who": "Mateusz Mądry",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUEDOU7N-96I76",
+      "who": "Marta Śmiatacz",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUJKYXAI-0W3BH",
+      "who": "czexa14@wp.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PE9U-YMK-6SO-DTV",
+          "localStatus": "PENDING",
+          "apiStatus": "REJECTED",
+          "amount": 130500,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUEK2WBF-Y5D91",
+      "who": "Zofia Wysocka",
+      "status": "paid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PEPL-270-79G-331",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUL4ZWXZ-LWZDL",
+      "who": "Marika Nawrot",
+      "status": "partial",
+      "paid": 18660,
+      "paynowConfirmed": 18660,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PLM9-Q05-2JD-M5L",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18660,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MU9MSEVF-O9MGB",
+      "who": "Wiktoria Sobczak",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 0,
+      "manual": 130500,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUCYRCCA-P6YIO",
+      "who": "marlena.kepa@interia.pl",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUE0VSL0-HRFQM",
+      "who": "Alina Szymańska",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PNEP-KTK-X2J-EJR",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUECYKGK-O6WZ5",
+      "who": "Małgorzata Zin",
+      "status": "paid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PRX3-T5J-AUW-116",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUGR59GB-NOHP7",
+      "who": "Oskar Włodarczyk",
+      "status": "paid",
+      "paid": 130500,
+      "paynowConfirmed": 130500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PQ1B-1C4-1DY-LOO",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 130500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUJLDMF6-A5KN1",
+      "who": "Blanka Idziorek",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PPMX-KYK-R6S-D9C",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Saksonia w świątecznym blasku, Kalisz 210926",
+      "bookingRef": "BK-MUBLVOAS-UF6LN",
+      "who": "Nikola Pietrzak",
+      "status": "partial",
+      "paid": 18390,
+      "paynowConfirmed": 18390,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P3L0-OOG-6ZE-V0J",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 18390,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUK69MRA-5IN2V",
+      "who": "Zofia Lesiak",
+      "status": "paid",
+      "paid": 96500,
+      "paynowConfirmed": 96500,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PVNG-TQK-EZL-7FD",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 96500,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUFU18RM-2HA64",
+      "who": "Antonina Dukiewicz",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUI28NPX-2OU5G",
+      "who": "Leticia Ciulisová",
+      "status": "paid",
+      "paid": 92000,
+      "paynowConfirmed": 92000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PI1G-DPZ-YG5-S6T",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 92000,
+          "counted": true
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUHEHZUW-K0Q7A",
+      "who": "Lena Wieczorek",
+      "status": "unpaid",
+      "paid": 0,
+      "paynowConfirmed": 0,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "PE6U-6NQ-XN6-18D",
+          "localStatus": "PENDING",
+          "apiStatus": "REJECTED",
+          "amount": 96500,
+          "counted": false
+        }
+      ]
+    },
+    {
+      "trip": "Zatoka Atrakcji 240926",
+      "bookingRef": "BK-MUB09SI0-LHSVT",
+      "who": "Amelia Stempin",
+      "status": "paid",
+      "paid": 135900,
+      "paynowConfirmed": 0,
+      "manual": 135900,
+      "payments": []
+    },
+    {
+      "trip": "Zatoka atrakcji 230626",
+      "bookingRef": "BK-MUL871ME-WBL8I",
+      "who": "Jagoda Balcerkiewicz",
+      "status": "paid",
+      "paid": 95000,
+      "paynowConfirmed": 95000,
+      "manual": 0,
+      "payments": [
+        {
+          "id": "P8AT-IXJ-A8I-TB0",
+          "localStatus": "CONFIRMED",
+          "apiStatus": "CONFIRMED",
+          "amount": 95000,
+          "counted": true
+        }
+      ]
+    }
+  ],
+  "paynow": {
+    "PHN7-PV6-EA8-98Y": {
+      "paymentId": "PHN7-PV6-EA8-98Y",
+      "status": "NEW"
+    },
+    "PD30-CO4-FV2-4XR": {
+      "paymentId": "PD30-CO4-FV2-4XR",
+      "status": "PENDING"
+    },
+    "P2AP-PVQ-S7D-RCT": {
+      "paymentId": "P2AP-PVQ-S7D-RCT",
+      "status": "NEW"
+    },
+    "PE6U-6NQ-XN6-18D": {
+      "paymentId": "PE6U-6NQ-XN6-18D",
+      "status": "REJECTED"
+    },
+    "P6FF-7UD-J2I-E33": {
+      "paymentId": "P6FF-7UD-J2I-E33",
+      "status": "REJECTED"
+    },
+    "PYWC-6EQ-NKG-OTW": {
+      "paymentId": "PYWC-6EQ-NKG-OTW",
+      "status": "REJECTED"
+    },
+    "P48I-G3G-DCH-FDA": {
+      "paymentId": "P48I-G3G-DCH-FDA",
+      "status": "CONFIRMED"
+    },
+    "PWOR-2DQ-5QA-P29": {
+      "paymentId": "PWOR-2DQ-5QA-P29",
+      "status": "CONFIRMED"
+    },
+    "P9H9-WMU-NX7-RQ1": {
+      "paymentId": "P9H9-WMU-NX7-RQ1",
+      "status": "CONFIRMED"
+    },
+    "P11V-PXN-012-MZU": {
+      "paymentId": "P11V-PXN-012-MZU",
+      "status": "CONFIRMED"
+    },
+    "PR19-SP3-8R5-JLQ": {
+      "paymentId": "PR19-SP3-8R5-JLQ",
+      "status": "CONFIRMED"
+    },
+    "PU5Q-LJ6-B4V-BDF": {
+      "paymentId": "PU5Q-LJ6-B4V-BDF",
+      "status": "CONFIRMED"
+    },
+    "PQHY-98R-PE8-6ZV": {
+      "paymentId": "PQHY-98R-PE8-6ZV",
+      "status": "CONFIRMED"
+    },
+    "P111-GL4-8XM-AWV": {
+      "paymentId": "P111-GL4-8XM-AWV",
+      "status": "CONFIRMED"
+    },
+    "PGKH-X4R-Z64-LC3": {
+      "paymentId": "PGKH-X4R-Z64-LC3",
+      "status": "CONFIRMED"
+    },
+    "PIQ5-CM9-CWA-61O": {
+      "paymentId": "PIQ5-CM9-CWA-61O",
+      "status": "CONFIRMED"
+    },
+    "PLM9-Q05-2JD-M5L": {
+      "paymentId": "PLM9-Q05-2JD-M5L",
+      "status": "CONFIRMED"
+    },
+    "PEPL-270-79G-331": {
+      "paymentId": "PEPL-270-79G-331",
+      "status": "CONFIRMED"
+    },
+    "PE9U-YMK-6SO-DTV": {
+      "paymentId": "PE9U-YMK-6SO-DTV",
+      "status": "REJECTED"
+    },
+    "POT2-DJU-GOI-XXI": {
+      "paymentId": "POT2-DJU-GOI-XXI",
+      "status": "CONFIRMED"
+    },
+    "PHXJ-N98-WCR-BTX": {
+      "paymentId": "PHXJ-N98-WCR-BTX",
+      "status": "CONFIRMED"
+    },
+    "PS1X-A5S-RCN-0B2": {
+      "paymentId": "PS1X-A5S-RCN-0B2",
+      "status": "CONFIRMED"
+    },
+    "PN59-04E-FP5-SLL": {
+      "paymentId": "PN59-04E-FP5-SLL",
+      "status": "CONFIRMED"
+    },
+    "PS4C-U06-FGV-4A1": {
+      "paymentId": "PS4C-U06-FGV-4A1",
+      "status": "CONFIRMED"
+    },
+    "PGTJ-1UN-2P4-48F": {
+      "paymentId": "PGTJ-1UN-2P4-48F",
+      "status": "CONFIRMED"
+    },
+    "PJ1W-XR9-IO4-FN9": {
+      "paymentId": "PJ1W-XR9-IO4-FN9",
+      "status": "CONFIRMED"
+    },
+    "PK6W-DHG-J2Q-9OW": {
+      "paymentId": "PK6W-DHG-J2Q-9OW",
+      "status": "CONFIRMED"
+    },
+    "PILU-NEO-6N0-HAI": {
+      "paymentId": "PILU-NEO-6N0-HAI",
+      "status": "CONFIRMED"
+    },
+    "PT6H-2C1-50P-XRX": {
+      "paymentId": "PT6H-2C1-50P-XRX",
+      "status": "CONFIRMED"
+    },
+    "P5T0-JOZ-AKP-CDY": {
+      "paymentId": "P5T0-JOZ-AKP-CDY",
+      "status": "CONFIRMED"
+    },
+    "PVVI-Y9S-QF2-I0K": {
+      "paymentId": "PVVI-Y9S-QF2-I0K",
+      "status": "CONFIRMED"
+    },
+    "PJ11-VFT-4UH-A7E": {
+      "paymentId": "PJ11-VFT-4UH-A7E",
+      "status": "CONFIRMED"
+    },
+    "PRX3-T5J-AUW-116": {
+      "paymentId": "PRX3-T5J-AUW-116",
+      "status": "CONFIRMED"
+    },
+    "PI1G-DPZ-YG5-S6T": {
+      "paymentId": "PI1G-DPZ-YG5-S6T",
+      "status": "CONFIRMED"
+    },
+    "P8AT-IXJ-A8I-TB0": {
+      "paymentId": "P8AT-IXJ-A8I-TB0",
+      "status": "CONFIRMED"
+    },
+    "P7E4-J4F-JOS-0ZT": {
+      "paymentId": "P7E4-J4F-JOS-0ZT",
+      "status": "NEW"
+    },
+    "P988-10M-79W-G9P": {
+      "paymentId": "P988-10M-79W-G9P",
+      "status": "CONFIRMED"
+    },
+    "P1E1-OV3-I65-L7M": {
+      "paymentId": "P1E1-OV3-I65-L7M",
+      "status": "CONFIRMED"
+    },
+    "PQ1B-1C4-1DY-LOO": {
+      "paymentId": "PQ1B-1C4-1DY-LOO",
+      "status": "CONFIRMED"
+    },
+    "PYIR-W7H-4GJ-HSX": {
+      "paymentId": "PYIR-W7H-4GJ-HSX",
+      "status": "CONFIRMED"
+    },
+    "PP3E-TJU-7R3-M3Y": {
+      "paymentId": "PP3E-TJU-7R3-M3Y",
+      "status": "CONFIRMED"
+    },
+    "PR9P-SMU-M33-47G": {
+      "paymentId": "PR9P-SMU-M33-47G",
+      "status": "CONFIRMED"
+    },
+    "P1PI-DQI-OTM-8EQ": {
+      "paymentId": "P1PI-DQI-OTM-8EQ",
+      "status": "CONFIRMED"
+    },
+    "PQZA-VWB-5EX-7J9": {
+      "paymentId": "PQZA-VWB-5EX-7J9",
+      "status": "CONFIRMED"
+    },
+    "P808-RPL-K2B-Z40": {
+      "paymentId": "P808-RPL-K2B-Z40",
+      "status": "CONFIRMED"
+    },
+    "P8HJ-7Z4-MEJ-Q8E": {
+      "paymentId": "P8HJ-7Z4-MEJ-Q8E",
+      "status": "CONFIRMED"
+    },
+    "PNEP-KTK-X2J-EJR": {
+      "paymentId": "PNEP-KTK-X2J-EJR",
+      "status": "CONFIRMED"
+    },
+    "P3L0-OOG-6ZE-V0J": {
+      "paymentId": "P3L0-OOG-6ZE-V0J",
+      "status": "CONFIRMED"
+    },
+    "PVNG-TQK-EZL-7FD": {
+      "paymentId": "PVNG-TQK-EZL-7FD",
+      "status": "CONFIRMED"
+    },
+    "PPMX-KYK-R6S-D9C": {
+      "paymentId": "PPMX-KYK-R6S-D9C",
+      "status": "CONFIRMED"
+    }
+  }
+}

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { syncParticipantInsurancesForBooking } from "@/lib/insurance-local/sync-participant-insurances";
+import { syncFakturowniaOrderForBooking } from "@/lib/invoices/invoice-service";
+import { recalculateBookingPaymentsFromHistory } from "@/lib/bookings/recalculate-booking-payments";
 
 const dietEntrySchema = z.object({
   service_id: z.string().min(1),
@@ -85,15 +87,67 @@ export async function PATCH(
       return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
+    let fakturowniaOrderSync: Awaited<ReturnType<typeof syncFakturowniaOrderForBooking>> | null =
+      null;
+    let paymentRecalc:
+      | Awaited<ReturnType<typeof recalculateBookingPaymentsFromHistory>>
+      | null = null;
+
     if (participant.booking_id) {
       try {
         await syncParticipantInsurancesForBooking(participant.booking_id);
       } catch (syncErr) {
         console.error("participant_insurances sync failed after selected-services update:", syncErr);
       }
+
+      try {
+        paymentRecalc = await recalculateBookingPaymentsFromHistory(
+          supabase,
+          participant.booking_id,
+        );
+        if (!paymentRecalc.ok) {
+          console.error(
+            "payment status recalc failed after selected-services update:",
+            paymentRecalc.error,
+          );
+        }
+      } catch (recalcErr) {
+        console.error(
+          "payment status recalc threw after selected-services update:",
+          recalcErr,
+        );
+        paymentRecalc = {
+          ok: false,
+          error: recalcErr instanceof Error ? recalcErr.message : "recalc_threw",
+        };
+      }
+
+      try {
+        fakturowniaOrderSync = await syncFakturowniaOrderForBooking(participant.booking_id);
+        if (fakturowniaOrderSync.error) {
+          console.error(
+            "fakturownia order sync failed after selected-services update:",
+            fakturowniaOrderSync.error
+          );
+        }
+      } catch (orderSyncErr) {
+        console.error(
+          "fakturownia order sync threw after selected-services update:",
+          orderSyncErr
+        );
+        fakturowniaOrderSync = {
+          synced: false,
+          error: orderSyncErr instanceof Error ? orderSyncErr.message : "sync_threw",
+        };
+      }
     }
 
-    return NextResponse.json({ success: true, selected_services: normalized });
+    return NextResponse.json({
+      success: true,
+      selected_services: normalized,
+      payment_recalc: paymentRecalc,
+      fakturownia_order_sync: fakturowniaOrderSync,
+    });
   } catch (err) {
     console.error("PATCH selected-services unexpected", err);
     return NextResponse.json({ error: "unexpected" }, { status: 500 });
