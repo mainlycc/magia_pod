@@ -658,6 +658,41 @@ export function extractOrderIdFromInvoiceJson(raw: Record<string, unknown>): num
 }
 
 /**
+ * Usuwa fakturę w Fakturowni.
+ * HTTP 404 traktujemy jako sukces (faktura już nie istnieje po stronie providera).
+ */
+export async function deleteInvoice(
+  config: FakturowniaConfig,
+  invoiceId: number | string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const baseUrl = getBaseUrl(config);
+    const response = await fetch(
+      `${baseUrl}/invoices/${invoiceId}.json?api_token=${encodeURIComponent(config.apiToken)}`,
+      {
+        method: "DELETE",
+        headers: { Accept: "application/json" },
+      }
+    );
+
+    if (response.ok || response.status === 404) {
+      return { success: true };
+    }
+
+    const responseData = await response.json().catch(() => null);
+    return {
+      success: false,
+      error: `HTTP ${response.status}: ${serializeError(responseData)}`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Nieznany błąd",
+    };
+  }
+}
+
+/**
  * Fetches invoice details from Fakturownia, including current pdf_url.
  */
 export async function getInvoice(

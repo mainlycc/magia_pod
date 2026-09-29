@@ -428,7 +428,13 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
           <div className="order-1 xl:order-none">
             <TripSectionCard innerClassName="pt-4">
               <div className="grid grid-cols-2 gap-2">
-                <div className="relative col-span-2 h-[220px] overflow-hidden rounded-xl border-2 border-dashed border-[#dadce3] group xl:h-[200px]">
+                <div
+                  className={cn(
+                    "relative col-span-2 h-[220px] overflow-hidden rounded-xl group xl:h-[200px]",
+                    (!mainImage || mainImage === "/placeholder.svg") &&
+                      "border-2 border-dashed border-[#dadce3]",
+                  )}
+                >
                   {mainImage && mainImage !== "/placeholder.svg" ? (
                     <>
                       <Image
@@ -461,7 +467,10 @@ export default function TripPage({ params }: { params: Promise<{ slug: string }>
                   return (
                     <div
                       key={index}
-                      className="relative h-[110px] overflow-hidden rounded-lg border-2 border-dashed border-[#dadce3] group cursor-pointer xl:h-[100px]"
+                      className={cn(
+                        "relative h-[110px] overflow-hidden rounded-lg group xl:h-[100px]",
+                        url ? "cursor-pointer" : "border-2 border-dashed border-[#dadce3]",
+                      )}
                       onClick={() => url && openImage(index + 1)}
                     >
                       {url ? (

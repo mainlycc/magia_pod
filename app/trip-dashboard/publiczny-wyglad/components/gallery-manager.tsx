@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Upload, X, Link as LinkIcon, Camera } from "lucide-react"
 import Image from "next/image"
+import { cn } from "@/lib/utils"
 import type { GalleryManagerProps } from "../types"
 
 export function GalleryManager({
@@ -45,7 +46,11 @@ export function GalleryManager({
       <CardContent className="space-y-4 pt-2">
         <div className="grid grid-cols-2 gap-2">
           <div
-            className="col-span-2 relative rounded-xl overflow-hidden group h-[200px] border-2 border-dashed border-muted-foreground/20 cursor-grab active:cursor-grabbing"
+            className={cn(
+              "col-span-2 relative rounded-xl overflow-hidden group h-[200px] cursor-grab active:cursor-grabbing",
+              (!mainImage || mainImage === "/placeholder.svg") &&
+                "border-2 border-dashed border-muted-foreground/20",
+            )}
             draggable={!!galleryUrls[0] && galleryUrls.length > 1}
             onDragStart={(e) => {
               if (!galleryUrls[0]) return
@@ -106,7 +111,10 @@ export function GalleryManager({
             return (
               <div
                 key={index}
-                className="relative rounded-lg overflow-hidden border-2 border-dashed border-muted-foreground/20 h-[100px] group cursor-grab active:cursor-grabbing"
+                className={cn(
+                  "relative rounded-lg overflow-hidden h-[100px] group cursor-grab active:cursor-grabbing",
+                  !url && "border-2 border-dashed border-muted-foreground/20",
+                )}
                 draggable={!!url}
                 onDragStart={(e) => {
                   if (!url) return

@@ -8,7 +8,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ReusableTable } from "@/components/reusable-table"
 import { toast } from "sonner"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
+import { Download, Loader2, Trash2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 type InvoiceStatus = "wystawiona" | "wysłana" | "opłacona"
 
@@ -78,11 +87,31 @@ function formatAgreementNumber(opts: {
   return `#${reservation.padStart(6, "0")}/${String(seq).padStart(3, "0")}`
 }
 
+function safePdfFilename(invoiceNumber: string, id: string): string {
+  const base = (invoiceNumber || id).replace(/[\\/:*?"<>|]+/g, "-")
+  return `${base}.pdf`
+}
+
+async function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export default function FakturyPage() {
   const router = useRouter()
   const { selectedTrip } = useTrip()
   const [invoices, setInvoices] = useState<InvoiceWithBooking[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedRows, setSelectedRows] = useState<InvoiceWithBooking[]>([])
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     if (!selectedTrip) {
@@ -103,11 +132,107 @@ export default function FakturyPage() {
       }
       const data: InvoiceWithBooking[] = await response.json()
       setInvoices(data)
+      setSelectedRows([])
     } catch (err) {
       toast.error("Nie udało się wczytać faktur")
       console.error(err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDownloadSelected = async () => {
+    if (selectedRows.length === 0) {
+      toast.error("Zaznacz przynajmniej jedną fakturę")
+      return
+    }
+
+    try {
+      setDownloading(true)
+      let ok = 0
+      let failed = 0
+
+      for (const invoice of selectedRows) {
+        try {
+          const response = await fetch(`/api/invoices/${invoice.id}/file`)
+          if (!response.ok) {
+            const data = await response.json().catch(() => null)
+            throw new Error(data?.error || `HTTP ${response.status}`)
+          }
+          const blob = await response.blob()
+          await triggerBlobDownload(
+            blob,
+            safePdfFilename(invoice.invoice_number, invoice.id)
+          )
+          ok += 1
+          // Krótka pauza, żeby przeglądarka nie zablokowała wielu pobrań
+          if (selectedRows.length > 1) {
+            await new Promise((r) => setTimeout(r, 350))
+          }
+        } catch (err) {
+          failed += 1
+          console.error(`Download failed for ${invoice.id}:`, err)
+        }
+      }
+
+      if (ok > 0 && failed === 0) {
+        toast.success(
+          ok === 1 ? "Pobrano fakturę" : `Pobrano ${ok} faktur`
+        )
+      } else if (ok > 0 && failed > 0) {
+        toast.warning(`Pobrano ${ok}, nie udało się: ${failed}`)
+      } else {
+        toast.error("Nie udało się pobrać zaznaczonych faktur")
+      }
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (selectedRows.length === 0) return
+
+    try {
+      setDeleting(true)
+      const response = await fetch("/api/invoices", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedRows.map((r) => r.id) }),
+      })
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Nie udało się usunąć faktur")
+      }
+
+      const deletedCount = data?.deletedCount ?? 0
+      const failedCount = data?.failedCount ?? 0
+
+      if (deletedCount > 0 && failedCount === 0) {
+        toast.success(
+          deletedCount === 1
+            ? "Usunięto fakturę"
+            : `Usunięto ${deletedCount} faktur`
+        )
+      } else if (deletedCount > 0) {
+        toast.warning(
+          `Usunięto ${deletedCount}, nie udało się: ${failedCount}`
+        )
+      } else {
+        toast.error("Nie udało się usunąć faktur")
+      }
+
+      setDeleteDialogOpen(false)
+      setSelectedRows([])
+      await loadData()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Nie udało się usunąć faktur"
+      )
+      console.error(err)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -142,7 +267,9 @@ export default function FakturyPage() {
             agreementSeq,
           })
           const agreementNumberUi =
-            agreementNumberText === "—" ? "—" : agreementNumberText.replace(/^#/, "")
+            agreementNumberText === "—"
+              ? "—"
+              : agreementNumberText.replace(/^#/, "")
 
           return (
             <div className="space-y-1">
@@ -167,9 +294,7 @@ export default function FakturyPage() {
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge
-            variant={getInvoiceStatusBadgeVariant(row.original.status)}
-          >
+          <Badge variant={getInvoiceStatusBadgeVariant(row.original.status)}>
             {getInvoiceStatusLabel(row.original.status)}
           </Badge>
         ),
@@ -216,9 +341,80 @@ export default function FakturyPage() {
         enablePagination={true}
         pageSize={20}
         emptyMessage="Brak faktur dla tej wycieczki"
-        onRowClick={(invoice) => router.push(`/trip-dashboard/faktury/${invoice.id}`)}
+        getRowId={(row) => row.id}
+        enableRowSelection={true}
+        onSelectionChange={setSelectedRows}
+        onRowClick={(invoice) =>
+          router.push(`/trip-dashboard/faktury/${invoice.id}`)
+        }
+        customToolbarButtons={(selectedCount) => (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadSelected}
+              disabled={selectedCount === 0 || downloading || deleting}
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Pobierz
+              {selectedCount > 0 ? ` (${selectedCount})` : ""}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={selectedCount === 0 || downloading || deleting}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Usuń
+              {selectedCount > 0 ? ` (${selectedCount})` : ""}
+            </Button>
+          </>
+        )}
       />
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Usunąć zaznaczone faktury?</DialogTitle>
+            <DialogDescription>
+              Usuniesz {selectedRows.length}{" "}
+              {selectedRows.length === 1 ? "fakturę" : "faktur"} z systemu
+              {selectedRows.some((r) => r.fakturownia_invoice_id)
+                ? " oraz z Fakturowni"
+                : ""}
+              . Tej operacji nie można cofnąć.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Anuluj
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Usuwanie...
+                </>
+              ) : (
+                "Usuń"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
