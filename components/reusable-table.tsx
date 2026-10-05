@@ -52,6 +52,8 @@ export interface ReusableTableProps<TData, TValue> {
   onDelete?: (row: TData) => void;
   onRowClick?: (row: TData) => void;
   enableRowSelection?: boolean;
+  /** Gdy true, checkbox w nagłówku zaznacza wszystkie wiersze (nie tylko bieżącą stronę). */
+  selectAllRows?: boolean;
   enablePagination?: boolean;
   pageSize?: number;
   emptyMessage?: string;
@@ -90,6 +92,7 @@ export function ReusableTable<TData, TValue>({
   onDelete,
   onRowClick,
   enableRowSelection = true,
+  selectAllRows = false,
   enablePagination = true,
   pageSize = 10,
   emptyMessage = "Brak danych",
@@ -124,22 +127,38 @@ export function ReusableTable<TData, TValue>({
 
     const selectionColumn: ColumnDef<TData, TValue> = {
       id: "select",
-      header: ({ table }) => (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          className="flex items-center justify-center"
-        >
-          <Checkbox
-            checked={
-              table.getIsAllPageRowsSelected() ||
-              (table.getIsSomePageRowsSelected() && "indeterminate")
-            }
-            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-            aria-label="Wybierz wszystkie"
-          />
-        </div>
-      ),
+      header: ({ table }) => {
+        const targetRows = selectAllRows
+          ? table.getFilteredRowModel().rows
+          : table.getRowModel().rows;
+        const allSelected =
+          targetRows.length > 0 && targetRows.every((row) => row.getIsSelected());
+        const someSelected = targetRows.some((row) => row.getIsSelected());
+
+        return (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="flex items-center justify-center"
+          >
+            <Checkbox
+              checked={
+                allSelected || (someSelected && "indeterminate")
+              }
+              onCheckedChange={(value) => {
+                if (selectAllRows) {
+                  table.getFilteredRowModel().rows.forEach((row) => {
+                    row.toggleSelected(!!value);
+                  });
+                } else {
+                  table.toggleAllPageRowsSelected(!!value);
+                }
+              }}
+              aria-label="Wybierz wszystkie"
+            />
+          </div>
+        );
+      },
       cell: ({ row }) => (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -158,7 +177,7 @@ export function ReusableTable<TData, TValue>({
     };
 
     return [selectionColumn, ...columns];
-  }, [columns, enableRowSelection]);
+  }, [columns, enableRowSelection, selectAllRows]);
 
   const table = useReactTable({
     data,

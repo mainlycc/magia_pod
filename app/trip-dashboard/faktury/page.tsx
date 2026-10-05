@@ -87,11 +87,6 @@ function formatAgreementNumber(opts: {
   return `#${reservation.padStart(6, "0")}/${String(seq).padStart(3, "0")}`
 }
 
-function safePdfFilename(invoiceNumber: string, id: string): string {
-  const base = (invoiceNumber || id).replace(/[\\/:*?"<>|]+/g, "-")
-  return `${base}.pdf`
-}
-
 async function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
@@ -142,6 +137,8 @@ export default function FakturyPage() {
   }
 
   const handleDownloadSelected = async () => {
+    if (!selectedTrip) return
+
     if (selectedRows.length === 0) {
       toast.error("Zaznacz przynajmniej jedną fakturę")
       return
@@ -149,41 +146,54 @@ export default function FakturyPage() {
 
     try {
       setDownloading(true)
-      let ok = 0
-      let failed = 0
+      const response = await fetch("/api/invoices/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: selectedTrip.id,
+          ids: selectedRows.map((r) => r.id),
+        }),
+      })
 
-      for (const invoice of selectedRows) {
-        try {
-          const response = await fetch(`/api/invoices/${invoice.id}/file`)
-          if (!response.ok) {
-            const data = await response.json().catch(() => null)
-            throw new Error(data?.error || `HTTP ${response.status}`)
-          }
-          const blob = await response.blob()
-          await triggerBlobDownload(
-            blob,
-            safePdfFilename(invoice.invoice_number, invoice.id)
-          )
-          ok += 1
-          // Krótka pauza, żeby przeglądarka nie zablokowała wielu pobrań
-          if (selectedRows.length > 1) {
-            await new Promise((r) => setTimeout(r, 350))
-          }
-        } catch (err) {
-          failed += 1
-          console.error(`Download failed for ${invoice.id}:`, err)
-        }
-      }
-
-      if (ok > 0 && failed === 0) {
-        toast.success(
-          ok === 1 ? "Pobrano fakturę" : `Pobrano ${ok} faktur`
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(
+          data?.error === "brak_faktur"
+            ? "Brak faktur do pobrania"
+            : data?.error === "nie_udalo_sie_pobrac_pdf"
+              ? "Nie udało się pobrać PDF faktur"
+              : data?.error || `HTTP ${response.status}`
         )
-      } else if (ok > 0 && failed > 0) {
-        toast.warning(`Pobrano ${ok}, nie udało się: ${failed}`)
-      } else {
-        toast.error("Nie udało się pobrać zaznaczonych faktur")
       }
+
+      const blob = await response.blob()
+      const okCount = Number(response.headers.get("X-Invoices-Ok") || "0")
+      const failedCount = Number(
+        response.headers.get("X-Invoices-Failed") || "0"
+      )
+      const safeTitle = selectedTrip.title
+        .replace(/[\\/:*?"<>|]+/g, "-")
+        .slice(0, 60)
+      await triggerBlobDownload(blob, `faktury-${safeTitle}.zip`)
+
+      if (failedCount > 0) {
+        toast.warning(
+          `Pobrano ZIP (${okCount} faktur), pominięto: ${failedCount}`
+        )
+      } else {
+        toast.success(
+          okCount === 1
+            ? "Pobrano fakturę w ZIP"
+            : `Pobrano ${okCount} faktur w ZIP`
+        )
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Nie udało się pobrać zaznaczonych faktur"
+      )
+      console.error(err)
     } finally {
       setDownloading(false)
     }
@@ -343,6 +353,7 @@ export default function FakturyPage() {
         emptyMessage="Brak faktur dla tej wycieczki"
         getRowId={(row) => row.id}
         enableRowSelection={true}
+        selectAllRows={true}
         onSelectionChange={setSelectedRows}
         onRowClick={(invoice) =>
           router.push(`/trip-dashboard/faktury/${invoice.id}`)
