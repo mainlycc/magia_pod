@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useMemo } from "react"
+import React, { useEffect, useState, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTrip } from "@/contexts/trip-context"
@@ -291,6 +291,9 @@ export default function UczestnicyPage() {
   const [paynowCheckByBookingId, setPaynowCheckByBookingId] = useState<
     Record<string, PaynowCheckRow>
   >({})
+  /** Unieważnia przestarzałe loadData / reconcile (Strict Mode, zmiana wycieczki). */
+  const loadGenerationRef = useRef(0)
+  const reconcileInFlightGenerationRef = useRef<number | null>(null)
 
   const applyPaynowVerifyResult = (result: VerifyPaynowResponse) => {
     const next: Record<string, PaynowCheckRow> = {}
@@ -365,39 +368,26 @@ export default function UczestnicyPage() {
     }
   }
 
-  useEffect(() => {
-    if (!selectedTrip) {
-      setLoading(false)
-      return
-    }
-    setPaynowCheckByBookingId({})
-    loadData()
-  }, [selectedTrip])
+  const mapParticipantsRows = (data: any[] | null): Participant[] =>
+    (data || []).map((participant: any) => {
+      const rawBooking = participant.bookings
+      const b = Array.isArray(rawBooking) ? rawBooking[0] || null : rawBooking
+      const bookings = b
+        ? {
+            ...b,
+            trips: Array.isArray(b.trips) ? b.trips[0] || null : b.trips,
+            agreements: normalizeBookingAgreements(b.agreements),
+          }
+        : null
+      return { ...participant, bookings }
+    })
 
-  const loadData = async () => {
-    if (!selectedTrip) return
-
-    try {
-      setLoading(true)
-      const supabase = createClient()
-
-      // Zsynchronizuj sumy wpłat z historią (Paynow itd. mogły dodać wpisy bez aktualizacji bookings)
-      try {
-        const syncRes = await fetch(`/api/trips/${selectedTrip.id}/reconcile-payments`, {
-          method: "POST",
-        })
-        if (!syncRes.ok) {
-          console.warn("reconcile-payments:", await syncRes.text())
-        }
-      } catch (e) {
-        console.warn("reconcile-payments fetch failed:", e)
-      }
-
-      // Pobierz uczestników dla wybranej wycieczki z pełnymi danymi
-      const { data, error } = await supabase
-        .from("participants")
-        .select(
-          `
+  const fetchParticipantsForTrip = async (tripId: string): Promise<Participant[]> => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("participants")
+      .select(
+        `
           *,
           bookings:bookings!inner(
             id,
@@ -428,39 +418,92 @@ export default function UczestnicyPage() {
               reservation_number
             )
           )
-        `
-        )
-        .eq("bookings.trip_id", selectedTrip.id)
+        `,
+      )
+      .eq("bookings.trip_id", tripId)
 
-      if (error) {
-        console.error("Supabase participants query error:", JSON.stringify(error, null, 2))
-        throw error
-      }
+    if (error) {
+      console.error("Supabase participants query error:", JSON.stringify(error, null, 2))
+      throw error
+    }
 
-      console.log("Participants loaded:", data?.length, "records")
+    console.log("Participants loaded:", data?.length, "records")
+    return mapParticipantsRows(data)
+  }
 
-      // Mapuj dane: bookings jako pojedynczy obiekt; agreements zostaje tablicą
-      const mappedParticipants = (data || []).map((participant: any) => {
-        const rawBooking = participant.bookings
-        const b = Array.isArray(rawBooking) ? rawBooking[0] || null : rawBooking
-        const bookings = b
-          ? {
-              ...b,
-              trips: Array.isArray(b.trips) ? b.trips[0] || null : b.trips,
-              agreements: normalizeBookingAgreements(b.agreements),
-            }
-          : null
-        return { ...participant, bookings }
-      })
-
-      setParticipants(mappedParticipants)
-    } catch (err: any) {
-      console.error("loadData error:", err?.message || err?.code || err)
-      toast.error("Nie udało się wczytać uczestników")
-    } finally {
-      setLoading(false)
+  const refreshParticipantsSilent = async (tripId: string, generation: number) => {
+    try {
+      const mapped = await fetchParticipantsForTrip(tripId)
+      if (generation !== loadGenerationRef.current) return
+      setParticipants(mapped)
+    } catch (e) {
+      console.warn("silent participants refresh failed:", e)
     }
   }
+
+  const runBackgroundReconcile = async (tripId: string, generation: number) => {
+    if (reconcileInFlightGenerationRef.current === generation) return
+    reconcileInFlightGenerationRef.current = generation
+    try {
+      const syncRes = await fetch(`/api/trips/${tripId}/reconcile-payments`, {
+        method: "POST",
+      })
+      if (!syncRes.ok) {
+        console.warn("reconcile-payments:", await syncRes.text())
+        return
+      }
+      if (generation !== loadGenerationRef.current) return
+      await refreshParticipantsSilent(tripId, generation)
+    } catch (e) {
+      console.warn("reconcile-payments fetch failed:", e)
+    } finally {
+      if (reconcileInFlightGenerationRef.current === generation) {
+        reconcileInFlightGenerationRef.current = null
+      }
+    }
+  }
+
+  const loadData = async (opts?: { silent?: boolean; reconcile?: boolean }) => {
+    if (!selectedTrip) return
+
+    const tripId = selectedTrip.id
+    const generation = ++loadGenerationRef.current
+    const silent = opts?.silent ?? false
+    const reconcile = opts?.reconcile ?? false
+
+    try {
+      if (!silent) setLoading(true)
+      const mappedParticipants = await fetchParticipantsForTrip(tripId)
+      if (generation !== loadGenerationRef.current) return
+      setParticipants(mappedParticipants)
+    } catch (err: any) {
+      if (generation !== loadGenerationRef.current) return
+      console.error("loadData error:", err?.message || err?.code || err)
+      if (!silent) toast.error("Nie udało się wczytać uczestników")
+    } finally {
+      if (!silent && generation === loadGenerationRef.current) {
+        setLoading(false)
+      }
+    }
+
+    if (reconcile && generation === loadGenerationRef.current) {
+      void runBackgroundReconcile(tripId, generation)
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedTrip) {
+      setLoading(false)
+      return
+    }
+    setPaynowCheckByBookingId({})
+    void loadData({ reconcile: true })
+    return () => {
+      loadGenerationRef.current += 1
+    }
+    // loadData czyta selectedTrip z domknięcia; celowo tylko przy zmianie wycieczki
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrip])
 
   const toggleRow = (participantId: string) => {
     setExpandedRows((prev) => {

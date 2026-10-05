@@ -207,3 +207,146 @@ export async function recalculateBookingPaymentsFromHistory(
 
   return { ok: true, totalPaid, amountDue, paymentStatus: newPaymentStatus };
 }
+
+const RECONCILE_UPDATE_CONCURRENCY = 5;
+
+async function mapPool<T>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  const limit = Math.max(1, concurrency);
+  let next = 0;
+
+  async function run(): Promise<void> {
+    while (next < items.length) {
+      const index = next++;
+      await worker(items[index]!);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+}
+
+/**
+ * Batch: synchronizuje paid_amount_cents i statusy dla wszystkich rezerwacji wycieczki
+ * (kilka zapytań zbiorczych zamiast N× recalculateBookingPaymentsFromHistory).
+ */
+export async function recalculateTripBookingsPayments(
+  supabase: SupabaseClient,
+  tripId: string,
+): Promise<{ reconciled: number; failed: number; error?: string }> {
+  const { data: bookings, error: bookingsError } = await supabase
+    .from("bookings")
+    .select(
+      `
+      id,
+      trip_id,
+      first_payment_amount_cents,
+      second_payment_amount_cents,
+      trips:trips(
+        price_cents,
+        form_diets,
+        form_extra_insurances,
+        form_additional_attractions
+      )
+    `,
+    )
+    .eq("trip_id", tripId);
+
+  if (bookingsError) {
+    return { reconciled: 0, failed: 0, error: bookingsError.message };
+  }
+
+  if (!bookings?.length) {
+    return { reconciled: 0, failed: 0 };
+  }
+
+  const bookingIds = bookings.map((b) => b.id);
+
+  const { data: payments, error: paymentsError } = await supabase
+    .from("payment_history")
+    .select("booking_id, amount_cents, payment_method, notes")
+    .in("booking_id", bookingIds);
+
+  if (paymentsError) {
+    return { reconciled: 0, failed: 0, error: paymentsError.message };
+  }
+
+  const { data: participants, error: participantsError } = await supabase
+    .from("participants")
+    .select("booking_id, is_active, selected_services")
+    .in("booking_id", bookingIds);
+
+  if (participantsError) {
+    return { reconciled: 0, failed: 0, error: participantsError.message };
+  }
+
+  const paymentsByBooking = new Map<
+    string,
+    { amount_cents: number | null; payment_method: string | null; notes: string | null }[]
+  >();
+  for (const p of payments ?? []) {
+    const list = paymentsByBooking.get(p.booking_id) ?? [];
+    list.push(p);
+    paymentsByBooking.set(p.booking_id, list);
+  }
+
+  const participantsByBooking = new Map<string, ParticipantForDue[]>();
+  for (const p of participants ?? []) {
+    const list = participantsByBooking.get(p.booking_id) ?? [];
+    list.push(p);
+    participantsByBooking.set(p.booking_id, list);
+  }
+
+  let reconciled = 0;
+  let failed = 0;
+
+  await mapPool(bookings, RECONCILE_UPDATE_CONCURRENCY, async (booking) => {
+    const bookingPayments = paymentsByBooking.get(booking.id) ?? [];
+    const bookingParticipants = participantsByBooking.get(booking.id) ?? [];
+
+    const totalPaid = bookingPayments.reduce((sum, p) => {
+      if (!countsTowardPaidAmount(p)) return sum;
+      return sum + (p.amount_cents || 0);
+    }, 0);
+
+    const tripFromJoin = Array.isArray((booking as { trips?: unknown }).trips)
+      ? (booking as { trips: TripForDue[] }).trips[0]
+      : (booking as { trips?: TripForDue }).trips;
+
+    const trip =
+      tripFromJoin ??
+      (booking.trip_id ? await getTripForDue(supabase, booking.trip_id) : null);
+
+    const amountDue = calculateBookingAmountDueCents(trip, bookingParticipants);
+    const newPaymentStatus = derivePaymentStatus(totalPaid, amountDue);
+    const { first_payment_status: firstPaymentStatus, second_payment_status: secondPaymentStatus } =
+      deriveInstallmentStatuses(
+        totalPaid,
+        amountDue,
+        booking.first_payment_amount_cents ?? 0,
+        booking.second_payment_amount_cents ?? 0,
+      );
+
+    const { error: updateError } = await supabase
+      .from("bookings")
+      .update({
+        paid_amount_cents: totalPaid,
+        payment_status: newPaymentStatus,
+        ...(firstPaymentStatus ? { first_payment_status: firstPaymentStatus } : {}),
+        ...(secondPaymentStatus ? { second_payment_status: secondPaymentStatus } : {}),
+      })
+      .eq("id", booking.id);
+
+    if (updateError) {
+      failed++;
+      console.warn("[recalculateTripBookingsPayments] booking", booking.id, updateError.message);
+    } else {
+      reconciled++;
+    }
+  });
+
+  return { reconciled, failed };
+}
