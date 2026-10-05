@@ -1,0 +1,35 @@
+{
+  "trip": {
+    "id": "b167076a-d48c-477d-aade-08da45dd3123",
+    "title": "Czemu nie Spisz ",
+    "start_date": "2026-10-19"
+  },
+  "results": [
+    {
+      "paymentId": "a75e643b-dc12-491d-82dd-7d42041c46fe",
+      "bookingId": "fbf17e12-f0e7-4bf4-ac4f-26f4b327b321",
+      "bookingRef": "BK-MUNQ8N7F-HJUZ6",
+      "name": "Elżbieta Szeląg",
+      "bookingStatus": "confirmed",
+      "amountCents": 121000,
+      "sellDate": "2026-09-30",
+      "success": true,
+      "invoiceId": "6a7c8e4e-2cef-4954-afff-96334a7a1ecf",
+      "invoiceNumber": "Fvzal FAK 26/10/38",
+      "providerInvoiceId": "574797917"
+    },
+    {
+      "paymentId": "d68b70c7-8379-4506-bbfa-7083a2ceca41",
+      "bookingId": "3e8edb83-56f3-40c8-a10a-cdfb94e27b71",
+      "bookingRef": "BK-MUNYAXSI-Y3W21",
+      "name": "Anna Mikołajczyk",
+      "bookingStatus": "confirmed",
+      "amountCents": 120500,
+      "sellDate": "2026-09-30",
+      "success": true,
+      "invoiceId": "cdc5c5fb-6f22-408b-af17-f54ff78521ab",
+      "invoiceNumber": "Fvzal FAK 26/10/39",
+      "providerInvoiceId": "574798226"
+    }
+  ]
+}

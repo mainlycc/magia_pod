@@ -60,6 +60,10 @@ export interface ProcessPaymentInvoiceParams {
    * Na Vercel: przekaż `(p) => waitUntil(p)` z `@vercel/functions`, żeby dokończyć pobranie PDF i e-mail po zwrocie odpowiedzi.
    */
   scheduleAfterResponse?: (task: Promise<void>) => void;
+  /** Wystaw fakturę i zapisz PDF, ale nie wysyłaj klientowi żadnego maila. */
+  skipCustomerEmail?: boolean;
+  /** Data sprzedaży (YYYY-MM-DD), np. data wpłaty przy wystawianiu zaległych faktur. Domyślnie dziś. */
+  sellDate?: string;
 }
 
 export interface InvoiceResult {
@@ -529,8 +533,17 @@ export async function syncFakturowniaOrderForBooking(
 // ===================== MAIN FLOW =====================
 
 /**
+ * Wysyłka faktury (PDF / link) do klienta w mailu z potwierdzeniem płatności.
+ * `INVOICES_EMAIL_DISABLED=true` — faktura nadal jest wystawiana w Fakturowni,
+ * ale klient dostaje samo potwierdzenie płatności, bez faktury.
+ */
+export function isInvoiceEmailEnabled(): boolean {
+  return process.env.INVOICES_EMAIL_DISABLED !== "true";
+}
+
+/**
  * Automatyczne wystawianie faktur po wpłatach (Paynow, wpłaty dodane przez admina).
- * `INVOICES_AUTO_ISSUE_DISABLED=true` wyłącza je — zostaje tylko ręczne generowanie w panelu.
+ * `INVOICES_AUTO_ISSUE_DISABLED=true` wyłącza je — zostaje tylko przycisk „Wygeneruj fakturę” w panelu.
  */
 export function isAutoInvoiceEnabled(): boolean {
   return process.env.INVOICES_AUTO_ISSUE_DISABLED !== "true";
@@ -539,7 +552,14 @@ export function isAutoInvoiceEnabled(): boolean {
 export async function processPaymentInvoice(
   params: ProcessPaymentInvoiceParams
 ): Promise<InvoiceResult> {
-  const { bookingId, paymentHistoryId, amountCents, scheduleAfterResponse } = params;
+  const {
+    bookingId,
+    paymentHistoryId,
+    amountCents,
+    scheduleAfterResponse,
+    skipCustomerEmail = false,
+    sellDate,
+  } = params;
   const supabase = createAdminClient();
 
   console.log("[InvoiceService] Starting invoice process:", {
@@ -587,6 +607,8 @@ export async function processPaymentInvoice(
           existingInvoice.status === "wysłana" &&
           (providerErr.includes("send_by_email") || providerErr.includes("PDF API niedostępne"));
         const needsEmailRetry =
+          !skipCustomerEmail &&
+          isInvoiceEmailEnabled() &&
           (existingInvoice.status !== "wysłana" || markedSentViaUnreliableFallback) &&
           !providerErr.startsWith("Brak konfiguracji");
 
@@ -860,7 +882,7 @@ export async function processPaymentInvoice(
     const invoiceData: FakturowniaInvoiceData = {
       kind: "advance",
       issue_date: today,
-      sell_date: today,
+      sell_date: sellDate || today,
       payment_type: "transfer",
       currency: "PLN",
       lang: "pl",
@@ -932,21 +954,50 @@ export async function processPaymentInvoice(
       : (fakturowniaResponse.error || "Unknown Fakturownia error");
 
     // ─── 11. Zapisz rekord faktury w DB ───
-    const { data: invoice, error: invoiceInsertError } = await supabase
+    // Numer faktury = numer nadany przez Fakturownię; trigger DB nadaje numer tylko
+    // gdy dokument w Fakturowni nie powstał (lub numer koliduje z istniejącym rekordem).
+    let providerInvoiceNumber = fakturowniaResponse.invoiceNumber?.trim() || null;
+    if (!providerInvoiceNumber && fakturowniaResponse.success && fakturowniaResponse.invoiceId) {
+      const refreshed = await getInvoice(fakturowniaConfig, fakturowniaResponse.invoiceId);
+      providerInvoiceNumber = refreshed.success ? refreshed.invoiceNumber?.trim() || null : null;
+    }
+
+    const invoiceRow = {
+      booking_id: bookingId,
+      payment_history_id: paymentHistoryId,
+      amount_cents: amountCents,
+      status: "wystawiona",
+      invoice_type: invoiceType,
+      parent_invoice_id: parentInvoice?.id || null,
+      fakturownia_invoice_id: fakturowniaResponse.invoiceId?.toString() || null,
+      invoice_provider_error: providerError,
+    };
+
+    let { data: invoice, error: invoiceInsertError } = await supabase
       .from("invoices")
-      .insert({
-        booking_id: bookingId,
-        payment_history_id: paymentHistoryId,
-        invoice_number: null as any, // trigger auto-generuje numer
-        amount_cents: amountCents,
-        status: "wystawiona",
-        invoice_type: invoiceType,
-        parent_invoice_id: parentInvoice?.id || null,
-        fakturownia_invoice_id: fakturowniaResponse.invoiceId?.toString() || null,
-        invoice_provider_error: providerError,
-      })
+      .insert({ ...invoiceRow, invoice_number: providerInvoiceNumber as any })
       .select()
       .single();
+
+    if (
+      invoiceInsertError?.code === "23505" &&
+      invoiceInsertError.message?.includes("invoice_number") &&
+      providerInvoiceNumber
+    ) {
+      console.error(
+        "[InvoiceService] Fakturownia invoice number already used locally — falling back to DB numbering:",
+        providerInvoiceNumber,
+      );
+      ({ data: invoice, error: invoiceInsertError } = await supabase
+        .from("invoices")
+        .insert({
+          ...invoiceRow,
+          invoice_number: null as any,
+          invoice_provider_error: `Numer z Fakturowni (${providerInvoiceNumber}) koliduje z istniejącym rekordem`,
+        })
+        .select()
+        .single());
+    }
 
     if (invoiceInsertError) {
       console.error("[InvoiceService] Failed to insert invoice:", invoiceInsertError);
@@ -972,7 +1023,8 @@ export async function processPaymentInvoice(
         fakturowniaResponse.invoiceId,
         fakturowniaResponse.pdfUrl,
         booking as BookingData,
-        invoice.invoice_number
+        invoice.invoice_number,
+        skipCustomerEmail,
       );
       const isDev = process.env.NODE_ENV === "development";
       if (isDev) {
@@ -985,7 +1037,7 @@ export async function processPaymentInvoice(
           console.error("[InvoiceService] Background PDF/email task failed:", err);
         });
       }
-    } else if ((booking as BookingData).contact_email) {
+    } else if ((booking as BookingData).contact_email && !skipCustomerEmail) {
       // Fakturownia nie wystawiła dokumentu — i tak wyślij potwierdzenie płatności (bez PDF).
       console.warn(
         "[InvoiceService] Provider failed — sending payment confirmation without invoice PDF:",
@@ -1156,6 +1208,13 @@ async function sendPaymentConfirmationForInvoice(
 
   const publicAgreementNumber = await resolvePublicAgreementNumberForBooking(supabase, booking.id);
 
+  if (!isInvoiceEmailEnabled() && (options.pdfBase64 || options.invoiceViewUrl)) {
+    console.log(
+      "[InvoiceService] Invoice email disabled (INVOICES_EMAIL_DISABLED) — sending payment confirmation without invoice",
+    );
+    options = {};
+  }
+
   return sendPaymentConfirmationEmail({
     supabase,
     paymentHistoryId: invoiceRow.payment_history_id,
@@ -1177,7 +1236,8 @@ async function fetchPdfAndSendEmail(
   fakturowniaInvoiceId: number,
   pdfUrlFromResponse: string | undefined,
   booking: BookingData,
-  invoiceNumber: string
+  invoiceNumber: string,
+  skipCustomerEmail = false,
 ): Promise<void> {
   // KSeF: na koncie z blokadą PDF przed numerem KSeF wyślij fakturę do KSeF,
   // inaczej endpoint .pdf zwróci 422 (faktura zaliczkowa marża, gov_status=null).
@@ -1209,7 +1269,15 @@ async function fetchPdfAndSendEmail(
       console.log(`[InvoiceService] PDF download attempt ${attempt + 1}/${PDF_MAX_ATTEMPTS}:`, pdfUrl);
       const pdfBuffer = await downloadPdf(pdfUrl);
       console.log("[InvoiceService] PDF downloaded, size:", pdfBuffer.length, "bytes");
-      await persistPdfAndSendEmail(supabase, invoiceId, pdfUrl, pdfBuffer, booking, invoiceNumber);
+      await persistPdfAndSendEmail(
+        supabase,
+        invoiceId,
+        pdfUrl,
+        pdfBuffer,
+        booking,
+        invoiceNumber,
+        skipCustomerEmail,
+      );
       return;
     } catch (err) {
       lastErr = err;
@@ -1234,6 +1302,7 @@ async function fetchPdfAndSendEmail(
       pdfBuffer,
       booking,
       invoiceNumber,
+      skipCustomerEmail,
     );
     return;
   } catch (browserErr) {
@@ -1241,7 +1310,7 @@ async function fetchPdfAndSendEmail(
   }
 
   // Fallback 2: mail potwierdzenia płatności z linkiem do podglądu faktury
-  if (booking.contact_email) {
+  if (booking.contact_email && !skipCustomerEmail) {
     const refreshed = await getInvoice(config, fakturowniaInvoiceId);
     const viewUrl = refreshed.viewUrl ?? buildInvoiceHtmlViewUrl(config, fakturowniaInvoiceId);
     console.log("[InvoiceService] Fallback: payment confirmation with invoice link →", booking.contact_email);
@@ -1256,7 +1325,11 @@ async function fetchPdfAndSendEmail(
     if (sendResult.sent || sendResult.skipped) {
       await supabase
         .from("invoices")
-        .update({ status: "wysłana", invoice_provider_error: null, pdf_url: viewUrl })
+        .update({
+          ...(isInvoiceEmailEnabled() ? { status: "wysłana" } : {}),
+          invoice_provider_error: null,
+          pdf_url: viewUrl,
+        })
         .eq("id", invoiceId);
       return;
     }
@@ -1286,7 +1359,8 @@ async function persistPdfAndSendEmail(
   pdfUrl: string,
   pdfBuffer: Buffer,
   booking: BookingData,
-  invoiceNumber: string
+  invoiceNumber: string,
+  skipCustomerEmail = false,
 ): Promise<void> {
   const safeInvoiceNumber = invoiceNumber.replace(/\//g, "-");
   const storagePath = `${booking.booking_ref}/${safeInvoiceNumber}.pdf`;
@@ -1308,6 +1382,11 @@ async function persistPdfAndSendEmail(
       .update({ pdf_url: pdfUrl, pdf_storage_path: storagePath })
       .eq("id", invoiceId);
     console.log("[InvoiceService] PDF stored successfully at:", storagePath);
+  }
+
+  if (skipCustomerEmail) {
+    console.log("[InvoiceService] skipCustomerEmail — not sending invoice to client:", invoiceNumber);
+    return;
   }
 
   if (booking.contact_email) {
@@ -1332,7 +1411,9 @@ async function persistPdfAndSendEmail(
           to: booking.contact_email,
           skipped: sendResult.skipped ?? false,
         });
-        await supabase.from("invoices").update({ status: "wysłana" }).eq("id", invoiceId);
+        if (isInvoiceEmailEnabled()) {
+          await supabase.from("invoices").update({ status: "wysłana" }).eq("id", invoiceId);
+        }
       } else {
         console.error("[InvoiceService] Failed to send payment confirmation email:", {
           invoiceId,
