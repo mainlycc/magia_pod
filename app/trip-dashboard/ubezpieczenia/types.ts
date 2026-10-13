@@ -67,6 +67,7 @@ export type EmailLog = {
   id: string
   trip_id: string | null
   insurance_type: 1 | 2 | 3
+  variant_id?: string | null
   sent_at: string
   recipients: string[]
   xlsx_filename: string | null
@@ -74,6 +75,10 @@ export type EmailLog = {
   status: "sent" | "error"
   error_message: string | null
   triggered_by: "manual" | "cron"
+  insurance_variants?: {
+    id: string
+    name: string
+  } | null
 }
 
 export function formatPrice(grosz: number | null): string {

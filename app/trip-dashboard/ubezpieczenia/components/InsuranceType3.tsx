@@ -47,9 +47,17 @@ export function InsuranceType3({ tripId }: Props) {
   const [tripVariants, setTripVariants] = useState<TripInsuranceVariant[]>([])
   const [participants, setParticipants] = useState<ParticipantInsurance[]>([])
   const [logs, setLogs] = useState<EmailLog[]>([])
+  const [logsPage, setLogsPage] = useState(1)
+  const [logsTotal, setLogsTotal] = useState(0)
+  const [logsTotalPages, setLogsTotalPages] = useState(1)
+  const [logsLoading, setLogsLoading] = useState(false)
+  const LOGS_PAGE_SIZE = 10
   const [loadingInit, setLoadingInit] = useState(true)
-  const [sending, setSending] = useState(false)
-  const [downloading, setDownloading] = useState(false)
+  const [sendingVariantId, setSendingVariantId] = useState<string | null>(null)
+  const [downloadingVariantId, setDownloadingVariantId] = useState<string | null>(null)
+  const [selectedParticipants, setSelectedParticipants] = useState<ParticipantInsurance[]>([])
+  const [sendingSelected, setSendingSelected] = useState(false)
+  const [selectionResetKey, setSelectionResetKey] = useState(0)
 
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addVariantId, setAddVariantId] = useState("")
@@ -88,9 +96,26 @@ export function InsuranceType3({ tripId }: Props) {
     if (res.ok) setParticipants(await res.json())
   }
 
-  async function loadLogs() {
-    const res = await fetch(`/api/insurance-local/email-logs?trip_id=${tripId}&type=3&limit=10`)
-    if (res.ok) setLogs(await res.json())
+  async function loadLogs(page = 1) {
+    setLogsLoading(true)
+    try {
+      const res = await fetch(
+        `/api/insurance-local/email-logs?trip_id=${tripId}&type=3&page=${page}&pageSize=${LOGS_PAGE_SIZE}`
+      )
+      if (!res.ok) return
+      const json = await res.json()
+      const items = Array.isArray(json) ? json : json.data || []
+      setLogs(items)
+      setLogsPage(Array.isArray(json) ? page : json.page || page)
+      setLogsTotal(Array.isArray(json) ? items.length : json.total || 0)
+      setLogsTotalPages(
+        Array.isArray(json)
+          ? 1
+          : Math.max(1, json.totalPages || Math.ceil((json.total || 0) / LOGS_PAGE_SIZE) || 1)
+      )
+    } finally {
+      setLogsLoading(false)
+    }
   }
 
   async function handleAddVariant() {
@@ -182,13 +207,37 @@ export function InsuranceType3({ tripId }: Props) {
     }
   }
 
-  async function handleDownloadXlsx() {
-    setDownloading(true)
+  function getGlobalVariantId(tv: TripInsuranceVariant): string | null {
+    return tv.insurance_variants?.id || null
+  }
+
+  function countYesterdayForVariant(tripVariantRowId: string): number {
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const day = yesterday.toISOString().split("T")[0]
+    return participants.filter((pi) => {
+      if (pi.trip_insurance_variant_id !== tripVariantRowId) return false
+      if (pi.status === "cancelled") return false
+      return pi.purchased_at?.startsWith(day)
+    }).length
+  }
+
+  async function handleDownloadXlsx(tv: TripInsuranceVariant) {
+    const variantId = getGlobalVariantId(tv)
+    if (!variantId) {
+      toast.error("Brak ID wariantu")
+      return
+    }
+    setDownloadingVariantId(variantId)
     try {
-      const res = await fetch(`/api/insurance-local/generate-xlsx/${tripId}/3`)
+      const res = await fetch(
+        `/api/insurance-local/generate-xlsx/${tripId}/3?variant_id=${encodeURIComponent(variantId)}`
+      )
       if (!res.ok) throw new Error((await res.json()).error)
       const blob = await res.blob()
-      const filename = res.headers.get("X-Filename") || "ubezpieczenie_KR.xlsx"
+      const filename =
+        res.headers.get("X-Filename") ||
+        `ubezpieczenie_KR_${tv.insurance_variants?.name || "wariant"}.xlsx`
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -198,26 +247,89 @@ export function InsuranceType3({ tripId }: Props) {
     } catch (err) {
       toast.error("Błąd pobierania XLSX: " + String(err))
     } finally {
-      setDownloading(false)
+      setDownloadingVariantId(null)
     }
   }
 
-  async function handleSendEmail() {
-    setSending(true)
+  async function handleSendEmail(tv: TripInsuranceVariant) {
+    const variantId = getGlobalVariantId(tv)
+    if (!variantId) {
+      toast.error("Brak ID wariantu")
+      return
+    }
+    setSendingVariantId(variantId)
     try {
       const res = await fetch(`/api/insurance-local/send-email/${tripId}/3`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ triggered_by: "manual" }),
+        body: JSON.stringify({ triggered_by: "manual", variant_id: variantId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      toast.success(`Raport KR wysłany (${data.participants_count} ubezpieczeń)`)
-      await loadLogs()
+      const label = tv.insurance_variants?.name || "KR"
+      toast.success(`Raport „${label}” wysłany (${data.participants_count} ubezpieczeń)`)
+      await loadLogs(1)
     } catch (err) {
       toast.error("Błąd wysyłki: " + String(err))
     } finally {
-      setSending(false)
+      setSendingVariantId(null)
+    }
+  }
+
+  async function handleSendSelected() {
+    const rows = selectedParticipants.filter((pi) => pi.status !== "cancelled")
+    if (rows.length === 0) {
+      toast.error("Zaznacz ubezpieczenia do wysyłki")
+      return
+    }
+
+    const groups = new Map<string, { name: string; ids: string[] }>()
+    for (const row of rows) {
+      const variantId = row.trip_insurance_variants?.insurance_variants?.id
+      const variantName = row.trip_insurance_variants?.insurance_variants?.name || "KR"
+      if (!variantId) {
+        toast.error("Niektóre zaznaczone wiersze nie mają wariantu — odznacz je i spróbuj ponownie")
+        return
+      }
+      const existing = groups.get(variantId)
+      if (existing) {
+        existing.ids.push(row.id)
+      } else {
+        groups.set(variantId, { name: variantName, ids: [row.id] })
+      }
+    }
+
+    setSendingSelected(true)
+    try {
+      let sentTotal = 0
+      const labels: string[] = []
+      for (const [variantId, group] of groups) {
+        const res = await fetch(`/api/insurance-local/send-email/${tripId}/3`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            triggered_by: "manual",
+            variant_id: variantId,
+            participant_insurance_ids: group.ids,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || `Błąd wysyłki „${group.name}"`)
+        sentTotal += Number(data.participants_count || group.ids.length)
+        labels.push(`${group.name} (${data.participants_count ?? group.ids.length})`)
+      }
+      toast.success(
+        groups.size === 1
+          ? `Raport wysłany: ${labels[0]}`
+          : `Wysłano ${groups.size} raporty (${sentTotal} ubezpieczeń): ${labels.join(", ")}`
+      )
+      setSelectedParticipants([])
+      setSelectionResetKey((k) => k + 1)
+      await loadLogs(1)
+    } catch (err) {
+      toast.error("Błąd wysyłki zaznaczonych: " + String(err))
+    } finally {
+      setSendingSelected(false)
     }
   }
 
@@ -229,6 +341,14 @@ export function InsuranceType3({ tripId }: Props) {
     () => [
       {
         id: "name",
+        accessorFn: (row) => {
+          const p = row.participants
+          if (p) return `${p.first_name} ${p.last_name}`
+          const b = row.bookings
+          return b
+            ? `${b.contact_first_name || ""} ${b.contact_last_name || ""}`.trim() || b.contact_email || ""
+            : ""
+        },
         header: "Uczestnik",
         cell: ({ row }) => {
           const p = row.original.participants
@@ -239,12 +359,17 @@ export function InsuranceType3({ tripId }: Props) {
       },
       {
         id: "variant",
+        accessorFn: (row) =>
+          row.trip_insurance_variants?.insurance_variants?.name || "",
         header: "Wariant KR",
-        cell: ({ row }) => row.original.trip_insurance_variants?.insurance_variants?.name || "—",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.trip_insurance_variants?.insurance_variants?.name || "—",
       },
       {
         id: "booking",
         header: "Numer umowy",
+        enableSorting: false,
         cell: ({ row }) => {
           const b: any = row.original.bookings
           const trip = Array.isArray(b?.trips) ? b.trips[0] : b?.trips
@@ -267,11 +392,13 @@ export function InsuranceType3({ tripId }: Props) {
       },
       {
         id: "purchased_at",
+        accessorKey: "purchased_at",
         header: "Data zakupu",
         cell: ({ row }) => formatDateTime(row.original.purchased_at),
       },
       {
         id: "status",
+        accessorKey: "status",
         header: "Status",
         cell: ({ row }) => (
           <Badge
@@ -301,6 +428,15 @@ export function InsuranceType3({ tripId }: Props) {
         id: "sent_at",
         header: "Data wysyłki",
         cell: ({ row }) => formatDateTime(row.original.sent_at),
+      },
+      {
+        id: "variant",
+        header: "Wariant",
+        cell: ({ row }) => (
+          <span className="text-sm">
+            {row.original.insurance_variants?.name || "—"}
+          </span>
+        ),
       },
       {
         id: "recipients",
@@ -350,9 +486,10 @@ export function InsuranceType3({ tripId }: Props) {
       <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
         <IconClock className="h-4 w-4 mt-0.5 shrink-0" />
         <div>
-          <span className="font-medium">Raport dzienny:</span> System automatycznie wysyła raport codziennie o 09:00,
-          obejmujący ubezpieczenia KR zakupione/potwierdzone poprzedniego dnia.
-          Można też wysłać raport ręcznie poniżej.
+          <span className="font-medium">Raporty dzienne (osobno per wariant):</span>{" "}
+          System automatycznie wysyła codziennie o 09:00 UTC (11:00 latem / 10:00 zimą w PL)
+          dwa oddzielne raporty — dla wariantu 100% i 100% Max — za poprzedni dzień.
+          Poniżej możesz też wysłać każdy raport ręcznie.
         </div>
       </div>
 
@@ -442,33 +579,92 @@ export function InsuranceType3({ tripId }: Props) {
         </CardContent>
       </Card>
 
+      {/* Oddzielne raporty per wariant KR */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Raporty KR — osobno per wariant</CardTitle>
+          <CardDescription>
+            Każdy wariant (np. 100% i 100% Max) ma własny XLSX i własną wysyłkę e-mail.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tripVariants.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Dodaj warianty KR powyżej, aby móc generować i wysyłać raporty.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {tripVariants.map((tv) => {
+                const globalId = getGlobalVariantId(tv)
+                const yesterdayCount = countYesterdayForVariant(tv.id)
+                const isDownloading = globalId !== null && downloadingVariantId === globalId
+                const isSending = globalId !== null && sendingVariantId === globalId
+                return (
+                  <div
+                    key={tv.id}
+                    className="flex flex-col gap-3 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="font-medium text-sm">
+                        {tv.insurance_variants?.name || "Wariant KR"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Za wczoraj:{" "}
+                        <span className="font-medium text-foreground">{yesterdayCount}</span>{" "}
+                        ubezpieczeń
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownloadXlsx(tv)}
+                        disabled={!globalId || isDownloading}
+                      >
+                        <IconDownload className="h-4 w-4 mr-1.5" />
+                        {isDownloading ? "Generowanie..." : "XLSX za wczoraj"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSendEmail(tv)}
+                        disabled={!globalId || isSending}
+                      >
+                        <IconMail className="h-4 w-4 mr-1.5" />
+                        {isSending ? "Wysyłanie..." : "Wyślij raport"}
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Lista zakupionych ubezpieczeń KR */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base">
               Zakupione ubezpieczenia KR — wszystkie ({activeParticipants.length})
             </CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadXlsx}
-                disabled={downloading}
-              >
-                <IconDownload className="h-4 w-4 mr-1.5" />
-                {downloading ? "Generowanie..." : "XLSX za wczoraj"}
-              </Button>
+            {selectedParticipants.length > 0 && (
               <Button
                 size="sm"
-                onClick={handleSendEmail}
-                disabled={sending}
+                onClick={handleSendSelected}
+                disabled={sendingSelected}
               >
                 <IconMail className="h-4 w-4 mr-1.5" />
-                {sending ? "Wysyłanie..." : "Wyślij raport za wczoraj"}
+                {sendingSelected
+                  ? "Wysyłanie..."
+                  : `Wyślij raport (${selectedParticipants.length})`}
               </Button>
-            </div>
+            )}
           </div>
+          <CardDescription>
+            Kliknij nagłówek „Wariant KR”, aby posortować. Zaznacz wiersze checkboxami,
+            a potem wyślij raport tylko dla zaznaczonych (osobno per wariant).
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {activeParticipants.length === 0 ? (
@@ -477,32 +673,69 @@ export function InsuranceType3({ tripId }: Props) {
             </p>
           ) : (
             <ReusableTable
+              key={selectionResetKey}
               columns={participantColumns}
-              data={participants}
+              data={activeParticipants}
               searchable={false}
-              enablePagination={participants.length > 10}
+              enableRowSelection
+              selectAllRows
+              enablePagination={activeParticipants.length > 10}
               pageSize={10}
               emptyMessage="Brak ubezpieczeń KR"
+              getRowId={(row) => row.id}
+              onSelectionChange={setSelectedParticipants}
             />
           )}
         </CardContent>
       </Card>
 
       {/* Historia raportów */}
-      {logs.length > 0 && (
+      {(logsTotal > 0 || logs.length > 0) && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Historia raportów KR</CardTitle>
+            <CardTitle className="text-base">
+              Historia raportów KR
+              {logsTotal > 0 && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  ({logsTotal})
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <ReusableTable
               columns={logColumns}
               data={logs}
               searchable={false}
-              enablePagination={logs.length > 5}
-              pageSize={5}
-              emptyMessage="Brak historii raportów"
+              enableRowSelection={false}
+              enablePagination={false}
+              emptyMessage={logsLoading ? "Ładowanie..." : "Brak historii raportów"}
             />
+            {logsTotalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Strona {logsPage} z {logsTotalPages}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={logsLoading || logsPage <= 1}
+                    onClick={() => loadLogs(logsPage - 1)}
+                  >
+                    Poprzednia
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={logsLoading || logsPage >= logsTotalPages}
+                    onClick={() => loadLogs(logsPage + 1)}
+                  >
+                    Następna
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

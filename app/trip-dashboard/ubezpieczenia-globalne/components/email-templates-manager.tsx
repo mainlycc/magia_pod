@@ -20,7 +20,13 @@ const TYPE_LABELS: Record<number, string> = {
 const TAGS_BY_TYPE: Record<number, string[]> = {
   1: ["{wariant_ubezpieczenia}", "{termin_od_do}", "{termin}", "{kraj}", "{tytul_wycieczki}", "{kod_wycieczki}", "{liczba_osob}"],
   2: ["{wariant_ubezpieczenia}", "{termin_od_do}", "{kraj}", "{tytul_wycieczki}", "{kod_wycieczki}", "{liczba_osob}"],
-  3: ["{data_raportu}", "{data_poprzedniego_dnia}", "{lista_umow}", "{liczba_ubezpieczen}"],
+  3: [
+    "{wariant_ubezpieczenia}",
+    "{data_raportu}",
+    "{data_poprzedniego_dnia}",
+    "{lista_umow}",
+    "{liczba_ubezpieczen}",
+  ],
 }
 
 type Props = {

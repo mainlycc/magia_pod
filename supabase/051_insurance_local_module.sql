@@ -224,10 +224,10 @@ Z poważaniem',
   ),
   (
     3,
-    'Raport ubezpieczeń KR — {data_raportu}',
+    'Raport KR {wariant_ubezpieczenia} — {data_raportu}',
     'Dzień dobry,
 
-W załączeniu raport ubezpieczeń od kosztów rezygnacji zakupionych w dniu {data_poprzedniego_dnia}.
+W załączeniu raport ubezpieczeń od kosztów rezygnacji ({wariant_ubezpieczenia}) zakupionych w dniu {data_poprzedniego_dnia}.
 
 Zestawienie umów:
 {lista_umow}

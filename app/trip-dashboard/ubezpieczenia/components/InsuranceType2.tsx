@@ -25,6 +25,7 @@ import {
   IconTrash,
   IconEdit,
   IconShieldHalf,
+  IconClock,
 } from "@tabler/icons-react"
 import {
   InsuranceVariant,
@@ -46,6 +47,11 @@ export function InsuranceType2({ tripId }: Props) {
   const [tripVariants, setTripVariants] = useState<TripInsuranceVariant[]>([])
   const [participants, setParticipants] = useState<ParticipantInsurance[]>([])
   const [logs, setLogs] = useState<EmailLog[]>([])
+  const [logsPage, setLogsPage] = useState(1)
+  const [logsTotal, setLogsTotal] = useState(0)
+  const [logsTotalPages, setLogsTotalPages] = useState(1)
+  const [logsLoading, setLogsLoading] = useState(false)
+  const LOGS_PAGE_SIZE = 10
   const [loadingInit, setLoadingInit] = useState(true)
   const [sending, setSending] = useState(false)
   const [downloading, setDownloading] = useState(false)
@@ -89,9 +95,26 @@ export function InsuranceType2({ tripId }: Props) {
     if (res.ok) setParticipants(await res.json())
   }
 
-  async function loadLogs() {
-    const res = await fetch(`/api/insurance-local/email-logs?trip_id=${tripId}&type=2&limit=5`)
-    if (res.ok) setLogs(await res.json())
+  async function loadLogs(page = 1) {
+    setLogsLoading(true)
+    try {
+      const res = await fetch(
+        `/api/insurance-local/email-logs?trip_id=${tripId}&type=2&page=${page}&pageSize=${LOGS_PAGE_SIZE}`
+      )
+      if (!res.ok) return
+      const json = await res.json()
+      const items = Array.isArray(json) ? json : json.data || []
+      setLogs(items)
+      setLogsPage(Array.isArray(json) ? page : json.page || page)
+      setLogsTotal(Array.isArray(json) ? items.length : json.total || 0)
+      setLogsTotalPages(
+        Array.isArray(json)
+          ? 1
+          : Math.max(1, json.totalPages || Math.ceil((json.total || 0) / LOGS_PAGE_SIZE) || 1)
+      )
+    } finally {
+      setLogsLoading(false)
+    }
   }
 
   async function handleAddVariant() {
@@ -214,7 +237,7 @@ export function InsuranceType2({ tripId }: Props) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       toast.success(`Email wysłany (${data.participants_count} uczestników)`)
-      await loadLogs()
+      await loadLogs(1)
     } catch (err) {
       toast.error("Błąd wysyłki: " + String(err))
     } finally {
@@ -300,6 +323,16 @@ export function InsuranceType2({ tripId }: Props) {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <IconClock className="h-4 w-4 mt-0.5 shrink-0" />
+        <div>
+          <span className="font-medium">Automatyczna wysyłka (5 dni przed startem):</span>{" "}
+          Codziennie o 09:00 UTC system sprawdza wycieczki startujące za 5 dni, bierze tylko
+          osoby z wykupionym ubezpieczeniem typ 2, generuje XLSX, wysyła mail ze szablonu
+          i zapisuje historię — tego samego raportu nie wyśle drugi raz. Poniżej możesz też wysłać ręcznie.
+        </div>
+      </div>
+
       {/* Warianty przypisane do wycieczki */}
       <Card>
         <CardHeader>
@@ -433,12 +466,19 @@ export function InsuranceType2({ tripId }: Props) {
       </Card>
 
       {/* Historia wysyłek */}
-      {logs.length > 0 && (
+      {(logsTotal > 0 || logs.length > 0) && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Historia wysyłek</CardTitle>
+            <CardTitle className="text-base">
+              Historia wysyłek
+              {logsTotal > 0 && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  ({logsTotal})
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="space-y-2">
               {logs.map((log) => (
                 <div
@@ -457,6 +497,31 @@ export function InsuranceType2({ tripId }: Props) {
                 </div>
               ))}
             </div>
+            {logsTotalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Strona {logsPage} z {logsTotalPages}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={logsLoading || logsPage <= 1}
+                    onClick={() => loadLogs(logsPage - 1)}
+                  >
+                    Poprzednia
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={logsLoading || logsPage >= logsTotalPages}
+                    onClick={() => loadLogs(logsPage + 1)}
+                  >
+                    Następna
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
