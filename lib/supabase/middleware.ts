@@ -50,6 +50,12 @@ export async function updateSession(request: NextRequest) {
   // Public paths that should NOT require auth (allow anonymous access)
   const path = request.nextUrl.pathname;
 
+  // Wywołania z Vercel Cron / testów: Bearer CRON_SECRET (bez sesji użytkownika)
+  const cronSecret = process.env.CRON_SECRET
+  const isCronRequest = Boolean(
+    cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`
+  )
+
   const isPublicPath =
     path === "/" ||
     path === "/trip" ||
@@ -70,6 +76,10 @@ export async function updateSession(request: NextRequest) {
     // powrót z Paynow → sync statusu + faktura (klient bez konta)
     path.startsWith("/api/payments/paynow/check-status") ||
     path.startsWith("/api/payments/paynow/init") ||
+    // Vercel Cron (auth przez CRON_SECRET w samym route)
+    path.startsWith("/api/cron/") ||
+    // Cron woła send-email z Bearer CRON_SECRET — bez sesji użytkownika
+    (isCronRequest && path.startsWith("/api/insurance-local/send-email/")) ||
     path === "/api/auth/forgot-password" ||
     path.startsWith("/auth") ||
     path.startsWith("/login");
