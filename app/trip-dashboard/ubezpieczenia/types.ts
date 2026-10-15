@@ -41,6 +41,7 @@ export type ParticipantInsurance = {
     last_name: string
     date_of_birth: string | null
     pesel: string | null
+    is_active?: boolean | null
   } | null
   trip_insurance_variants: {
     id: string

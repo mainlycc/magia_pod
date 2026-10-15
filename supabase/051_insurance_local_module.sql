@@ -57,7 +57,7 @@ USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE TABLE IF NOT EXISTS public.participant_insurances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
-  participant_id uuid REFERENCES public.participants(id) ON DELETE SET NULL,
+  participant_id uuid REFERENCES public.participants(id) ON DELETE CASCADE,
   trip_insurance_variant_id uuid NOT NULL REFERENCES public.trip_insurance_variants(id) ON DELETE RESTRICT,
   status text NOT NULL DEFAULT 'purchased' CHECK (status IN ('purchased', 'confirmed', 'cancelled')),
   purchased_at timestamptz NOT NULL DEFAULT now(),

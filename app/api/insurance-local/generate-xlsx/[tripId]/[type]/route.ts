@@ -8,6 +8,51 @@ type XlsxParticipantRow = {
   last_name: string
   date_of_birth: string | null
   agreement_number: string
+  insurance_variant: string
+}
+
+function extractVariantName(insuranceVariants: unknown): string {
+  if (Array.isArray(insuranceVariants)) {
+    for (const item of insuranceVariants) {
+      const name = extractVariantName(item)
+      if (name) return name
+    }
+    return ""
+  }
+  if (typeof insuranceVariants === "object" && insuranceVariants !== null && "name" in insuranceVariants) {
+    const name = (insuranceVariants as { name?: unknown }).name
+    return typeof name === "string" && name.trim() ? name.trim() : ""
+  }
+  return ""
+}
+
+function resolveVariantNameFromParticipantInsurance(
+  pi: {
+    trip_insurance_variants?:
+      | { insurance_variants?: unknown }
+      | Array<{ insurance_variants?: unknown }>
+      | null
+  },
+  fallback = ""
+): string {
+  const tiv = pi?.trip_insurance_variants
+  const tivObj = Array.isArray(tiv) ? tiv[0] : tiv
+  const name = extractVariantName(tivObj?.insurance_variants)
+  return name || fallback
+}
+
+/** Nagłówki HTTP (Content-Disposition / X-Filename) muszą być ASCII. */
+function slugifyAsciiForFilename(name: string): string {
+  const slug = name
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ł/gi, "l")
+    .replace(/%/g, "pct")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+  return slug || "wariant"
 }
 
 function resolveAgreementNumberFromBooking(booking: unknown): string {
@@ -101,6 +146,20 @@ export async function GET(
     let participants: XlsxParticipantRow[] = []
 
     if (insuranceType === 1) {
+      // Typ 1: jeden wariant podstawowy na wycieczkę
+      if (!variantName) {
+        const { data: type1Variant } = await supabase
+          .from("trip_insurance_variants")
+          .select("insurance_variants!inner ( name, type )")
+          .eq("trip_id", tripId)
+          .eq("is_enabled", true)
+          .eq("insurance_variants.type", 1)
+          .limit(1)
+          .maybeSingle()
+
+        variantName = extractVariantName(type1Variant?.insurance_variants)
+      }
+
       // Wszyscy aktywni uczestnicy wycieczki
       const { data, error } = await supabase
         .from("participants")
@@ -127,6 +186,7 @@ export async function GET(
         agreement_number: resolveAgreementNumberFromBooking(
           Array.isArray(p.bookings) ? p.bookings[0] : p.bookings
         ),
+        insurance_variant: variantName,
       }))
     } else {
       // Pobierz ID wariantów dla tej wycieczki i danego typu (opcjonalnie konkretny wariant)
@@ -164,6 +224,9 @@ export async function GET(
             bookings (
               agreements:agreements(agreement_seq),
               trips:trips(reservation_number)
+            ),
+            trip_insurance_variants (
+              insurance_variants ( name )
             )
           `)
           .in("trip_insurance_variant_id", tripVariantIds)
@@ -188,6 +251,7 @@ export async function GET(
           const agreementNumber = resolveAgreementNumberFromBooking(
             Array.isArray(pi?.bookings) ? pi.bookings[0] : pi?.bookings
           )
+          const rowVariantName = resolveVariantNameFromParticipantInsurance(pi, variantName)
           const p = pi?.participants as
             | { first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }
             | Array<{ first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }>
@@ -203,6 +267,7 @@ export async function GET(
               last_name: String(x.last_name ?? ""),
               date_of_birth: x.birth_date ?? null,
               agreement_number: agreementNumber,
+              insurance_variant: rowVariantName,
             }))
         }
 
@@ -219,6 +284,7 @@ export async function GET(
       { header: "Nazwisko", key: "last_name", width: 25 },
       { header: "Data urodzenia", key: "date_of_birth", width: 18 },
       { header: "Numer umowy/rezerwacji", key: "agreement_number", width: 24 },
+      { header: "Wariant ubezpieczenia", key: "insurance_variant", width: 28 },
     ]
 
     // Styl nagłówka
@@ -238,6 +304,7 @@ export async function GET(
           ? new Date(p.date_of_birth).toISOString().split("T")[0]
           : "",
         agreement_number: p.agreement_number || "",
+        insurance_variant: p.insurance_variant || "",
       })
     })
 
@@ -248,14 +315,9 @@ export async function GET(
       2: "dodatkowe",
       3: "KR",
     }
-    const variantSlug = variantName
-      ? `_${variantName
-          .replace(/%/g, "pct")
-          .replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+/gi, "_")
-          .replace(/_+/g, "_")
-          .replace(/^_|_$/g, "")}`
-      : ""
-    const filename = `ubezpieczenie_${typeLabels[insuranceType]}${variantSlug}_${trip.slug || tripId}_${new Date().toISOString().split("T")[0]}.xlsx`
+    const variantSlug = variantName ? `_${slugifyAsciiForFilename(variantName)}` : ""
+    const tripSlug = slugifyAsciiForFilename(trip.slug || tripId)
+    const filename = `ubezpieczenie_${typeLabels[insuranceType]}${variantSlug}_${tripSlug}_${new Date().toISOString().split("T")[0]}.xlsx`
 
     return new NextResponse(buffer, {
       status: 200,

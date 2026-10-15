@@ -344,11 +344,15 @@ function extractVariantName(insuranceVariants: unknown): string | null {
   return null
 }
 
+/** Nazwa pliku w załączniku / logach — tylko ASCII (nagłówki HTTP nie przyjmują PL znaków). */
 function slugifyVariantForFilename(name: string): string {
   const slug = name
     .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ł/gi, "l")
     .replace(/%/g, "pct")
-    .replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+/gi, "_")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_|_$/g, "")
   return slug || "wariant"
@@ -479,6 +483,21 @@ type XlsxParticipantRow = {
   last_name: string
   date_of_birth: string | null
   agreement_number: string
+  insurance_variant: string
+}
+
+function resolveVariantNameFromParticipantInsurance(
+  pi: {
+    trip_insurance_variants?:
+      | { insurance_variants?: unknown }
+      | Array<{ insurance_variants?: unknown }>
+      | null
+  },
+  fallback = ""
+): string {
+  const tiv = pi?.trip_insurance_variants
+  const tivObj = Array.isArray(tiv) ? tiv[0] : tiv
+  return extractVariantName(tivObj?.insurance_variants) || fallback
 }
 
 function resolveAgreementNumberFromBooking(booking: unknown): string {
@@ -522,6 +541,9 @@ async function buildXlsx(
 }> {
   let participants: XlsxParticipantRow[] = []
   const useSelectedIds = participantInsuranceIds.length > 0
+  const resolvedVariantName =
+    (typeof variantName === "string" && variantName.trim() ? variantName.trim() : "") ||
+    (await getVariantName(supabase, tripId, insuranceType, variantId))
 
   if (insuranceType === 1) {
     const { data } = await supabase
@@ -553,6 +575,7 @@ async function buildXlsx(
       agreement_number: resolveAgreementNumberFromBooking(
         Array.isArray(p.bookings) ? p.bookings[0] : p.bookings
       ),
+      insurance_variant: resolvedVariantName,
     }))
   } else {
     let tvQuery = supabase
@@ -577,6 +600,9 @@ async function buildXlsx(
           bookings (
             agreements:agreements(agreement_seq),
             trips:trips(reservation_number)
+          ),
+          trip_insurance_variants (
+            insurance_variants ( name )
           )
         `)
         .in("trip_insurance_variant_id", tripVariantIds)
@@ -597,6 +623,7 @@ async function buildXlsx(
         const agreementNumber = resolveAgreementNumberFromBooking(
           Array.isArray(pi?.bookings) ? pi.bookings[0] : pi?.bookings
         )
+        const rowVariantName = resolveVariantNameFromParticipantInsurance(pi, resolvedVariantName)
         const p = pi?.participants as
           | { first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }
           | Array<{ first_name?: string; last_name?: string; birth_date?: string | null; is_active?: boolean | null }>
@@ -612,6 +639,7 @@ async function buildXlsx(
             last_name: String(x?.last_name ?? ""),
             date_of_birth: (x?.birth_date ?? null) as string | null,
             agreement_number: agreementNumber,
+            insurance_variant: rowVariantName,
           }))
       }
 
@@ -626,6 +654,7 @@ async function buildXlsx(
     { header: "Nazwisko", key: "last_name", width: 25 },
     { header: "Data urodzenia", key: "date_of_birth", width: 18 },
     { header: "Numer umowy/rezerwacji", key: "agreement_number", width: 24 },
+    { header: "Wariant ubezpieczenia", key: "insurance_variant", width: 28 },
   ]
   const headerRow = sheet.getRow(1)
   headerRow.font = { bold: true }
@@ -637,6 +666,7 @@ async function buildXlsx(
       last_name: p.last_name || "",
       date_of_birth: p.date_of_birth ? new Date(p.date_of_birth).toISOString().split("T")[0] : "",
       agreement_number: p.agreement_number || "",
+      insurance_variant: p.insurance_variant || "",
     })
   })
 

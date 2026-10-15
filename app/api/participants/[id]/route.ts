@@ -59,6 +59,21 @@ export async function DELETE(
       }
     }
 
+    // Usuń powiązane ubezpieczenia przed kasowaniem uczestnika (typ 2/3).
+    // Historycznie FK było ON DELETE SET NULL — orphanowane wpisy zostawały na liście.
+    const { error: insuranceDeleteError } = await adminClient
+      .from("participant_insurances")
+      .delete()
+      .eq("participant_id", id)
+
+    if (insuranceDeleteError) {
+      console.error(
+        "Error deleting participant_insurances before participant delete:",
+        insuranceDeleteError,
+      )
+      return NextResponse.json({ error: "delete_failed" }, { status: 500 })
+    }
+
     const { error: deleteError } = await adminClient
       .from("participants")
       .delete()
