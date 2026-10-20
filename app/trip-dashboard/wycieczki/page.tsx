@@ -31,6 +31,10 @@ import {
 } from "@/components/ui/select"
 import { useTrip } from "@/contexts/trip-context"
 import { clearTripsListCache } from "@/lib/trips-list-cache"
+import {
+  isCompletedTrip,
+  isPastTrip,
+} from "@/lib/trips/trip-lifecycle"
 import { toast } from "sonner"
 import {
   Archive,
@@ -56,7 +60,7 @@ type TripRow = {
   created_at: string
 }
 
-type StatusFilter = "all" | "active" | "inactive" | "archived"
+type StatusFilter = "all" | "active" | "inactive" | "completed"
 
 function formatDateRange(start: string | null, end: string | null): string {
   if (!start && !end) return "—"
@@ -77,19 +81,6 @@ function formatPrice(cents: number | null): string {
     style: "currency",
     currency: "PLN",
   }).format(cents / 100)
-}
-
-function isPastTrip(trip: Pick<TripRow, "end_date" | "start_date">): boolean {
-  const tripDate = trip.end_date ?? trip.start_date
-  if (!tripDate) return false
-
-  const endOfTripDay = new Date(tripDate)
-  endOfTripDay.setHours(23, 59, 59, 999)
-  return endOfTripDay.getTime() < Date.now()
-}
-
-function isArchivedTrip(trip: Pick<TripRow, "is_active" | "end_date" | "start_date">): boolean {
-  return !trip.is_active && isPastTrip(trip)
 }
 
 export default function WycieczkiPage() {
@@ -135,11 +126,11 @@ export default function WycieczkiPage() {
     if (statusFilter === "active") {
       return trips.filter((t) => t.is_active)
     }
-    if (statusFilter === "archived") {
-      return trips.filter((t) => isArchivedTrip(t))
+    if (statusFilter === "completed") {
+      return trips.filter((t) => isCompletedTrip(t))
     }
     if (statusFilter === "inactive") {
-      return trips.filter((t) => !t.is_active && !isArchivedTrip(t))
+      return trips.filter((t) => !t.is_active && !isCompletedTrip(t))
     }
     return trips
   }, [trips, statusFilter])
@@ -228,14 +219,16 @@ export default function WycieczkiPage() {
     [afterMutation],
   )
 
-  const handleArchive = useCallback(
+  const handleMarkCompleted = useCallback(
     async (trip: TripRow) => {
       if (!trip.is_active) {
         toast.error("Ta wycieczka jest już nieaktywna")
         return
       }
       if (!isPastTrip(trip)) {
-        toast.error("Do archiwum można przenieść tylko zakończone wycieczki")
+        toast.error(
+          "Jako zrealizowaną można oznaczyć tylko wycieczkę po dacie zakończenia",
+        )
         return
       }
 
@@ -245,13 +238,13 @@ export default function WycieczkiPage() {
           method: "POST",
         })
         if (!res.ok) {
-          toast.error("Nie udało się przenieść wycieczki do archiwum")
+          toast.error("Nie udało się oznaczyć wycieczki jako zrealizowanej")
           return
         }
-        toast.success("Wycieczka została przeniesiona do archiwum")
+        toast.success("Wycieczka została oznaczona jako zrealizowana")
         await afterMutation()
       } catch {
-        toast.error("Błąd podczas archiwizacji wycieczki")
+        toast.error("Błąd podczas oznaczania wycieczki jako zrealizowanej")
       } finally {
         setActionLoading(null)
       }
@@ -365,8 +358,15 @@ export default function WycieczkiPage() {
               </Badge>
             )
           }
-          if (isArchivedTrip(row.original)) {
-            return <Badge variant="outline">Archiwalna</Badge>
+          if (isCompletedTrip(row.original)) {
+            return (
+              <Badge
+                variant="outline"
+                className="border-slate-500/30 bg-slate-500/10 text-slate-600"
+              >
+                Zrealizowana
+              </Badge>
+            )
           }
           return <Badge variant="secondary">Nieaktywna</Badge>
         },
@@ -404,7 +404,7 @@ export default function WycieczkiPage() {
         cell: ({ row }) => {
           const trip = row.original
           const isLoading = actionLoading === trip.id
-          const canArchive = trip.is_active && isPastTrip(trip)
+          const canMarkCompleted = trip.is_active && isPastTrip(trip)
           return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -458,15 +458,15 @@ export default function WycieczkiPage() {
                     </>
                   )}
                 </DropdownMenuItem>
-                {canArchive && (
+                {canMarkCompleted && (
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleArchive(trip)
+                      handleMarkCompleted(trip)
                     }}
                   >
                     <Archive className="h-4 w-4 mr-2" />
-                    Przenieś do archiwum
+                    Oznacz jako zrealizowaną
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
@@ -487,7 +487,13 @@ export default function WycieczkiPage() {
         },
       },
     ],
-    [actionLoading, handleOpen, handleDuplicate, handleToggleActive],
+    [
+      actionLoading,
+      handleOpen,
+      handleDuplicate,
+      handleToggleActive,
+      handleMarkCompleted,
+    ],
   )
 
   if (loading) {
@@ -557,7 +563,7 @@ export default function WycieczkiPage() {
               <SelectItem value="all">Wszystkie</SelectItem>
               <SelectItem value="active">Aktywne</SelectItem>
               <SelectItem value="inactive">Nieaktywne</SelectItem>
-              <SelectItem value="archived">Archiwalne</SelectItem>
+              <SelectItem value="completed">Zrealizowane</SelectItem>
             </SelectContent>
           </Select>
         }

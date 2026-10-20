@@ -5,6 +5,10 @@ import ExcelJS from "exceljs"
 import { Resend } from "resend"
 import { EMAIL_SENDER_NAME } from "@/lib/email/constants"
 import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
+import {
+  listType1ExtraPersons,
+  type1ExtraPersonsToXlsxRows,
+} from "@/lib/insurance-local/type1-extra-persons"
 
 function isCronAuthorized(request: NextRequest): boolean {
   const cronSecret = process.env.CRON_SECRET
@@ -577,6 +581,9 @@ async function buildXlsx(
       ),
       insurance_variant: resolvedVariantName,
     }))
+
+    const extraPersons = await listType1ExtraPersons(supabase, tripId)
+    participants.push(...type1ExtraPersonsToXlsxRows(extraPersons, resolvedVariantName))
   } else {
     let tvQuery = supabase
       .from("trip_insurance_variants")

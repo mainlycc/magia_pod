@@ -7,9 +7,27 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ColumnDef } from "@tanstack/react-table"
 import { ReusableTable } from "@/components/reusable-table"
-import { IconDownload, IconMail, IconShield, IconUsers, IconClock } from "@tabler/icons-react"
+import {
+  IconDownload,
+  IconMail,
+  IconShield,
+  IconUsers,
+  IconClock,
+  IconPlus,
+  IconEdit,
+  IconTrash,
+} from "@tabler/icons-react"
 import {
   InsuranceVariant,
   TripInsuranceVariant,
@@ -32,10 +50,26 @@ type Participant = {
   agreement_number: string
 }
 
+type ExtraPerson = {
+  id: string
+  first_name: string
+  last_name: string
+  birth_date: string
+}
+
+type ListRow = Participant & { isExtra: boolean }
+
 export function InsuranceType1({ tripId, tripTitle }: Props) {
   const [allVariants, setAllVariants] = useState<InsuranceVariant[]>([])
   const [tripConfig, setTripConfig] = useState<TripInsuranceVariant | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [extraPersons, setExtraPersons] = useState<ExtraPerson[]>([])
+  const [personDialogOpen, setPersonDialogOpen] = useState(false)
+  const [editingPerson, setEditingPerson] = useState<ExtraPerson | null>(null)
+  const [personFirstName, setPersonFirstName] = useState("")
+  const [personLastName, setPersonLastName] = useState("")
+  const [personBirthDate, setPersonBirthDate] = useState("")
+  const [savingPerson, setSavingPerson] = useState(false)
   const [logs, setLogs] = useState<EmailLog[]>([])
   const [logsPage, setLogsPage] = useState(1)
   const [logsTotal, setLogsTotal] = useState(0)
@@ -53,7 +87,7 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
 
   async function loadAll() {
     setLoadingInit(true)
-    await Promise.all([loadVariants(), loadTripConfig(), loadParticipants(), loadLogs()])
+    await Promise.all([loadVariants(), loadTripConfig(), loadParticipants(), loadExtraPersons(), loadLogs()])
     setLoadingInit(false)
   }
 
@@ -109,6 +143,70 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
             })(),
           }))
       )
+    }
+  }
+
+  async function loadExtraPersons() {
+    const res = await fetch(`/api/insurance-local/extra-persons?trip_id=${tripId}`)
+    if (res.ok) setExtraPersons(await res.json())
+  }
+
+  function openAddPerson() {
+    setEditingPerson(null)
+    setPersonFirstName("")
+    setPersonLastName("")
+    setPersonBirthDate("")
+    setPersonDialogOpen(true)
+  }
+
+  function openEditPerson(person: ExtraPerson) {
+    setEditingPerson(person)
+    setPersonFirstName(person.first_name)
+    setPersonLastName(person.last_name)
+    setPersonBirthDate(person.birth_date?.slice(0, 10) ?? "")
+    setPersonDialogOpen(true)
+  }
+
+  async function handleSavePerson() {
+    setSavingPerson(true)
+    try {
+      const payload = {
+        first_name: personFirstName,
+        last_name: personLastName,
+        birth_date: personBirthDate,
+      }
+      const res = editingPerson
+        ? await fetch(`/api/insurance-local/extra-persons/${editingPerson.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/insurance-local/extra-persons", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trip_id: tripId, ...payload }),
+          })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Nie udało się zapisać osoby")
+      setPersonDialogOpen(false)
+      await loadExtraPersons()
+      toast.success(editingPerson ? "Zapisano osobę" : "Dodano osobę do listy ubezpieczenia")
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err))
+    } finally {
+      setSavingPerson(false)
+    }
+  }
+
+  async function handleDeletePerson(person: ExtraPerson) {
+    try {
+      const res = await fetch(`/api/insurance-local/extra-persons/${person.id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Nie udało się usunąć osoby")
+      await loadExtraPersons()
+      toast.success("Usunięto osobę z listy ubezpieczenia")
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err))
     }
   }
 
@@ -199,12 +297,32 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
     }
   }
 
-  const columns = useMemo<ColumnDef<Participant>[]>(
+  const rows = useMemo<ListRow[]>(
+    () => [
+      ...participants.map((person) => ({ ...person, isExtra: false })),
+      ...extraPersons.map((person) => ({
+        id: person.id,
+        first_name: person.first_name,
+        last_name: person.last_name,
+        date_of_birth: person.birth_date,
+        agreement_number: "—",
+        isExtra: true,
+      })),
+    ],
+    [participants, extraPersons]
+  )
+
+  const columns = useMemo<ColumnDef<ListRow>[]>(
     () => [
       {
         id: "name",
         header: "Imię i nazwisko",
-        cell: ({ row }) => `${row.original.first_name} ${row.original.last_name}`,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span>{`${row.original.first_name} ${row.original.last_name}`}</span>
+            {row.original.isExtra && <Badge variant="secondary">Opiekun</Badge>}
+          </div>
+        ),
       },
       {
         id: "date_of_birth",
@@ -218,8 +336,37 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
           <span className="text-sm text-muted-foreground">{row.original.agreement_number}</span>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => {
+          if (!row.original.isExtra) return null
+          const person = extraPersons.find((item) => item.id === row.original.id)
+          if (!person) return null
+          return (
+            <div className="flex justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => openEditPerson(person)}
+              >
+                <IconEdit className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                onClick={() => handleDeletePerson(person)}
+              >
+                <IconTrash className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )
+        },
+      },
     ],
-    []
+    [extraPersons]
   )
 
   if (loadingInit) {
@@ -289,7 +436,7 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <IconUsers className="h-4 w-4" />
-            Uczestnicy ({participants.length})
+            Uczestnicy ({rows.length})
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -311,14 +458,18 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
               <IconMail className="h-4 w-4 mr-1.5" />
               {sending ? "Wysyłanie..." : "Wyślij email teraz"}
             </Button>
+            <Button variant="outline" size="sm" onClick={openAddPerson}>
+              <IconPlus className="h-4 w-4 mr-1.5" />
+              Dodaj osobę
+            </Button>
           </div>
 
-          {participants.length > 0 ? (
+          {rows.length > 0 ? (
             <ReusableTable
               columns={columns}
-              data={participants}
+              data={rows}
               searchable={false}
-              enablePagination={participants.length > 10}
+              enablePagination={rows.length > 10}
               pageSize={10}
               emptyMessage="Brak uczestników"
             />
@@ -391,6 +542,68 @@ export function InsuranceType1({ tripId, tripTitle }: Props) {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={personDialogOpen} onOpenChange={setPersonDialogOpen}>
+        <DialogContent
+          onPointerDownOutside={(event) => {
+            const target = event.target as HTMLElement | null
+            if (target?.closest("[data-radix-popper-content-wrapper]")) {
+              event.preventDefault()
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{editingPerson ? "Edytuj osobę" : "Dodaj osobę do listy"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Osoba trafi tylko do listy i maila ubezpieczenia podstawowego. Nie jest uczestnikiem wycieczki.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="extra-first-name">Imię</Label>
+              <Input
+                id="extra-first-name"
+                value={personFirstName}
+                onChange={(event) => setPersonFirstName(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="extra-last-name">Nazwisko</Label>
+              <Input
+                id="extra-last-name"
+                value={personLastName}
+                onChange={(event) => setPersonLastName(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data urodzenia</Label>
+              <DatePicker
+                value={personBirthDate}
+                onChange={setPersonBirthDate}
+                placeholder="Wybierz datę"
+                className="w-full"
+                fromYear={1900}
+                toYear={new Date().getFullYear()}
+                defaultYear={1990}
+                captionLayout="dropdown"
+                dimPastDays={false}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPersonDialogOpen(false)}
+              disabled={savingPerson}
+            >
+              Anuluj
+            </Button>
+            <Button onClick={handleSavePerson} disabled={savingPerson}>
+              {savingPerson ? "Zapisywanie..." : "Zapisz"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

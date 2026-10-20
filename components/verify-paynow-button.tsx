@@ -154,6 +154,7 @@ type Props = {
   onSynced?: () => void
   size?: "sm" | "default"
   className?: string
+  label?: string
 }
 
 export function VerifyPaynowButton({
@@ -163,6 +164,7 @@ export function VerifyPaynowButton({
   onSynced,
   size = "sm",
   className,
+  label = "Sprawdź PN",
 }: Props) {
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -237,7 +239,7 @@ export function VerifyPaynowButton({
         ) : (
           <ShieldCheck className="mr-2 h-4 w-4" />
         )}
-        Sprawdź w Paynow
+        {label}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>

@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/insurance-notifications",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/complete-past-trips",
+      "schedule": "5 0 * * *"
     }
   ]
 }

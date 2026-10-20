@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import ExcelJS from "exceljs"
 import { formatPublicAgreementNumber } from "@/lib/agreements/public-agreement-number"
+import {
+  listType1ExtraPersons,
+  type1ExtraPersonsToXlsxRows,
+} from "@/lib/insurance-local/type1-extra-persons"
 
 type XlsxParticipantRow = {
   first_name: string
@@ -188,6 +192,9 @@ export async function GET(
         ),
         insurance_variant: variantName,
       }))
+
+      const extraPersons = await listType1ExtraPersons(supabase, tripId)
+      participants.push(...type1ExtraPersonsToXlsxRows(extraPersons, variantName))
     } else {
       // Pobierz ID wariantów dla tej wycieczki i danego typu (opcjonalnie konkretny wariant)
       let tvQuery = supabase

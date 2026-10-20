@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { resolvePublicBaseUrl } from "@/lib/url/resolve-public-base-url"
+import { countType1ExtraPersons } from "@/lib/insurance-local/type1-extra-persons"
 
 // GET /api/cron/insurance-notifications
 // Wywoływane przez Vercel Cron codziennie o 09:00 UTC
@@ -253,7 +254,8 @@ async function countParticipantsForCron(
       console.error("Cron: błąd liczenia uczestników typ 1:", error)
       return 0
     }
-    return count ?? 0
+    const extraCount = await countType1ExtraPersons(supabase, tripId)
+    return (count ?? 0) + extraCount
   }
 
   const { data: tripVariants, error: tvError } = await supabase

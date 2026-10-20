@@ -53,6 +53,7 @@ import {
   type VerifyPaynowResponse,
 } from "@/components/verify-paynow-button"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { isParticipantActive } from "@/lib/participants/active"
 
 // Wartości muszą odpowiadać PARTICIPANT_REPORT_TYPES z lib/reports/participants-report.ts
@@ -108,6 +109,10 @@ type Participant = {
     trip_id: string
     created_at: string | null
     company_name: string | null
+    company_nip: string | null
+    invoice_type: string | null
+    invoice_name: string | null
+    invoice_nip: string | null
     contact_first_name: string | null
     contact_last_name: string | null
     payment_status: PaymentStatusValue
@@ -162,6 +167,47 @@ const formatAddress = (
   if (!address || typeof address !== "object") return null
   const formatted = [address.street, address.zip, address.city].filter(Boolean).join(", ")
   return formatted || null
+}
+
+/** Faktura idzie na firmę: zgłaszający jest firmą albo w formularzu wybrał inne dane firmowe. */
+function getCompanyInvoiceDetail(
+  booking: Participant["bookings"]
+): string | null {
+  if (!booking) return null
+  const type = booking.invoice_type
+
+  if (type === "custom") {
+    const nip = booking.invoice_nip?.trim()
+    if (!nip) return null
+    const name = booking.invoice_name?.trim()
+    return [name, `NIP ${nip}`].filter(Boolean).join(", ")
+  }
+
+  const isCompanyApplicant =
+    type === "company" || (!type && Boolean(booking.company_name?.trim()))
+  if (!isCompanyApplicant) return null
+
+  const name = booking.company_name?.trim()
+  const nip = booking.company_nip?.trim()
+  return [name, nip ? `NIP ${nip}` : null].filter(Boolean).join(", ") || "dane firmy ze zgłoszenia"
+}
+
+function CompanyInvoiceBadge({ detail }: { detail: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="inline-flex shrink-0 items-center rounded-md border border-[#2596BE]/40 bg-[#2596BE]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#1e7b9c]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          FV firma
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        Faktura na firmę: {detail}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 const formatDate = (date: string | null | undefined): string => {
@@ -252,6 +298,7 @@ export default function UczestnicyPage() {
   // edycji, wpłat i raportów.
   const isCoordinator = role === "coordinator"
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [participantSearch, setParticipantSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [expandedAgreementPreviewByBookingId, setExpandedAgreementPreviewByBookingId] = useState<Set<string>>(
@@ -395,6 +442,10 @@ export default function UczestnicyPage() {
             trip_id,
             created_at,
             company_name,
+            company_nip,
+            invoice_type,
+            invoice_name,
+            invoice_nip,
             contact_first_name,
             contact_last_name,
             payment_status,
@@ -894,6 +945,26 @@ export default function UczestnicyPage() {
     })
   }, [participants, primaryParticipantIdByBookingId])
 
+  const filteredParticipants = useMemo(() => {
+    const query = participantSearch.trim().toLowerCase()
+    if (!query) return sortedParticipants
+
+    return sortedParticipants.filter((p) => {
+      const firstName = (p.first_name ?? "").toLowerCase()
+      const lastName = (p.last_name ?? "").toLowerCase()
+      const fullName = `${firstName} ${lastName}`.trim()
+      const participantEmail = (p.email ?? "").toLowerCase()
+      const bookingEmail = (p.bookings?.contact_email ?? "").toLowerCase()
+      return (
+        firstName.includes(query) ||
+        lastName.includes(query) ||
+        fullName.includes(query) ||
+        participantEmail.includes(query) ||
+        bookingEmail.includes(query)
+      )
+    })
+  }, [sortedParticipants, participantSearch])
+
   const getPaidPerParticipantCents = (p: Participant): number => {
     if (!isParticipantActive(p)) return 0
     const paid = p.bookings?.paid_amount_cents ?? 0
@@ -1137,82 +1208,99 @@ export default function UczestnicyPage() {
 
       {/* Dolna sekcja - Lista uczestników */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <CardTitle>
+        <CardHeader className="flex flex-row items-center gap-4 space-y-0 flex-wrap">
+          <CardTitle className="shrink-0">
             Lista uczestników ({stats.totalParticipants} os.
             {stats.inactiveCount > 0 ? `, ${stats.inactiveCount} wył.` : ""})
           </CardTitle>
-          {isCoordinator ? (
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              <VerifyPaynowButton
-                tripId={selectedTrip.id}
-                disabled={stats.totalParticipants === 0}
-                onResult={applyPaynowVerifyResult}
-                onSynced={() => void loadData()}
+          <div className="flex flex-1 items-center gap-2 flex-wrap justify-end min-w-0">
+            {participants.length > 0 && (
+              <Input
+                value={participantSearch}
+                onChange={(e) => setParticipantSearch(e.target.value)}
+                placeholder="Imię, nazwisko lub e-mail…"
+                className="h-8 min-w-[280px] flex-1 max-w-2xl"
+                aria-label="Szukaj uczestników"
               />
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/coord/trips/${selectedTrip.id}/message`}>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Wyślij wiadomość grupową
-                </Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              <VerifyPaynowButton
-                tripId={selectedTrip.id}
-                disabled={stats.totalParticipants === 0}
-                onResult={applyPaynowVerifyResult}
-                onSynced={() => void loadData()}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={stats.totalParticipants === 0}
-                onClick={() => setMessageDialogOpen(true)}
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                Wyślij wiadomość grupową
-              </Button>
-              <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            )}
+            {isCoordinator ? (
+              <>
+                <VerifyPaynowButton
+                  tripId={selectedTrip.id}
+                  disabled={stats.totalParticipants === 0}
+                  onResult={applyPaynowVerifyResult}
+                  onSynced={() => void loadData()}
+                />
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/coord/trips/${selectedTrip.id}/message`}>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Wyślij wiadomość grupową
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <VerifyPaynowButton
+                  tripId={selectedTrip.id}
+                  disabled={stats.totalParticipants === 0}
+                  onResult={applyPaynowVerifyResult}
+                  onSynced={() => void loadData()}
+                />
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={stats.totalParticipants === 0 || generatingReportType !== null}
+                  disabled={stats.totalParticipants === 0}
+                  onClick={() => setMessageDialogOpen(true)}
                 >
-                  {generatingReportType !== null ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generowanie…
-                    </>
-                  ) : (
-                    <>
-                      <FileDown className="mr-2 h-4 w-4" />
-                      Generuj raport
-                      <ChevronDown className="ml-2 h-4 w-4" />
-                    </>
-                  )}
+                  <Mail className="mr-2 h-4 w-4" />
+                  Wyślij wiadomość grupową
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {PARTICIPANT_REPORT_OPTIONS.map((option) => (
-                  <DropdownMenuItem
-                    key={option.value}
-                    onClick={() => downloadParticipantsReport(option.value)}
-                  >
-                    {option.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            </div>
-          )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        stats.totalParticipants === 0 || generatingReportType !== null
+                      }
+                    >
+                      {generatingReportType !== null ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generowanie…
+                        </>
+                      ) : (
+                        <>
+                          <FileDown className="mr-2 h-4 w-4" />
+                          Generuj raport
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {PARTICIPANT_REPORT_OPTIONS.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => downloadParticipantsReport(option.value)}
+                      >
+                        {option.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {participants.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               Brak uczestników dla tej wycieczki
+            </p>
+          ) : filteredParticipants.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Brak uczestników pasujących do wyszukiwania
             </p>
           ) : (
             <div className="w-full overflow-x-auto">
@@ -1229,7 +1317,7 @@ export default function UczestnicyPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedParticipants.map((participant) => {
+                  {filteredParticipants.map((participant) => {
                     const booking = participant.bookings
                     const isActive = isParticipantActive(participant)
                     const isExpanded = !isCoordinator && expandedRows.has(participant.id)
@@ -1262,6 +1350,7 @@ export default function UczestnicyPage() {
                       booking?.id &&
                       bookingParticipantCount > 1 &&
                       primaryParticipantIdByBookingId.get(booking.id) === participant.id
+                    const companyInvoiceDetail = getCompanyInvoiceDetail(booking)
 
                     return (
                       <React.Fragment key={participant.id}>
@@ -1303,6 +1392,9 @@ export default function UczestnicyPage() {
                                 <Badge variant="secondary" className="shrink-0 text-xs">
                                   Wyłączony
                                 </Badge>
+                              )}
+                              {companyInvoiceDetail && (
+                                <CompanyInvoiceBadge detail={companyInvoiceDetail} />
                               )}
                             </div>
                           </TableCell>
@@ -1828,8 +1920,11 @@ export default function UczestnicyPage() {
                                       )}
 
                                       <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between gap-2">
                                           <span className="text-sm font-medium">Historia wpłat</span>
+                                          {companyInvoiceDetail && (
+                                            <CompanyInvoiceBadge detail={companyInvoiceDetail} />
+                                          )}
                                           {paymentHistoryLoadingByBookingId[booking.id] && (
                                             <span className="text-xs text-muted-foreground flex items-center gap-1">
                                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1871,7 +1966,10 @@ export default function UczestnicyPage() {
                                                   return (
                                                     <TableRow
                                                       key={pmt.id}
-                                                      className={cn(isUnconfirmedPaynow && "opacity-70")}
+                                                      className={cn(
+                                                        isUnconfirmedPaynow && "opacity-70",
+                                                        companyInvoiceDetail && "bg-[#2596BE]/10",
+                                                      )}
                                                     >
                                                       <TableCell className="whitespace-nowrap">
                                                         {formatDate(pmt.payment_date)}
