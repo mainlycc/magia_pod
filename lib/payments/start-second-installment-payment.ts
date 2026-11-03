@@ -34,6 +34,13 @@ function tripTitle(trips: BookingRow["trips"]): string {
   return trip?.title?.trim() || "wycieczka";
 }
 
+/** Paynow odrzuca Idempotency-Key dłuższy niż 45 znaków. */
+export function buildSecondInstallmentIdempotencyKey(bookingRef: string): string {
+  const nonce = crypto.randomBytes(8).toString("hex");
+  const head = bookingRef.slice(0, 45 - 1 - nonce.length);
+  return `${head}-${nonce}`;
+}
+
 export async function startSecondInstallmentPaynowPayment(
   input: StartSecondInstallmentInput,
 ): Promise<StartSecondInstallmentResult> {
@@ -92,7 +99,7 @@ export async function startSecondInstallmentPaynowPayment(
     const payment = await createPaynowPayment({
       amountCents,
       externalId: booking.booking_ref,
-      idempotencyKey: `${booking.booking_ref}-second-${crypto.randomUUID()}`,
+      idempotencyKey: buildSecondInstallmentIdempotencyKey(booking.booking_ref),
       description: `Reszta - Rezerwacja ${booking.booking_ref} - ${tripTitle(booking.trips)}`,
       buyerEmail: booking.contact_email,
       continueUrl,

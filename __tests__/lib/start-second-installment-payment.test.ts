@@ -7,9 +7,10 @@ jest.mock("@/lib/paynow", () => ({
 const { createPaynowPayment } = jest.requireMock<{ createPaynowPayment: jest.Mock }>("@/lib/paynow");
 
 let startSecondInstallmentPaynowPayment: typeof import("@/lib/payments/start-second-installment-payment").startSecondInstallmentPaynowPayment;
+let buildSecondInstallmentIdempotencyKey: typeof import("@/lib/payments/start-second-installment-payment").buildSecondInstallmentIdempotencyKey;
 
 beforeAll(async () => {
-  ({ startSecondInstallmentPaynowPayment } = await import(
+  ({ startSecondInstallmentPaynowPayment, buildSecondInstallmentIdempotencyKey } = await import(
     "@/lib/payments/start-second-installment-payment"
   ));
 });
@@ -38,6 +39,14 @@ const unpaidBooking = {
   payment_status: "partial",
   trips: { title: "Berlin XXL, 011026" },
 };
+
+describe("buildSecondInstallmentIdempotencyKey", () => {
+  it("mieści się w limicie 45 znaków Paynow", () => {
+    const key = buildSecondInstallmentIdempotencyKey("BK-MVFSDUM6-NZDAK");
+    expect(key.length).toBeLessThanOrEqual(45);
+    expect(key.startsWith("BK-MVFSDUM6-NZDAK-")).toBe(true);
+  });
+});
 
 describe("startSecondInstallmentPaynowPayment", () => {
   beforeEach(() => {
@@ -71,7 +80,8 @@ describe("startSecondInstallmentPaynowPayment", () => {
       }),
     );
     const idempotencyKey = createPaynowPayment.mock.calls[0][0].idempotencyKey as string;
-    expect(idempotencyKey.startsWith("BK-1-second-")).toBe(true);
+    expect(idempotencyKey.length).toBeLessThanOrEqual(45);
+    expect(idempotencyKey.startsWith("BK-1-")).toBe(true);
     expect(idempotencyKey).not.toBe("BK-1");
     expect(client.insert).toHaveBeenCalledWith(
       expect.objectContaining({
