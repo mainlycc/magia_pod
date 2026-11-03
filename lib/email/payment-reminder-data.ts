@@ -25,6 +25,11 @@ export function buildPaymentReminderEmailSubject(params: {
   return `Przypomnienie o płatności ${params.agreementNumber} | ${params.tripTitle}`;
 }
 
+/**
+ * Stały adres płatności drugiej raty. Kliknięcie tworzy nową sesję Paynow i od razu
+ * przekierowuje do bramki. Adresu z Paynow nie wstawiamy w mailu — wygasa najpóźniej po 24 h,
+ * a przypomnienie wychodzi kilka dni przed wyjazdem.
+ */
 export function buildPaymentReminderPaymentLink(
   baseUrl: string,
   accessToken: string | null | undefined,
@@ -32,10 +37,10 @@ export function buildPaymentReminderPaymentLink(
 ): string {
   const base = baseUrl.replace(/\/$/, "");
   if (accessToken) {
-    return `${base}/booking/${accessToken}?payment=second`;
+    return `${base}/pay/druga-rata/${accessToken}`;
   }
   if (bookingRef) {
-    return `${base}/payments/paynow/init?booking_ref=${encodeURIComponent(bookingRef)}&payment=second`;
+    return `${base}/pay/druga-rata/${encodeURIComponent(bookingRef)}`;
   }
   return base;
 }

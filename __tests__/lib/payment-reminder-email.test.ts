@@ -22,7 +22,13 @@ describe("payment reminder email", () => {
 
   it("preferuje link z access_token zamiast booking_ref", () => {
     expect(buildPaymentReminderPaymentLink("https://app.test", "token-abc", "BK-123")).toBe(
-      "https://app.test/booking/token-abc?payment=second",
+      "https://app.test/pay/druga-rata/token-abc",
+    );
+  });
+
+  it("bez tokenu prowadzi do płatności po numerze rezerwacji", () => {
+    expect(buildPaymentReminderPaymentLink("https://app.test", null, "BK-123")).toBe(
+      "https://app.test/pay/druga-rata/BK-123",
     );
   });
 
@@ -48,7 +54,7 @@ describe("payment reminder email", () => {
       totalCents: 1000000,
       paidCents: 300000,
       remainingCents: 700000,
-      paymentLink: "https://app.test/booking/token?payment=second",
+      paymentLink: "https://app.test/pay/druga-rata/token",
     });
 
     const html = generatePaymentReminderEmail(params);

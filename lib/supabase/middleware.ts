@@ -63,6 +63,7 @@ export async function updateSession(request: NextRequest) {
     path === "/register" ||
     path === "/booking" ||
     path.startsWith("/booking/") ||
+    path.startsWith("/pay/druga-rata/") ||
     path.startsWith("/api/bookings") ||
     path.startsWith("/api/pdf") ||
     path.startsWith("/api/email") ||

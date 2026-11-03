@@ -6,6 +6,11 @@ type CreatePaynowPaymentInput = {
   description: string;
   buyerEmail: string;
   continueUrl: string;
+  /**
+   * Osobny klucz idempotencji. Domyślnie externalId.
+   * Druga rata musi mieć własny klucz — ten sam externalId (booking_ref) został już użyty przy zaliczce.
+   */
+  idempotencyKey?: string;
   notificationUrl?: string; // Opcjonalne - nie obsługiwane przez API Paynow v3, webhooki konfiguruje się w panelu
 };
 
@@ -58,6 +63,7 @@ export async function createPaynowPayment(
   input: CreatePaynowPaymentInput,
 ): Promise<CreatePaynowPaymentResult> {
   const { apiKey, signatureKey, baseUrl } = getPaynowConfig();
+  const idempotencyKey = input.idempotencyKey || input.externalId;
 
   // Paynow v3 format zgodnie z dokumentacją:
   // Przykład z dokumentacji (Quick Start):
@@ -95,7 +101,7 @@ export async function createPaynowPayment(
   const signaturePayload = {
     headers: {
       "Api-Key": apiKey,
-      "Idempotency-Key": input.externalId,
+      "Idempotency-Key": idempotencyKey,
     },
     parameters: {},
     body: jsonBody,
@@ -131,7 +137,7 @@ export async function createPaynowPayment(
       "Content-Type": "application/json",
       "Api-Key": apiKey,
       "Signature": signature,
-      "Idempotency-Key": input.externalId,
+      "Idempotency-Key": idempotencyKey,
     },
     body: jsonBody,
   });

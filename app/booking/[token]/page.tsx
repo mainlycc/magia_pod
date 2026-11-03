@@ -80,6 +80,7 @@ type BookingData = {
 export default function BookingPage({ params }: { params: Promise<{ token: string }> | { token: string } }) {
   const { token } = use(params instanceof Promise ? params : Promise.resolve(params));
   const searchParams = useSearchParams();
+  const paymentIntent = (searchParams.get("payment") || "").trim();
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +121,11 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
       setIsEnsuringAgreement(false);
     }
   };
+
+  useEffect(() => {
+    if (paymentIntent !== "second" || !token) return;
+    window.location.replace(`/pay/druga-rata/${encodeURIComponent(token)}`);
+  }, [paymentIntent, token]);
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -206,6 +212,17 @@ export default function BookingPage({ params }: { params: Promise<{ token: strin
 
     void maybeEnsureAgreement();
   }, [bookingData, ensureFailed, searchParams, token]);
+
+  if (paymentIntent === "second") {
+    return (
+      <ClientPanelShell>
+        <div className="flex min-h-[400px] flex-col items-center justify-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-[#a1a1aa]" />
+          <p className="text-sm text-[#3f3f46]">Przekierowanie do płatności…</p>
+        </div>
+      </ClientPanelShell>
+    );
+  }
 
   if (loading) {
     return (
